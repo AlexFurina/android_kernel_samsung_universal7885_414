@@ -145,6 +145,7 @@ static int s5p_mfc_enc_buf_init(struct vb2_buffer *vb)
 		if (ret < 0)
 			return ret;
 
+                s5p_mfc_mem_put_dmabuf(dmabuf);
 		start_raw = s5p_mfc_mem_get_daddr_vb(vb, 0);
 		if (start_raw == 0) {
 			mfc_err_ctx("Plane mem not allocated.\n");
