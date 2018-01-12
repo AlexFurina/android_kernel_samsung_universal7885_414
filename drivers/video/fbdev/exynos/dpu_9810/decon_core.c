@@ -1376,9 +1376,6 @@ static unsigned int decon_map_ion_handle(struct decon_device *decon,
 		goto err_iovmm_map;
 	}
 
-	exynos_ion_sync_dmabuf_for_device(dev, dma->dma_buf, dma->dma_buf->size,
-			DMA_TO_DEVICE);
-
 	return dma->dma_buf->size;
 
 err_iovmm_map:
