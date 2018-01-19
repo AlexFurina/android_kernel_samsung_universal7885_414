@@ -11,7 +11,9 @@
  */
 
 #include <linux/err.h>
+#ifdef CONFIG_EXYNOS_BTS
 #include <soc/samsung/bts.h>
+#endif
 
 #include "s5p_mfc_qos.h"
 #include "s5p_mfc_utils.h"
@@ -50,9 +52,11 @@ static void mfc_qos_operate(struct s5p_mfc_dev *dev, int opr_type, int idx)
 				qos_table[idx].freq_kfc);
 #endif
 
+#ifdef CONFIG_EXYNOS_BTS
 		bts_update_scen(BS_MFC_UHD_ENC60, qos_table[idx].mo_uhd_enc60_value);
 		bts_update_scen(BS_MFC_UHD_10BIT, qos_table[idx].mo_10bit_value);
 		bts_update_scen(BS_MFC_UHD, qos_table[idx].mo_value);
+#endif
 
 		atomic_set(&dev->qos_req_cur, idx + 1);
 		MFC_TRACE_DEV("-- QOS add[%d] (int:%d, mif:%d, mo:%d, mo_10bit:%d, mo_uhd_enc:%d)\n",
@@ -80,9 +84,11 @@ static void mfc_qos_operate(struct s5p_mfc_dev *dev, int opr_type, int idx)
 				qos_table[idx].freq_kfc);
 #endif
 
+#ifdef CONFIG_EXYNOS_BTS
 		bts_update_scen(BS_MFC_UHD_ENC60, qos_table[idx].mo_uhd_enc60_value);
 		bts_update_scen(BS_MFC_UHD_10BIT, qos_table[idx].mo_10bit_value);
 		bts_update_scen(BS_MFC_UHD, qos_table[idx].mo_value);
+#endif
 
 		atomic_set(&dev->qos_req_cur, idx + 1);
 		MFC_TRACE_DEV("-- QOS update[%d] (int:%d, mif:%d, mo:%d, mo_10bit:%d, mo_uhd_enc:%d)\n",
@@ -105,6 +111,7 @@ static void mfc_qos_operate(struct s5p_mfc_dev *dev, int opr_type, int idx)
 		pm_qos_remove_request(&dev->qos_req_cluster0);
 #endif
 
+#ifdef CONFIG_EXYNOS_BTS
 		bts_update_scen(BS_MFC_UHD_ENC60, 0);
 		bts_update_scen(BS_MFC_UHD_10BIT, 0);
 		bts_update_scen(BS_MFC_UHD, 0);
@@ -113,12 +120,14 @@ static void mfc_qos_operate(struct s5p_mfc_dev *dev, int opr_type, int idx)
 		dev->mfc_bw.read = 0;
 		dev->mfc_bw.write = 0;
 		bts_update_bw(BTS_BW_MFC, dev->mfc_bw);
+#endif
 
 		atomic_set(&dev->qos_req_cur, 0);
 		MFC_TRACE_DEV("-- QOS remove\n");
 		mfc_debug(2, "QoS remove\n");
 		break;
 	case MFC_QOS_BW:
+#ifdef CONFIG_EXYNOS_BTS
 		MFC_TRACE_DEV("++ QOS BW (peak: %d, read: %d, write: %d)\n",
 				dev->mfc_bw.peak, dev->mfc_bw.read, dev->mfc_bw.write);
 
@@ -129,13 +138,19 @@ static void mfc_qos_operate(struct s5p_mfc_dev *dev, int opr_type, int idx)
 		mfc_debug(2, "QoS BW, (peak: %d, read: %d, write: %d)\n",
 				dev->mfc_bw.peak, dev->mfc_bw.read, dev->mfc_bw.write);
 		break;
+#endif
 	default:
 		mfc_err_dev("Unknown request for opr [%d]\n", opr_type);
 		break;
 	}
 }
 
+#ifdef CONFIG_EXYNOS_BTS
 static void mfc_qos_set(struct s5p_mfc_ctx *ctx, struct bts_bw *mfc_bw, int i)
+#else
+static void mfc_qos_set(struct s5p_mfc_ctx *ctx, int i)
+#endif
+
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 	struct s5p_mfc_platdata *pdata = dev->pdata;
@@ -147,12 +162,14 @@ static void mfc_qos_set(struct s5p_mfc_ctx *ctx, struct bts_bw *mfc_bw, int i)
 			pdata->max_mb : qos_table[i + 1].threshold_mb,
 			qos_table[i].freq_int, qos_table[i].freq_mif);
 
+#ifdef CONFIG_EXYNOS_BTS
 	if (mfc_bw->peak != dev->mfc_bw.peak) {
 		dev->mfc_bw.peak = mfc_bw->peak;
 		dev->mfc_bw.read = mfc_bw->read;
 		dev->mfc_bw.write = mfc_bw->write;
 		mfc_qos_operate(dev, MFC_QOS_BW, i);
 	}
+#endif
 
 	if (atomic_read(&dev->qos_req_cur) == 0)
 		mfc_qos_operate(dev, MFC_QOS_ADD, i);
@@ -267,6 +284,7 @@ static inline unsigned long mfc_qos_get_mb_per_second(struct s5p_mfc_ctx *ctx)
 	return mfc_qos_get_weighted_mb(ctx, mb);
 }
 
+#ifdef CONFIG_EXYNOS_BTS
 static struct s5p_mfc_qos_bw mfc_bw_info = {
 	/*				  peak   read   write	(KB/UHD frame) */
 	.h264_dec_uhd_bw	=	{ 38131, 40206, 24870 },
@@ -282,6 +300,7 @@ static struct s5p_mfc_qos_bw mfc_bw_info = {
 	.vp9_enc_uhd_bw		=	{ 84443, 71588, 19337 },
 	.mpeg4_enc_uhd_bw	=	{ 44633, 55310, 9599  },
 };
+#endif
 
 static void mfc_qos_get_bw_per_second(struct s5p_mfc_ctx *ctx, struct bts_bw *mfc_bw)
 {
@@ -389,11 +408,13 @@ void s5p_mfc_qos_on(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_platdata *pdata = dev->pdata;
 	struct s5p_mfc_qos *qos_table = pdata->qos_table;
 	struct s5p_mfc_ctx *qos_ctx;
-	struct bts_bw mfc_bw, mfc_bw_ctx;
 	unsigned long hw_mb = 0, total_mb = 0, total_fps = 0;
 	unsigned int fw_time, sw_time;
 	int i, found = 0, enc_found = 0;
 	int start_qos_step;
+#ifdef CONFIG_EXYNOS_BTS
+	struct bts_bw mfc_bw, mfc_bw_ctx;
+#endif
 
 	mutex_lock(&dev->qos_mutex);
 	list_for_each_entry(qos_ctx, &dev->qos_queue, qos_list)
@@ -403,19 +424,23 @@ void s5p_mfc_qos_on(struct s5p_mfc_ctx *ctx)
 	if (!found)
 		list_add_tail(&ctx->qos_list, &dev->qos_queue);
 
+#ifdef CONFIG_EXYNOS_BTS
 	mfc_bw.peak = 0;
 	mfc_bw.read = 0;
 	mfc_bw.write = 0;
+#endif
 	/* get the hw macroblock */
 	list_for_each_entry(qos_ctx, &dev->qos_queue, qos_list) {
 		if (OVER_UHD_ENC60(qos_ctx))
 			enc_found = 1;
 		hw_mb += mfc_qos_get_mb_per_second(qos_ctx);
+		total_fps += (qos_ctx->framerate / 1000);
+#ifdef CONFIG_EXYNOS_BTS
 		mfc_qos_get_bw_per_second(qos_ctx, &mfc_bw_ctx);
 		mfc_bw.peak += mfc_bw_ctx.peak;
 		mfc_bw.read += mfc_bw_ctx.read;
 		mfc_bw.write += mfc_bw_ctx.write;
-		total_fps += (qos_ctx->framerate / 1000);
+#endif
 	}
 
 	start_qos_step = pdata->num_qos_steps;
@@ -443,7 +468,12 @@ void s5p_mfc_qos_on(struct s5p_mfc_ctx *ctx)
 	if (total_mb > pdata->max_mb)
 		mfc_debug(4, "QoS overspec mb %ld > %d\n", total_mb, pdata->max_mb);
 
+#ifdef CONFIG_EXYNOS_BTS
 	mfc_qos_set(ctx, &mfc_bw, i);
+#else
+	mfc_qos_set(ctx, i);
+#endif
+
 	mutex_unlock(&dev->qos_mutex);
 }
 
@@ -453,11 +483,13 @@ void s5p_mfc_qos_off(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_platdata *pdata = dev->pdata;
 	struct s5p_mfc_qos *qos_table = pdata->qos_table;
 	struct s5p_mfc_ctx *qos_ctx;
-	struct bts_bw mfc_bw, mfc_bw_ctx;
 	unsigned long hw_mb = 0, total_mb = 0, total_fps = 0;
 	unsigned int fw_time, sw_time;
 	int i, found = 0, enc_found = 0;
 	int start_qos_step;
+#ifdef CONFIG_EXYNOS_BTS
+	struct bts_bw mfc_bw, mfc_bw_ctx;
+#endif
 
 	mutex_lock(&dev->qos_mutex);
 	if (list_empty(&dev->qos_queue)) {
@@ -474,9 +506,11 @@ void s5p_mfc_qos_off(struct s5p_mfc_ctx *ctx)
 		return;
 	}
 
+#ifdef CONFIG_EXYNOS_BTS
 	mfc_bw.peak = 0;
 	mfc_bw.read = 0;
 	mfc_bw.write = 0;
+#endif
 
 	/* get the hw macroblock */
 	list_for_each_entry(qos_ctx, &dev->qos_queue, qos_list) {
@@ -488,11 +522,13 @@ void s5p_mfc_qos_off(struct s5p_mfc_ctx *ctx)
 		if (OVER_UHD_ENC60(qos_ctx))
 			enc_found = 1;
 		hw_mb += mfc_qos_get_mb_per_second(qos_ctx);
+		total_fps += (qos_ctx->framerate / 1000);
+#ifdef CONFIG_EXYNOS_BTS
 		mfc_qos_get_bw_per_second(qos_ctx, &mfc_bw_ctx);
 		mfc_bw.peak += mfc_bw_ctx.peak;
 		mfc_bw.read += mfc_bw_ctx.read;
 		mfc_bw.write += mfc_bw_ctx.write;
-		total_fps += (qos_ctx->framerate / 1000);
+#endif
 	}
 	if (found)
 		list_del(&ctx->qos_list);
@@ -525,7 +561,11 @@ void s5p_mfc_qos_off(struct s5p_mfc_ctx *ctx)
 	if (list_empty(&dev->qos_queue) || total_mb == 0)
 		mfc_qos_operate(dev, MFC_QOS_REMOVE, 0);
 	else
+#ifdef CONFIG_EXYNOS_BTS
 		mfc_qos_set(ctx, &mfc_bw, i);
+#else
+		mfc_qos_set(ctx, i);
+#endif
 
 	mutex_unlock(&dev->qos_mutex);
 }
