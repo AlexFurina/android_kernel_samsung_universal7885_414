@@ -27,8 +27,8 @@ void s5p_mfc_add_tail_buf(spinlock_t *plock, struct s5p_mfc_buf_queue *queue,
 
 	spin_lock_irqsave(plock, flags);
 
-	mfc_debug(2, "queue address: %p\n", queue);
-	mfc_debug(2, "mfc_buf: %p\n", mfc_buf);
+	mfc_debug(2, "queue address: 0x%p\n", queue);
+	mfc_debug(2, "mfc_buf: 0x%p\n", mfc_buf);
 
 	mfc_buf->used = 0;
 	list_add_tail(&mfc_buf->list, &queue->head);
@@ -55,7 +55,7 @@ int s5p_mfc_peek_buf_csd(spinlock_t *plock, struct s5p_mfc_buf_queue *queue)
 
 	csd = mfc_buf->vb.reserved2 & FLAG_CSD ? 1 : 0;
 
-	mfc_debug(2, "mfc_buf: %p\n", mfc_buf);
+	mfc_debug(2, "mfc_buf: 0x%p\n", mfc_buf);
 	mfc_debug(2, "First plane address: 0x%08llx\n",
 		s5p_mfc_mem_get_daddr_vb(&mfc_buf->vb.vb2_buf, 0));
 
@@ -82,7 +82,7 @@ struct s5p_mfc_buf *s5p_mfc_get_buf(spinlock_t *plock, struct s5p_mfc_buf_queue 
 	if ((used == MFC_BUF_RESET_USED) || (used == MFC_BUF_SET_USED))
 		mfc_buf->used = used;
 
-	mfc_debug(2, "mfc_buf: %p\n", mfc_buf);
+	mfc_debug(2, "mfc_buf: 0x%p\n", mfc_buf);
 	mfc_debug(2, "First plane address: 0x%08llx\n",
 		s5p_mfc_mem_get_daddr_vb(&mfc_buf->vb.vb2_buf, 0));
 
@@ -109,7 +109,7 @@ struct s5p_mfc_buf *s5p_mfc_get_del_buf(spinlock_t *plock, struct s5p_mfc_buf_qu
 	if ((used == MFC_BUF_RESET_USED) || (used == MFC_BUF_SET_USED))
 		mfc_buf->used = used;
 
-	mfc_debug(2, "mfc_buf: %p\n", mfc_buf);
+	mfc_debug(2, "mfc_buf: 0x%p\n", mfc_buf);
 	mfc_debug(2, "First plane address: 0x%08llx\n",
 		s5p_mfc_mem_get_daddr_vb(&mfc_buf->vb.vb2_buf, 0));
 
@@ -137,7 +137,7 @@ struct s5p_mfc_buf *s5p_mfc_get_del_if_consumed(spinlock_t *plock, struct s5p_mf
 
 	mfc_buf = list_entry(queue->head.next, struct s5p_mfc_buf, list);
 
-	mfc_debug(2, "mfc_buf: %p\n", mfc_buf);
+	mfc_debug(2, "mfc_buf: 0x%p\n", mfc_buf);
 	mfc_debug(2, "First plane address: 0x%08llx\n",
 		s5p_mfc_mem_get_daddr_vb(&mfc_buf->vb.vb2_buf, 0));
 
@@ -181,7 +181,7 @@ struct s5p_mfc_buf *s5p_mfc_get_move_buf(spinlock_t *plock,
 	if ((used == MFC_BUF_RESET_USED) || (used == MFC_BUF_SET_USED))
 		mfc_buf->used = used;
 
-	mfc_debug(2, "mfc_buf: %p\n", mfc_buf);
+	mfc_debug(2, "mfc_buf: 0x%p\n", mfc_buf);
 	mfc_debug(2, "First plane address: 0x%08llx\n",
 		s5p_mfc_mem_get_daddr_vb(&mfc_buf->vb.vb2_buf, 0));
 
@@ -216,7 +216,7 @@ struct s5p_mfc_buf *s5p_mfc_get_move_buf_used(spinlock_t *plock,
 	mfc_buf = list_entry(from_queue->head.next, struct s5p_mfc_buf, list);
 
 	if (mfc_buf->used) {
-		mfc_debug(2, "mfc_buf: %p\n", mfc_buf);
+		mfc_debug(2, "mfc_buf: 0x%p\n", mfc_buf);
 		mfc_debug(2, "First plane address: 0x%08llx\n",
 			s5p_mfc_mem_get_daddr_vb(&mfc_buf->vb.vb2_buf, 0));
 

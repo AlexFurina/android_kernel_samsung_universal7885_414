@@ -1090,6 +1090,8 @@ static int s5p_mfc_probe(struct platform_device *pdev)
 	dev->mfc_trace_longterm = g_mfc_trace_longterm;
 	dev->mfc_trace_logging = g_mfc_trace_logging;
 
+	dma_set_mask(&pdev->dev, DMA_BIT_MASK(36));
+
 	s5p_mfc_pm_init(dev);
 	ret = mfc_register_resource(pdev, dev);
 	if (ret)
@@ -1197,14 +1199,6 @@ static int s5p_mfc_probe(struct platform_device *pdev)
 	}
 	INIT_WORK(&dev->butler_work, s5p_mfc_butler_worker);
 
-#ifdef CONFIG_ION_EXYNOS
-	dev->mfc_ion_client = exynos_ion_client_create("mfc");
-	if (IS_ERR(dev->mfc_ion_client)) {
-		dev_err(&pdev->dev, "failed to ion_client_create\n");
-		goto err_ion_client;
-	}
-#endif
-
 #ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 	atomic_set(&dev->qos_req_cur, 0);
 	mutex_init(&dev->qos_mutex);
@@ -1244,10 +1238,6 @@ static int s5p_mfc_probe(struct platform_device *pdev)
 err_alloc_debug:
 	iovmm_deactivate(&pdev->dev);
 err_iovmm_active:
-#ifdef CONFIG_ION_EXYNOS
-	ion_client_destroy(dev->mfc_ion_client);
-err_ion_client:
-#endif
 	destroy_workqueue(dev->butler_wq);
 err_butler_wq:
 	destroy_workqueue(dev->mfc_idle_wq);
@@ -1308,9 +1298,6 @@ static int s5p_mfc_remove(struct platform_device *pdev)
 	remove_proc_entry(MFC_PROC_ROOT, NULL);
 #endif
 	s5p_mfc_destroy_listable_wq_dev(dev);
-#ifdef CONFIG_ION_EXYNOS
-	ion_client_destroy(dev->mfc_ion_client);
-#endif
 	iovmm_deactivate(&pdev->dev);
 	mfc_debug(2, "Will now deinit HW\n");
 	s5p_mfc_deinit_hw(dev);
