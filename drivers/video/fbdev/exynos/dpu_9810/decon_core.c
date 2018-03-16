@@ -2201,6 +2201,7 @@ end:
 
 	decon_release_old_bufs(decon, regs, old_dma_bufs, old_plane_cnt);
 	decon_signal_fence(regs->retire_fence);
+	dma_fence_put(regs->retire_fence);
 
 	decon_systrace(decon, 'E', "decon_update_regs", 0);
 
@@ -2566,7 +2567,7 @@ static int decon_set_win_config(struct decon_device *decon,
 #if defined(CONFIG_DPU_2_0_RELEASE_FENCES)
 		decon_create_release_fences(decon, win_data, sync_file);
 #endif
-		regs->retire_fence = sync_file->fence;
+		regs->retire_fence = dma_fence_get(sync_file->fence);
 	}
 
 	decon_hiber_block(decon);
