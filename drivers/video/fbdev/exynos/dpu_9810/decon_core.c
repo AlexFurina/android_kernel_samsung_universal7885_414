@@ -1350,6 +1350,11 @@ static unsigned int decon_map_ion_handle(struct decon_device *decon,
 	dma->fence = NULL;
 	dma->dma_buf = buf;
 
+	if (IS_ERR_OR_NULL(dev)) {
+		decon_err("%s: dev ptr is invalid\n", __func__);
+		goto err_buf_map_attach;
+	}
+
 	dma->attachment = dma_buf_attach(dma->dma_buf, dev);
 	if (IS_ERR_OR_NULL(dma->attachment)) {
 		decon_err("dma_buf_attach() failed: %ld\n",
@@ -1394,7 +1399,7 @@ static int decon_import_buffer(struct decon_device *decon, int idx,
 	struct decon_dma_buf_data *dma_buf_data = NULL;
 	struct displayport_device *displayport;
 	struct dsim_device *dsim;
-	struct device *dev;
+	struct device *dev = NULL;
 	int ret = 0, i;
 	size_t buf_size = 0;
 
@@ -3181,7 +3186,7 @@ static int decon_fb_alloc_memory(struct decon_device *decon, struct decon_win *w
 	struct fb_info *fbi = win->fbinfo;
 	struct displayport_device *displayport;
 	struct dsim_device *dsim;
-	struct device *dev;
+	struct device *dev = NULL;
 	unsigned int real_size, virt_size, size;
 	dma_addr_t map_dma;
 	struct dma_buf *buf;
@@ -3262,7 +3267,7 @@ static int decon_fb_test_alloc_memory(struct decon_device *decon, u32 size)
 	struct decon_win *win = decon->win[decon->dt.dft_win];
 	struct displayport_device *displayport;
 	struct dsim_device *dsim;
-	struct device *dev;
+	struct device *dev = NULL;
 	dma_addr_t map_dma;
 	struct dma_buf *buf;
 	void *vaddr;
