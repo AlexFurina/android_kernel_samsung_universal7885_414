@@ -13,6 +13,8 @@
  * published by the Free Software Foundation.
  */
 
+#include <dt-bindings/clock/exynos9810.h>
+
 / {
 	debug-snapshot-soc {
 		compatible = "debug-snapshot-soc";
@@ -33,7 +35,15 @@
 				addr = <0x103e0100 0x103e0104 0x103e0108 0xFFFFFFFF>;
 			};
 		};
+		*/
 	};
+
+       exynos-handler {
+               compatible = "samsung,exynos-handler";
+               interrupts =    <0 157 0>,      /* INTREQ__CPUCL0_nINTERRIRQ */
+                               <0 180 0>;      /* INTREQ__CPUCL1_nECCERRIRQ */
+               handler_nr_irq = <2>;
+       };
 
         coresight@1e000000 {
 		compatible = "exynos,coresight";
