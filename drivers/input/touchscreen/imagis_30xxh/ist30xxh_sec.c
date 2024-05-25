@@ -29,7 +29,7 @@
 
 #ifdef SEC_FACTORY_MODE
 
-#include <linux/sec_sysfs.h>
+#include <linux/sec_class.h>
 
 #define COMMAND_LENGTH      (64)
 #define FACTORY_BUF_SIZE    PAGE_SIZE

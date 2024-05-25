@@ -1248,7 +1248,7 @@ static int otg_flag = 0;
 static int tsp_ccic_notification(struct notifier_block *nb,
 		unsigned long action, void *data)
 {
-	CC_NOTI_USB_STATUS_TYPEDEF usb_status = * (CC_NOTI_USB_STATUS_TYPEDEF *)data;
+	PD_NOTI_USB_STATUS_TYPEDEF usb_status = * (PD_NOTI_USB_STATUS_TYPEDEF *)data;
 
 	switch (usb_status.drp){
 		case USB_STATUS_NOTIFY_ATTACH_DFP:
@@ -1791,7 +1791,7 @@ static int ist30xx_probe(struct i2c_client *client,
 
 	/* init irq thread */
 	ret = request_threaded_irq(client->irq, NULL, ist30xx_irq_thread,
-			IRQF_TRIGGER_FALLING | IRQF_ONESHOT | IRQF_DISABLED | IRQF_PERF_AFFINE, "ist30xx_ts",
+			IRQF_TRIGGER_FALLING | IRQF_ONESHOT , "ist30xx_ts",
 			data);
 	if (unlikely(ret))
 		goto err_init_drv;
@@ -1859,7 +1859,7 @@ static int ist30xx_probe(struct i2c_client *client,
 #endif
 #ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
 	manager_notifier_register(&data->ccic_nb, tsp_ccic_notification,
-						MANAGER_NOTIFY_CCIC_USB);
+						MANAGER_NOTIFY_PDIC_USB);
 #else
 #ifdef CONFIG_MUIC_NOTIFIER
 	muic_notifier_register(&data->muic_nb, tsp_muic_notification,
