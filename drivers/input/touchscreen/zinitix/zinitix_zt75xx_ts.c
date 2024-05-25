@@ -34,7 +34,7 @@
 
 #include <linux/i2c/zinitix_bt532_ts.h>
 #include <linux/input/mt.h>
-#include <linux/sec_sysfs.h>
+#include <linux/sec_class.h>
 #include <linux/input/sec_cmd.h>
 #include <linux/input/sec_tclm_v2.h>
 #include <linux/of_gpio.h>
@@ -1326,13 +1326,14 @@ static bool ts_read_coord(struct bt532_ts_info *info)
 				input_report_key(info->input_dev, KEY_WAKEUP, 0);
 #endif
 				input_sync(info->input_dev);
+
 				/* request from sensor team */
-				if (info->pdata->support_ear_detect) {
+				/*if (info->pdata->support_ear_detect) {
 					input_report_abs(info->input_dev_proximity, ABS_MT_CUSTOM2, 1);
 					input_sync(info->input_dev_proximity);
 					input_report_abs(info->input_dev_proximity, ABS_MT_CUSTOM2, 0);
 					input_sync(info->input_dev_proximity);
-				}
+				}*/
 
 				input_info(true, &client->dev, "AOT Doubletab\n");
 			} else {
@@ -1357,7 +1358,7 @@ static bool ts_read_coord(struct bt532_ts_info *info)
 			input_err(true, &client->dev, "%s: fail to read proximity detect reg\n", __func__);
 
 		input_info(true, &client->dev, "Ear_Detect: value: %d\n", prox_data);
-		input_report_abs(info->input_dev_proximity, ABS_MT_CUSTOM, prox_data);
+		//input_report_abs(info->input_dev_proximity, ABS_MT_CUSTOM, prox_data);
 		input_sync(info->input_dev_proximity);
 	}
 
@@ -2991,14 +2992,14 @@ static void bt532_ts_close(struct input_dev *dev)
 
 		bt532_power_control(info, POWER_OFF);
 	}
-
+/*
 	if (info->prox_power_off) {
 		input_report_key(info->input_dev, KEY_INT_CANCEL, 1);
 		input_sync(info->input_dev);
 		input_report_key(info->input_dev, KEY_INT_CANCEL, 0);
 		input_sync(info->input_dev);
 	}
-
+*/
 	info->prox_power_off = 0;
 
 	zinitix_debug_msg("bt532_ts_close--\n");
@@ -10044,8 +10045,8 @@ static void zt_set_input_prop_proximity(struct bt532_ts_info *info, struct input
 
 	set_bit(INPUT_PROP_DIRECT, dev->propbit);
 
-	input_set_abs_params(dev, ABS_MT_CUSTOM, 0, 0xFFFFFFFF, 0, 0);
-	input_set_abs_params(dev, ABS_MT_CUSTOM2, 0, 0xFFFFFFFF, 0, 0);
+	//input_set_abs_params(dev, ABS_MT_CUSTOM, 0, 0xFFFFFFFF, 0, 0);
+	//input_set_abs_params(dev, ABS_MT_CUSTOM2, 0, 0xFFFFFFFF, 0, 0);
 	input_set_drvdata(dev, info);
 }
 
@@ -10245,7 +10246,7 @@ static int bt532_ts_probe(struct i2c_client *client,
 	set_bit(EV_ABS, info->input_dev->evbit);
 	set_bit(BTN_TOUCH, info->input_dev->keybit);
 	set_bit(INPUT_PROP_DIRECT, info->input_dev->propbit);
-	set_bit(KEY_INT_CANCEL, info->input_dev->keybit);
+	//set_bit(KEY_INT_CANCEL, info->input_dev->keybit);
 	set_bit(EV_LED, info->input_dev->evbit);
 	set_bit(LED_MISC, info->input_dev->ledbit);
 	if(pdata->support_touchkey){
@@ -10324,7 +10325,7 @@ static int bt532_ts_probe(struct i2c_client *client,
 
 	/* ret = request_threaded_irq(info->irq, ts_int_handler, bt532_touch_work,*/
 	ret = request_threaded_irq(info->irq, NULL, bt532_touch_work,
-		IRQF_TRIGGER_FALLING | IRQF_ONESHOT | IRQF_PERF_AFFINE, BT532_TS_DEVICE, info);
+		IRQF_TRIGGER_FALLING | IRQF_ONESHOT , BT532_TS_DEVICE, info);
 
 	if (ret) {
 		input_info(true, &client->dev, "unable to register irq.(%s)\r\n",
