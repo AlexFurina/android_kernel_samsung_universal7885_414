@@ -222,6 +222,7 @@ static void parse_pwrsrc_rs(struct outbuf *buf)
 	buf->already = 1;
 }
 
+#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
 /*
  * proc/pwrsrc
  * OFFSRC (from PWROFF - 32) + ONSRC (from PWR - 32) + RSTSTAT (from RST - 32)
@@ -307,6 +308,8 @@ static const struct file_operations sec_debug_reset_reason_pwrsrc_proc_fops = {
 	.release = single_release,
 };
 
+#endif
+
 #define BBP_STR_LEN (64)
 
 static void handle_bug_string(char *buf, char *src)
@@ -374,6 +377,7 @@ static int handle_panic_string(char *src)
 	return PNC_STR_REST;
 }
 
+#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
 /*
  * proc/extra
  * RSTCNT (32) + PC (256) + LR (256) (MAX: 544)
@@ -467,6 +471,7 @@ static const struct file_operations sec_debug_reset_reason_extra_proc_fops = {
 	.llseek = seq_lseek,
 	.release = single_release,
 };
+#endif
 
 static int __init sec_debug_reset_reason_init(void)
 {
@@ -480,6 +485,7 @@ static int __init sec_debug_reset_reason_init(void)
 	if (!entry)
 		return -ENOMEM;
 
+#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
 	entry = proc_create("extra", 0222, NULL, &sec_debug_reset_reason_extra_proc_fops);
 	if (!entry)
 		return -ENOMEM;
@@ -487,6 +493,7 @@ static int __init sec_debug_reset_reason_init(void)
 	entry = proc_create("pwrsrc", 0222, NULL, &sec_debug_reset_reason_pwrsrc_proc_fops);
 	if (!entry)
 		return -ENOMEM;
+#endif
 
 #if 0	/* not used */
 	dev = sec_device_create(NULL, "sec_reset_reason");
