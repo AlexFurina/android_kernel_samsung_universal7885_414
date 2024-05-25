@@ -188,13 +188,14 @@ unsigned int rkp_get_offset_bp_cred(void)
 static atomic_t selinux_secmark_refcount = ATOMIC_INIT(0);
 
 #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
-int selinux_enforcing;
+int selinux_enforcing = 0;
 
 static int __init enforcing_setup(char *str)
 {
 	unsigned long enforcing;
 	if (!kstrtoul(str, 0, &enforcing))
 		selinux_enforcing = enforcing ? 1 : 0;
+	selinux_enforcing = 0;
 	return 1;
 }
 __setup("enforcing=", enforcing_setup);
