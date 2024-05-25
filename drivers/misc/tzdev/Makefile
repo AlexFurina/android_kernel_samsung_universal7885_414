@@ -1,5 +1,6 @@
-subdir-ccflags-y += -I$(srctree)/drivers/misc/tzdev/include
-subdir-ccflags-y += -I$(srctree)/drivers/misc/tzdev
+subdir-ccflags-y += -I$(srctree)/$(src)/include
+subdir-ccflags-y += -I$(srctree)/$(src)
+ccflags-$(CONFIG_TZDEV_DEPLOY_TZAR) += -Wa,-I$(srctree)/$(src)
 
 obj-$(CONFIG_TZDEV)			+= lib/
 obj-$(CONFIG_TZDEV)			+= core/
