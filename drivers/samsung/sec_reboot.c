@@ -76,6 +76,12 @@ module_param(reboot_multicmd, int, 0400);
 void (*mach_restart)(enum reboot_mode mode, const char *cmd);
 EXPORT_SYMBOL(mach_restart);
 
+#ifdef CONFIG_SEC_REBOOT_4_4
+enum sec_power_flags {
+	SEC_POWER_OFF = 0x0,
+	SEC_POWER_RESET = 0x12345678,
+};
+#else
 /* Magic INFORM */
 #define SEC_REBOOT_START_OFFSET		(24)
 #define SEC_REBOOT_END_OFFSET		(16)
@@ -85,6 +91,7 @@ enum sec_power_flags {
 	SEC_REBOOT_NORMAL = 0x4E,
 	SEC_REBOOT_LPM = 0x70,
 };
+#endif
 
 /* PANIC INFORM */
 #define SEC_RESET_REASON_PREFIX         0x12345670
@@ -205,6 +212,7 @@ static void sec_multicmd(const char *cmd)
 	exynos_pmu_write(SEC_DEBUG_PANIC_INFORM, SEC_RESET_SET_MULTICMD | multicmd_value);
 }
 
+#ifndef CONFIG_SEC_REBOOT_4_4
 void sec_set_reboot_magic(int magic, int offset, int mask)
 {
 	u32 tmp = 0;
@@ -217,6 +225,7 @@ void sec_set_reboot_magic(int magic, int offset, int mask)
 	pr_info("%s: set as: %x\n", __func__, tmp);
 	exynos_pmu_write(SEC_DEBUG_MAGIC_INFORM, tmp);
 }
+#endif
 
 static void sec_power_off(void)
 {
@@ -248,7 +257,11 @@ static void sec_power_off(void)
 
 	local_irq_disable();
 
+#ifdef CONFIG_SEC_REBOOT_4_4
+	exynos_pmu_write(SEC_DEBUG_MAGIC_INFORM, SEC_POWER_OFF);
+#else
 	sec_set_reboot_magic(SEC_REBOOT_LPM, SEC_REBOOT_END_OFFSET, 0xFF);
+#endif
 	psy_do_property("ac", get, POWER_SUPPLY_PROP_ONLINE, ac_val);
 	psy_do_property("ac", get, POWER_SUPPLY_EXT_PROP_WATER_DETECT, water_val);
 	psy_do_property("usb", get, POWER_SUPPLY_PROP_ONLINE, usb_val);
@@ -307,7 +320,11 @@ static void sec_reboot(enum reboot_mode reboot_mode, const char *cmd)
 	sec_debug_clear_magic_rambase();
 
 	/* LPM mode prevention */
+#ifdef CONFIG_SEC_REBOOT_4_4
+	exynos_pmu_write(SEC_DEBUG_MAGIC_INFORM, SEC_POWER_RESET);
+#else
 	sec_set_reboot_magic(SEC_REBOOT_NORMAL, SEC_REBOOT_END_OFFSET, 0xFF);
+#endif
 
 	if (cmd) {
 		unsigned long value;

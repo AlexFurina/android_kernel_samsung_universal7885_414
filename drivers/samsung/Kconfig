@@ -16,6 +16,12 @@ config SEC_REBOOT
 	help
 	  Samsung TN reboot extension Feature. Do additional work when reboot.
 
+config SEC_REBOOT_4_4
+	bool "Support 4.4 bootloader for reboot"
+	depends on SEC_REBOOT
+	help
+	  Support rebooting properly on 7885 phones released with 4.4 kernel.
+
 comment "Samsung sysfs Feature"
 config DRV_SAMSUNG
 	bool "Samsung sec class/sysfs Feature"
