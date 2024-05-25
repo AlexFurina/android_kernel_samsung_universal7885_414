@@ -1248,6 +1248,7 @@ config TOUCHSCREEN_ROHM_BU21023
 
 source "drivers/input/touchscreen/synaptics_dsx/Kconfig"
 source "drivers/input/touchscreen/sec_ts/Kconfig"
+source "drivers/input/touchscreen/zinitix/Kconfig"
 source "drivers/input/touchscreen/melfas_mss100/Kconfig"
 source "drivers/input/touchscreen/himax/himax_83xxx/Kconfig"
 source "drivers/input/touchscreen/imagis_30xxh/Kconfig"
