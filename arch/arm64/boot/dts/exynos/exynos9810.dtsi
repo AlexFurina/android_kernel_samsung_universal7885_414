@@ -3889,278 +3889,284 @@
 		acpm-ipc-channel = <11>;
 	};
 
-	devfreq_0: devfreq_mif@17000010 {
-		compatible = "samsung,exynos-devfreq";
-		reg = <0x0 0x17000010 0x0>;
-		devfreq_type = "mif";
-		devfreq_domain_name = "dvfs_mif";
+	exynos_devfreq {
+		compatible = "samsung,exynos-devfreq-root";
+		#address-cells = <2>;
+		#size-cells = <1>;
+		ranges;
+		devfreq_0: devfreq_mif@17000010 {
+			compatible = "samsung,exynos-devfreq";
+			reg = <0x0 0x17000010 0x0>;
+			devfreq_type = "mif";
+			devfreq_domain_name = "dvfs_mif";
 
-		/* Delay time */
-		use_delay_time = "true";
-		delay_time_list = "20";
+			/* Delay time */
+			use_delay_time = "true";
+			delay_time_list = "20";
 
-		freq_info = <2093000 208000 1014000 208000 2093000 2093000>;
-		/* initial_freq, default_qos, suspend_freq, min_freq, max_freq reboot_freq */
+			freq_info = <2093000 208000 1014000 208000 2093000 2093000>;
+			/* initial_freq, default_qos, suspend_freq, min_freq, max_freq reboot_freq */
 
-		/* Booting value */
-		boot_info = <40 1794000>;
-		/* boot_qos_timeout, boot_freq */
+			/* Booting value */
+			boot_info = <40 1794000>;
+			/* boot_qos_timeout, boot_freq */
 
-		use_get_dev = "false";
-		polling_ms = <0>;
+			use_get_dev = "false";
+			polling_ms = <0>;
 
-		/* governor data */
-		gov_name = "interactive";
-		use_reg = "false";
+			/* governor data */
+			gov_name = "interactive";
+			use_reg = "false";
 
-		use_tmu = "true";
-		use_cl_dvfs = "false";
-		use_sw_clk = "false";
-		dfs_id = <ACPM_DVFS_MIF>;
-		acpm-ipc-channel = <1>;
-		use_acpm = "true";
-	};
+			use_tmu = "true";
+			use_cl_dvfs = "false";
+			use_sw_clk = "false";
+			dfs_id = <ACPM_DVFS_MIF>;
+			acpm-ipc-channel = <1>;
+			use_acpm = "true";
+		};
 
-	devfreq_1: devfreq_int@17000020 {
-		compatible = "samsung,exynos-devfreq";
-		reg = <0x0 0x17000020 0x0>;
-		devfreq_type = "int";
-		devfreq_domain_name = "dvfs_int";
+		devfreq_1: devfreq_int@17000020 {
+			compatible = "samsung,exynos-devfreq";
+			reg = <0x0 0x17000020 0x0>;
+			devfreq_type = "int";
+			devfreq_domain_name = "dvfs_int";
 
-		/* Delay time */
-		use_delay_time = "false";
+			/* Delay time */
+			use_delay_time = "false";
 
-		freq_info = <667000 178000 107000 107000 667000 667000>;
-		/* <initial_freq, default_qos, suspend_freq, min, max, reboot_freq> */
+			freq_info = <667000 178000 107000 107000 667000 667000>;
+			/* <initial_freq, default_qos, suspend_freq, min, max, reboot_freq> */
 
-		/* Booting value */
-		boot_info = <40 667000>;
-		/* boot_qos_timeout, boot_freq */
+			/* Booting value */
+			boot_info = <40 667000>;
+			/* boot_qos_timeout, boot_freq */
 
-		/* default_dev_profile */
-		use_get_dev = "false";
-		polling_ms = <0>;
+			/* default_dev_profile */
+			use_get_dev = "false";
+			polling_ms = <0>;
 
-		/* governor data */
-		gov_name = "interactive";
-		use_reg = "false";
+			/* governor data */
+			gov_name = "interactive";
+			use_reg = "false";
 
-		use_tmu = "true";
-		use_cl_dvfs = "false";
-		use_sw_clk = "false";
-		dfs_id = <ACPM_DVFS_INT>;
-		acpm-ipc-channel = <1>;
-		use_acpm = "true";
-	};
+			use_tmu = "true";
+			use_cl_dvfs = "false";
+			use_sw_clk = "false";
+			dfs_id = <ACPM_DVFS_INT>;
+			acpm-ipc-channel = <1>;
+			use_acpm = "true";
+		};
 
-	devfreq_2: devfreq_intcam@17000030 {
-		compatible = "samsung,exynos-devfreq";
-		reg = <0x0 0x17000030 0x0>;
-		devfreq_type = "intcam";
-		devfreq_domain_name = "dvfs_intcam";
+		devfreq_2: devfreq_intcam@17000030 {
+			compatible = "samsung,exynos-devfreq";
+			reg = <0x0 0x17000030 0x0>;
+			devfreq_type = "intcam";
+			devfreq_domain_name = "dvfs_intcam";
 
-		/* Delay time */
-		use_delay_time = "false";
+			/* Delay time */
+			use_delay_time = "false";
 
-		freq_info = <690000 630000 690000 630000 690000 690000>;
-		/* <initial_freq, default_qos, suspend_freq, min, max, reboot_freq> */
+			freq_info = <690000 630000 690000 630000 690000 690000>;
+			/* <initial_freq, default_qos, suspend_freq, min, max, reboot_freq> */
 
-		/* Booting value */
-		boot_info = <40 640000>;
-		/* boot_qos_timeout, boot_freq */
+			/* Booting value */
+			boot_info = <40 640000>;
+			/* boot_qos_timeout, boot_freq */
 
-		/* default_dev_profile */
-		use_get_dev = "false";
-		polling_ms = <0>;
+			/* default_dev_profile */
+			use_get_dev = "false";
+			polling_ms = <0>;
 
-		/* governor data */
-		gov_name = "interactive";
-		use_reg = "false";
+			/* governor data */
+			gov_name = "interactive";
+			use_reg = "false";
 
-		use_tmu = "true";
-		use_cl_dvfs = "false";
-		use_sw_clk = "false";
-		dfs_id = <ACPM_DVFS_INTCAM>;
-	};
+			use_tmu = "true";
+			use_cl_dvfs = "false";
+			use_sw_clk = "false";
+			dfs_id = <ACPM_DVFS_INTCAM>;
+		};
 
-	devfreq_3: devfreq_disp@17000040 {
-		compatible = "samsung,exynos-devfreq";
-		reg = <0x0 0x17000040 0x0>;
-		devfreq_type = "disp";
-		devfreq_domain_name = "dvfs_disp";
+		devfreq_3: devfreq_disp@17000040 {
+			compatible = "samsung,exynos-devfreq";
+			reg = <0x0 0x17000040 0x0>;
+			devfreq_type = "disp";
+			devfreq_domain_name = "dvfs_disp";
 
-		/* Delay time */
-		use_delay_time = "false";
+			/* Delay time */
+			use_delay_time = "false";
 
-		freq_info = <640000 134000 640000 134000 640000 640000>;
-		/* <initial_freq, default_qos, suspend_freq, min, max, reboot_freq> */
+			freq_info = <640000 134000 640000 134000 640000 640000>;
+			/* <initial_freq, default_qos, suspend_freq, min, max, reboot_freq> */
 
-		/* Booting value */
-		boot_info = <40 640000>;
-		/* boot_qos_timeout, boot_freq */
+			/* Booting value */
+			boot_info = <40 640000>;
+			/* boot_qos_timeout, boot_freq */
 
-		/* default dev profile */
-		use_get_dev = "false";
-		polling_ms = <0>;
+			/* default dev profile */
+			use_get_dev = "false";
+			polling_ms = <0>;
 
-		/* governor data */
-		gov_name = "interactive";
-		use_reg = "false";
+			/* governor data */
+			gov_name = "interactive";
+			use_reg = "false";
 
-		use_tmu = "true";
-		use_cl_dvfs = "false";
-		use_sw_clk = "false";
-		dfs_id = <ACPM_DVFS_DISP>;
-	};
+			use_tmu = "true";
+			use_cl_dvfs = "false";
+			use_sw_clk = "false";
+			dfs_id = <ACPM_DVFS_DISP>;
+		};
 
-	devfreq_4: devfreq_cam@17000050 {
-		compatible = "samsung,exynos-devfreq";
-		reg = <0x0 0x17000050 0x0>;
-		devfreq_type = "cam";
-		devfreq_domain_name = "dvfs_cam";
+		devfreq_4: devfreq_cam@17000050 {
+			compatible = "samsung,exynos-devfreq";
+			reg = <0x0 0x17000050 0x0>;
+			devfreq_type = "cam";
+			devfreq_domain_name = "dvfs_cam";
 
-		/* Delay time */
-		use_delay_time = "false";
+			/* Delay time */
+			use_delay_time = "false";
 
-		freq_info = <690000 590000 690000 590000 690000 690000>;
-		/* <initial, default_qos, suspend_freq, min, max, reboot_freq> */
+			freq_info = <690000 590000 690000 590000 690000 690000>;
+			/* <initial, default_qos, suspend_freq, min, max, reboot_freq> */
 
-		/* Booting value */
-		boot_info = <40 630000>;
-		/* boot_qos_timeout, boot_freq */
+			/* Booting value */
+			boot_info = <40 630000>;
+			/* boot_qos_timeout, boot_freq */
 
-		/* default dev profile */
-		use_get_dev = "false";
-		polling_ms = <0>;
+			/* default dev profile */
+			use_get_dev = "false";
+			polling_ms = <0>;
 
-		/* governor data */
-		gov_name = "interactive";
-		use_reg = "false";
+			/* governor data */
+			gov_name = "interactive";
+			use_reg = "false";
 
-		use_tmu = "true";
-		use_cl_dvfs = "false";
-		use_sw_clk = "false";
-		dfs_id = <ACPM_DVFS_CAM>;
-	};
+			use_tmu = "true";
+			use_cl_dvfs = "false";
+			use_sw_clk = "false";
+			dfs_id = <ACPM_DVFS_CAM>;
+		};
 
-	devfreq_5: devfreq_aud@17000060 {
-		compatible = "samsung,exynos-devfreq";
-		reg = <0x0 0x17000060 0x0>;
-		devfreq_type = "aud";
-		devfreq_domain_name = "dvfs_aud";
+		devfreq_5: devfreq_aud@17000060 {
+			compatible = "samsung,exynos-devfreq";
+			reg = <0x0 0x17000060 0x0>;
+			devfreq_type = "aud";
+			devfreq_domain_name = "dvfs_aud";
 
-		/* Delay time */
-		use_delay_time = "false";
+			/* Delay time */
+			use_delay_time = "false";
 
-		freq_info = <295000 295000 295000 295000 1180000 295000>;
-		/* <initial, default_qos, suspend_freq, min, max, reboot_freq> */
+			freq_info = <295000 295000 295000 295000 1180000 295000>;
+			/* <initial, default_qos, suspend_freq, min, max, reboot_freq> */
 
-		/* Booting value */
-		boot_info = <40 295000>;
-		/* boot_qos_timeout, boot_freq */
+			/* Booting value */
+			boot_info = <40 295000>;
+			/* boot_qos_timeout, boot_freq */
 
-		/* default dev profile */
-		use_get_dev = "false";
-		polling_ms = <0>;
+			/* default dev profile */
+			use_get_dev = "false";
+			polling_ms = <0>;
 
-		/* governor data */
-		gov_name = "interactive";
-		use_reg = "false";
+			/* governor data */
+			gov_name = "interactive";
+			use_reg = "false";
 
-		use_tmu = "true";
-		use_cl_dvfs = "false";
-		use_sw_clk = "false";
-		dfs_id = <ACPM_DVFS_AUD>;
-	};
+			use_tmu = "true";
+			use_cl_dvfs = "false";
+			use_sw_clk = "false";
+			dfs_id = <ACPM_DVFS_AUD>;
+		};
 
-	devfreq_6: devfreq_iva@17000070 {
-		compatible = "samsung,exynos-devfreq";
-		reg = <0x0 0x17000070 0x0>;
-		devfreq_type = "iva";
-		devfreq_domain_name = "dvfs_iva";
+		devfreq_6: devfreq_iva@17000070 {
+			compatible = "samsung,exynos-devfreq";
+			reg = <0x0 0x17000070 0x0>;
+			devfreq_type = "iva";
+			devfreq_domain_name = "dvfs_iva";
 
-		/* Delay time */
-		use_delay_time = "false";
+			/* Delay time */
+			use_delay_time = "false";
 
-		freq_info = <34000 34000 34000 34000 534000 34000>;
-		/* <initial, default_qos, suspend_freq, min, max, reboot_freq> */
+			freq_info = <34000 34000 34000 34000 534000 34000>;
+			/* <initial, default_qos, suspend_freq, min, max, reboot_freq> */
 
-		/* Booting value */
-		boot_info = <40 34000>;
-		/* boot_qos_timeout, boot_freq */
+			/* Booting value */
+			boot_info = <40 34000>;
+			/* boot_qos_timeout, boot_freq */
 
-		/* default dev profile */
-		use_get_dev = "false";
-		polling_ms = <0>;
+			/* default dev profile */
+			use_get_dev = "false";
+			polling_ms = <0>;
 
-		/* governor data */
-		gov_name = "interactive";
-		use_reg = "false";
+			/* governor data */
+			gov_name = "interactive";
+			use_reg = "false";
 
-		use_tmu = "true";
-		use_cl_dvfs = "false";
-		use_sw_clk = "false";
-		dfs_id = <ACPM_DVFS_IVA>;
-	};
+			use_tmu = "true";
+			use_cl_dvfs = "false";
+			use_sw_clk = "false";
+			dfs_id = <ACPM_DVFS_IVA>;
+		};
 
-	devfreq_7: devfreq_score@17000080 {
-		compatible = "samsung,exynos-devfreq";
-		reg = <0x0 0x17000080 0x0>;
-		devfreq_type = "score";
-		devfreq_domain_name = "dvfs_score";
+		devfreq_7: devfreq_score@17000080 {
+			compatible = "samsung,exynos-devfreq";
+			reg = <0x0 0x17000080 0x0>;
+			devfreq_type = "score";
+			devfreq_domain_name = "dvfs_score";
 
-		/* Delay time */
-		use_delay_time = "false";
+			/* Delay time */
+			use_delay_time = "false";
 
-		freq_info = <34000 34000 34000 34000 534000 34000>;
-		/* <initial, default_qos, suspend_freq, min, max, reboot_freq> */
+			freq_info = <34000 34000 34000 34000 534000 34000>;
+			/* <initial, default_qos, suspend_freq, min, max, reboot_freq> */
 
-		/* Booting value */
-		boot_info = <40 34000>;
-		/* boot_qos_timeout, boot_freq */
+			/* Booting value */
+			boot_info = <40 34000>;
+			/* boot_qos_timeout, boot_freq */
 
-		/* default dev profile */
-		use_get_dev = "false";
-		polling_ms = <0>;
+			/* default dev profile */
+			use_get_dev = "false";
+			polling_ms = <0>;
 
-		/* governor data */
-		gov_name = "interactive";
-		use_reg = "false";
+			/* governor data */
+			gov_name = "interactive";
+			use_reg = "false";
 
-		use_tmu = "true";
-		use_cl_dvfs = "false";
-		use_sw_clk = "false";
-		dfs_id = <ACPM_DVFS_SCORE>;
-	};
+			use_tmu = "true";
+			use_cl_dvfs = "false";
+			use_sw_clk = "false";
+			dfs_id = <ACPM_DVFS_SCORE>;
+		};
 
-	devfreq_8: devfreq_fsys0@17000090 {
-		compatible = "samsung,exynos-devfreq";
-		reg = <0x0 0x17000090 0x0>;
-		devfreq_type = "fsys0";
-		devfreq_domain_name = "dvfs_fsys0";
+		devfreq_8: devfreq_fsys0@17000090 {
+			compatible = "samsung,exynos-devfreq";
+			reg = <0x0 0x17000090 0x0>;
+			devfreq_type = "fsys0";
+			devfreq_domain_name = "dvfs_fsys0";
 
-		/* Delay time */
-		use_delay_time = "false";
+			/* Delay time */
+			use_delay_time = "false";
 
-		freq_info = <336000 73000 336000 73000 336000 336000>;
-		/* <initial, default_qos, suspend_freq, min, max, reboot_freq> */
+			freq_info = <336000 73000 336000 73000 336000 336000>;
+			/* <initial, default_qos, suspend_freq, min, max, reboot_freq> */
 
-		/* Booting value */
-		boot_info = <40 336000>;
-		/* boot_qos_timeout, boot_freq */
+			/* Booting value */
+			boot_info = <40 336000>;
+			/* boot_qos_timeout, boot_freq */
 
-		/* default dev profile */
-		use_get_dev = "false";
-		polling_ms = <0>;
+			/* default dev profile */
+			use_get_dev = "false";
+			polling_ms = <0>;
 
-		/* governor data */
-		gov_name = "interactive";
-		use_reg = "false";
+			/* governor data */
+			gov_name = "interactive";
+			use_reg = "false";
 
-		use_tmu = "true";
-		use_cl_dvfs = "false";
-		use_sw_clk = "false";
-		dfs_id = <ACPM_DVFS_FSYS0>;
+			use_tmu = "true";
+			use_cl_dvfs = "false";
+			use_sw_clk = "false";
+			dfs_id = <ACPM_DVFS_FSYS0>;
+		};
 	};
 
 	exynos_adc: adc@14230000 {
