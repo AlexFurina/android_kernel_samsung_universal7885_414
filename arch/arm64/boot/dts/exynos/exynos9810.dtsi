@@ -223,30 +223,40 @@
 		#address-cells = <2>;
 		#size-cells = <0>;
 
-		ehmp {
-			/* lb trigger */
-			#define DISABLED 0xFFFFFFFF
-			top-overutil = <DISABLED
-					DISABLED
-					DISABLED
-					DISABLED
-					DISABLED
-					DISABLED
-					DISABLED
-					DISABLED>;
-			bot-overutil = <35
-					35
-					35
-					35
-					35
-					35
-					35
-					35>;
+		cpu-map {
+			cluster0 {
+				coregroup0 {
+					core0 {
+						cpu = <&cpu0>;
+					};
+					core1 {
+						cpu = <&cpu1>;
+					};
+					core2 {
+						cpu = <&cpu2>;
+					};
+					core3 {
+						cpu = <&cpu3>;
+					};
+				};
+			};
 
-			/* ontime migration */
-			up-threshold = <79>;
-			down-threshold = <128>;
-			min-residency-us = <8192>;
+			cluster1 {
+				coregroup0 {
+					core0 {
+						cpu = <&cpu4>;
+					};
+					core1 {
+						cpu = <&cpu5>;
+					};
+					core2 {
+						cpu = <&cpu6>;
+					};
+					core3 {
+						cpu = <&cpu7>;
+					};
+				};
+			};
 		};
 
 		cpu0: cpu@0000 {
