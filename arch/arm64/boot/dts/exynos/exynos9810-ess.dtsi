@@ -14,8 +14,8 @@
  */
 
 / {
-	exynos-snapshot {
-		compatible = "samsung,exynos-snapshot";
+	debug-snapshot-soc {
+		compatible = "debug-snapshot-soc";
 		#address-cells = <1>;
 		#size-cells = <1>;
 
