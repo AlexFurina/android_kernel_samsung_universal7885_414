@@ -5178,12 +5178,11 @@
 						   208000  421000
 						   >;
 				};
-				mif-skew {
-					guidance;
-					const-type = <CONSTRAINT_MIN>;
-					dm-type = <DM_MIF>;
-					ect-name = "dvfs_cpucl0";
-				};
+			};
+
+			slack_timer {
+				device_type = "slack-timer-domain";
+				enabled = <0>;          /* Disabled */
 			};
 		};
 		cpufreq_domain1: domain@1 {
@@ -5231,12 +5230,12 @@
 						   650000  421000
 						   598000  421000 >;
 				};
-				mif-skew {
-					guidance;
-					const-type = <CONSTRAINT_MIN>;
-					dm-type = <DM_MIF>;
-					ect-name = "dvfs_cpucl1";
-				};
+			};
+
+			slack_timer {
+				device_type = "slack-timer-domain";
+				enabled = <1>;          /* Enabled */
+				expired_time = <80>;    /* 80ms */
 			};
 		};
 	};
