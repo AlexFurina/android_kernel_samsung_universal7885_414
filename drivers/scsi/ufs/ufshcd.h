@@ -68,8 +68,6 @@
 #include <scsi/scsi_eh.h>
 #include <scsi/scsi_ioctl.h>
 
-#define CUSTOMIZE_UPIU_FLAGS
-
 #include "ufs.h"
 #include "ufshci.h"
 #include "ufs_quirks.h"
