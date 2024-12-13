@@ -18,6 +18,7 @@
 
 #include <linux/iio/iio.h>
 #include <linux/iio/buffer.h>
+#include <linux/iio/buffer_impl.h>
 #include <linux/iio/events.h>
 #include <linux/iio/kfifo_buf.h>
 #include <linux/iio/sysfs.h>
