@@ -105,22 +105,6 @@
 		};
 	};
 
-	firmware {
-		android {
-			compatible = "android,firmware";
-			fstab {
-				compatible = "android,fstab";
-				system {
-					compatible = "android,system";
-					dev = "/dev/block/platform/13500000.dwmmc0/by-name/SYSTEM";
-					type = "ext4";
-					mnt_flags = "ro";
-					fsmgr_flags = "wait";
-				};
-			};
-		};
-	};
-
 	fm@14840000 {
 		num-volume-level = <16>;
 		val-vol-level = <0 11 16 23 32 45 64
