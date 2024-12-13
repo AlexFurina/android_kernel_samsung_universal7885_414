@@ -74,6 +74,7 @@ obj-$(CONFIG_LEDS_MLXCPLD)		+= leds-mlxcpld.o
 obj-$(CONFIG_LEDS_NIC78BX)		+= leds-nic78bx.o
 obj-$(CONFIG_LEDS_MT6323)		+= leds-mt6323.o
 obj-$(CONFIG_LEDS_S2MPB02)		+= leds-s2mpb02.o
+obj-$(CONFIG_LEDS_S2MU004_RGB)		+= leds-s2mu004-rgb.o
 obj-$(CONFIG_LEDS_S2MU106_FLASH)		+= leds-s2mu106.o
 
 # LED SPI Drivers
