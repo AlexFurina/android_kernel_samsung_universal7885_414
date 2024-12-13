@@ -206,6 +206,9 @@ obj-$(CONFIG_ICD)		+= security/samsung/icdrv/
 #TZIC
 obj-y  += security/samsung/tzic/
 
+#Sensorhub
+obj-$(CONFIG_SENSORS_SSP)       += sensorhub/
+
 #Sensor
 obj-$(CONFIG_SENSORS)		+= sensors/
 

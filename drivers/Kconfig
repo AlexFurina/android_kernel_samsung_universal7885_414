@@ -230,6 +230,8 @@ source "drivers/security/samsung/icdrv/Kconfig"
 
 source "drivers/security/samsung/tzic/Kconfig"
 
+source "drivers/sensorhub/Kconfig"
+
 source "drivers/sensors/Kconfig"
 
 source "drivers/vibrator/Kconfig"
