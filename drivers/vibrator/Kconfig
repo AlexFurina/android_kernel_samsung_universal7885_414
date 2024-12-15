@@ -1,4 +1,10 @@
 
+config MOTOR_ZH915
+	tristate "motor"
+	default n
+	help
+	  Say Y to enable MOTOR ZH915.
+
 config MOTOR_S2MU004
 	tristate "s2mu004 haptic driver"
 	default n
