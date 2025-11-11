@@ -161,16 +161,6 @@
 				reg = <0 DSS_LOG_SFR_ADDR DSS_LOG_SFR_SIZE>;
 			};
 
-			log_cachedump {
-				compatible = "debug-snapshot,log_cachedump";
-				reg = <0 DSS_LOG_CACHEDUMP_ADDR DSS_LOG_CACHEDUMP_SIZE>;
-			};
-
-			log_bcm {
-				compatible = "debug-snapshot,log_bcm";
-				reg = <0 DSS_LOG_BCM_ADDR DSS_LOG_BCM_SIZE>;
-			};
-
 			log_pstore {
 				compatible = "debug-snapshot,log_pstore";
 				reg = <0 DSS_LOG_PSTORE_ADDR DSS_LOG_PSTORE_SIZE>;
