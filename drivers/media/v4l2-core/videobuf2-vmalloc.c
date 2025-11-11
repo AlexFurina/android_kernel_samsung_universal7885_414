@@ -36,7 +36,7 @@ static void vb2_vmalloc_put(void *buf_priv);
 
 static void *vb2_vmalloc_alloc(struct device *dev, unsigned long attrs,
 			       unsigned long size, enum dma_data_direction dma_dir,
-			       gfp_t gfp_flags, int memflags)
+			       gfp_t gfp_flags)
 {
 	struct vb2_vmalloc_buf *buf;
 
@@ -73,7 +73,7 @@ static void vb2_vmalloc_put(void *buf_priv)
 
 static void *vb2_vmalloc_get_userptr(struct device *dev, unsigned long vaddr,
 				     unsigned long size,
-				     enum dma_data_direction dma_dir, int memflags)
+				     enum dma_data_direction dma_dir)
 {
 	struct vb2_vmalloc_buf *buf;
 	struct frame_vector *vec;
@@ -382,7 +382,7 @@ static struct dma_buf *vb2_vmalloc_get_dmabuf(void *buf_priv, unsigned long flag
 /*       callbacks for DMABUF buffers        */
 /*********************************************/
 
-static int vb2_vmalloc_map_dmabuf(void *mem_priv, size_t size, int memflags)
+static int vb2_vmalloc_map_dmabuf(void *mem_priv)
 {
 	struct vb2_vmalloc_buf *buf = mem_priv;
 
@@ -391,7 +391,7 @@ static int vb2_vmalloc_map_dmabuf(void *mem_priv, size_t size, int memflags)
 	return buf->vaddr ? 0 : -EFAULT;
 }
 
-static void vb2_vmalloc_unmap_dmabuf(void *mem_priv, size_t size)
+static void vb2_vmalloc_unmap_dmabuf(void *mem_priv)
 {
 	struct vb2_vmalloc_buf *buf = mem_priv;
 

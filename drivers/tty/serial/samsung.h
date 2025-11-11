@@ -50,6 +50,12 @@ struct s3c24xx_serial_drv_data {
 	unsigned int			fifosize[CONFIG_SERIAL_SAMSUNG_UARTS];
 };
 
+struct uart_local_buf {
+	unsigned char *buffer;
+	unsigned int size;
+	unsigned int index;
+};
+
 struct s3c24xx_uart_port {
 	struct list_head		node;
 	unsigned char			rx_claimed;
@@ -91,9 +97,9 @@ struct s3c24xx_uart_port {
 	unsigned int			in_band_wakeup;
 	unsigned int dbg_mode;
 
-	unsigned int dbg_uart_ch;
-	unsigned int dbg_uart_baud;
-	unsigned int dbg_word_len;
+	unsigned int			uart_logging;
+	struct uart_local_buf		uart_local_buf;
+
 };
 
 /* conversion functions */
@@ -111,5 +117,7 @@ struct s3c24xx_uart_port {
 
 #define wr_regb(port, reg, val) writeb_relaxed(val, portaddr(port, reg))
 #define wr_regl(port, reg, val) writel_relaxed(val, portaddr(port, reg))
+static void uart_copy_to_local_buf(int dir, struct uart_local_buf *local_buf, unsigned char *trace_buf, int len);
+#define SS_UART_LOG(dir, local_buf, trace_buf) uart_copy_to_local_buf(dir, local_buf, trace_buf, sizeof(trace_buf))
 
 #endif

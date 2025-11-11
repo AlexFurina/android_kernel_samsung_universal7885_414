@@ -2,7 +2,7 @@
  * Samsung Exynos5 SoC series Actuator driver
  *
  *
- * Copyright (c) 2018 Samsung Electronics Co., Ltd
+ * Copyright (c) 2014 Samsung Electronics Co., Ltd
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -23,7 +23,6 @@
 #include "fimc-is-device-sensor-peri.h"
 #include "fimc-is-core.h"
 #include "fimc-is-helper-actuator-i2c.h"
-
 #include "interface/fimc-is-interface-library.h"
 
 #define ACTUATOR_NAME		"DW9823"
@@ -69,11 +68,11 @@ int sensor_dw9823_init(struct i2c_client *client, struct fimc_is_caldata_list_dw
 
 		/* Set ACTIVE Mode */
 		i2c_data[0] = REG_MODE;
-		i2c_data[1] = val & 0x9F;
+		i2c_data[1] = val & 0x9F; 
 		ret = fimc_is_sensor_addr8_write8(client, i2c_data[0], i2c_data[1]);
 		if (ret < 0)
 			goto p_err;
-
+		
 		usleep_range(PWR_ON_DELAY, PWR_ON_DELAY);
 		ret = fimc_is_sensor_addr8_read8(client, REG_MODE, &val);
 		if (ret < 0)
@@ -169,7 +168,7 @@ p_err:
 	return ret;
 }
 
-static int sensor_dw9823_valid_check(struct i2c_client *client)
+static int sensor_dw9823_valid_check(struct i2c_client * client)
 {
 	int i;
 
@@ -197,8 +196,9 @@ static void sensor_dw9823_print_log(int step)
 
 	if (step > 0) {
 		dbg_actuator("initial position ");
-		for (i = 0; i < step; i++)
+		for (i = 0; i < step; i++) {
 			dbg_actuator(" %d", sysfs_actuator.init_positions[i]);
+		}
 		dbg_actuator(" setting");
 	}
 }
@@ -256,9 +256,13 @@ int sensor_dw9823_actuator_init(struct v4l2_subdev *subdev, u32 val)
 	struct i2c_client *client = NULL;
 	long cal_addr;
 
+#ifdef USE_CAMERA_HW_BIG_DATA
+	struct cam_hw_param *hw_param = NULL;
+	struct fimc_is_device_sensor *device = NULL;
+#endif
+
 #ifdef DEBUG_ACTUATOR_TIME
 	struct timeval st, end;
-
 	do_gettimeofday(&st);
 #endif
 
@@ -283,10 +287,20 @@ int sensor_dw9823_actuator_init(struct v4l2_subdev *subdev, u32 val)
 	cal_addr = gPtr_lib_support.minfo->kvaddr_rear_cal + EEPROM_OEM_BASE;
 	cal_data = (struct fimc_is_caldata_list_dw9823 *)(cal_addr);
 
+	err("set cal_data to NULL\n");
+	cal_data = NULL;
 	/* Read into EEPROM data or default setting */
 	ret = sensor_dw9823_init(client, cal_data);
-	if (ret < 0)
+	if (ret < 0){
+#ifdef USE_CAMERA_HW_BIG_DATA
+		device = v4l2_get_subdev_hostdata(subdev);
+		if (device)
+			fimc_is_sec_get_hw_param(&hw_param, device->position);
+		if (hw_param)
+			hw_param->i2c_af_err_cnt++;
+#endif
 		goto p_err;
+	}
 
 	ret = sensor_dw9823_init_position(client, actuator);
 	if (ret < 0)
@@ -296,8 +310,7 @@ int sensor_dw9823_actuator_init(struct v4l2_subdev *subdev, u32 val)
 	do_gettimeofday(&end);
 	pr_info("[%s] time %lu us", __func__, (end.tv_sec - st.tv_sec) * 1000000 + (end.tv_usec - st.tv_usec));
 #endif
-	info("%s: ret[%d]\n", __func__, ret);
-	return 0;
+
 p_err:
 	err("ret[%d]\n", ret);
 	return ret;
@@ -311,7 +324,6 @@ int sensor_dw9823_actuator_get_status(struct v4l2_subdev *subdev, u32 *info)
 	struct i2c_client *client = NULL;
 #ifdef DEBUG_ACTUATOR_TIME
 	struct timeval st, end;
-
 	do_gettimeofday(&st);
 #endif
 
@@ -363,7 +375,6 @@ int sensor_dw9823_actuator_set_position(struct v4l2_subdev *subdev, u32 *info)
 	u32 position = 0;
 #ifdef DEBUG_ACTUATOR_TIME
 	struct timeval st, end;
-
 	do_gettimeofday(&st);
 #endif
 
@@ -394,7 +405,7 @@ int sensor_dw9823_actuator_set_position(struct v4l2_subdev *subdev, u32 *info)
 
 	/* position Set */
 	ret = sensor_dw9823_write_position(client, position);
-	if (ret < 0)
+	if (ret <0)
 		goto p_err;
 	actuator->position = position;
 
@@ -413,7 +424,7 @@ static int sensor_dw9823_actuator_g_ctrl(struct v4l2_subdev *subdev, struct v4l2
 	int ret = 0;
 	u32 val = 0;
 
-	switch (ctrl->id) {
+	switch(ctrl->id) {
 	case V4L2_CID_ACTUATOR_GET_STATUS:
 		ret = sensor_dw9823_actuator_get_status(subdev, &val);
 		if (ret < 0) {
@@ -438,7 +449,7 @@ static int sensor_dw9823_actuator_s_ctrl(struct v4l2_subdev *subdev, struct v4l2
 {
 	int ret = 0;
 
-	switch (ctrl->id) {
+	switch(ctrl->id) {
 	case V4L2_CID_ACTUATOR_SET_POSITION:
 		ret = sensor_dw9823_actuator_set_position(subdev, &ctrl->value);
 		if (ret) {
@@ -471,7 +482,7 @@ int sensor_dw9823_actuator_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
 	int ret = 0;
-	struct fimc_is_core *core = NULL;
+	struct fimc_is_core *core= NULL;
 	struct v4l2_subdev *subdev_actuator = NULL;
 	struct fimc_is_actuator *actuator = NULL;
 	struct fimc_is_device_sensor *device = NULL;
@@ -516,14 +527,14 @@ int sensor_dw9823_actuator_probe(struct i2c_client *client,
 			err("place read is fail(%d)", ret);
 			place = 0;
 	}
-	probe_info("%s sensor_id(%d) actuator_place(%d)\n", __func__, sensor_id[i], place);
+		err("test err\n");
+		probe_info("%s sensor_id(%d) actuator_place(%d)\n", __func__, sensor_id[i], place);
 
-	device = &core->sensor[sensor_id[i]];
+		device = &core->sensor[sensor_id[i]];
 
-	actuator = kzalloc(sizeof(struct fimc_is_actuator), GFP_KERNEL);
-
+		actuator = kzalloc(sizeof(struct fimc_is_actuator), GFP_KERNEL);
 	if (!actuator) {
-		err("actuator is NULL");
+			err("actuator is NULL");
 		ret = -ENOMEM;
 		goto p_err;
 	}
@@ -549,6 +560,8 @@ int sensor_dw9823_actuator_probe(struct i2c_client *client,
 
 	device->subdev_actuator[place] = subdev_actuator;
 	device->actuator[place] = actuator;
+
+	core->client3 = client;
 
 	v4l2_i2c_subdev_init(subdev_actuator, client, &subdev_ops);
 	v4l2_set_subdevdata(subdev_actuator, actuator);

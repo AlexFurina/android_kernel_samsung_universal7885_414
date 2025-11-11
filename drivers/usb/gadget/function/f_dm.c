@@ -164,6 +164,7 @@ struct dm_instance {
 	struct usb_function_instance func_inst;
 	const char *name;
 	struct f_dm *dm;
+	u8 port_num;
 };
 /*-------------------------------------------------------------------------*/
 
@@ -257,7 +258,7 @@ dm_bind(struct usb_configuration *c, struct usb_function *f)
 		goto fail;
 	dm->port.out = ep;
 	ep->driver_data = cdev;	/* claim */
-	printk(KERN_INFO "[%s]   in =0x%p , out =0x%p\n", __func__,
+	printk(KERN_INFO "[%s]   in =0x%pK , out =0x%pK\n", __func__,
 				dm->port.in, dm->port.out);
 
 	/* copy descriptors, and track endpoint copies */
@@ -288,6 +289,11 @@ dm_bind(struct usb_configuration *c, struct usb_function *f)
 		/* copy descriptors, and track endpoint copies */
 		f->ss_descriptors = usb_copy_descriptors(dm_ss_function);
 		if (!f->ss_descriptors)
+			goto fail;
+
+		/* copy descriptors, and track endpoint copies for SSP */
+		f->ssp_descriptors = usb_copy_descriptors(dm_ss_function);
+		if (!f->ssp_descriptors)
 			goto fail;
 	}
 
@@ -426,6 +432,7 @@ static void dm_free_inst(struct usb_function_instance *fi)
 struct usb_function_instance *alloc_inst_dm(bool dm_config)
 {
 	struct dm_instance *fi_dm;
+	int ret;
 
 	fi_dm = kzalloc(sizeof(*fi_dm), GFP_KERNEL);
 	if (!fi_dm)
@@ -433,6 +440,11 @@ struct usb_function_instance *alloc_inst_dm(bool dm_config)
 	fi_dm->func_inst.set_inst_name = dm_set_inst_name;
 	fi_dm->func_inst.free_func_inst = dm_free_inst;
 
+	ret = gserial_alloc_line(&fi_dm->port_num);
+	if (ret) {
+		kfree(fi_dm);
+		return ERR_PTR(ret);
+	}
 
 	config_group_init_type_name(&fi_dm->func_inst.group,
 					"", &dm_func_type);
@@ -458,7 +470,6 @@ struct usb_function *function_alloc_dm(struct usb_function_instance *fi, bool dm
 
 	struct dm_instance *fi_dm = to_fi_dm(fi);
 	struct f_dm	*dm;
-	int		ret;
 
 	/* REVISIT might want instance-specific strings to help
 	 * distinguish instances ...
@@ -470,7 +481,7 @@ struct usb_function *function_alloc_dm(struct usb_function_instance *fi, bool dm
 		return ERR_PTR(-ENOMEM);
 
 
-	dm->port_num = DM_PORT_NUM;
+	dm->port_num = fi_dm->port_num;
 
 	dm->port.func.name = "dm";
 	dm->port.func.strings = dm_strings;
@@ -481,12 +492,6 @@ struct usb_function *function_alloc_dm(struct usb_function_instance *fi, bool dm
 	dm->port.func.free_func = dm_free;
 
 	fi_dm->dm = dm;
-
-	ret = gserial_alloc_line(&dm->port_num);
-	if (ret) {
-		kfree(dm);
-		return ERR_PTR(ret);
-	}
 
 	return &dm->port.func;
 }

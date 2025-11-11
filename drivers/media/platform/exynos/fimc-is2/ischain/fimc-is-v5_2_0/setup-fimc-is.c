@@ -328,7 +328,6 @@ static void exynos8895_fimc_is_print_clk_reg(void)
 
 static int exynos8895_fimc_is_print_clk(struct device *dev)
 {
-	pr_info("FIMC-IS CLOCK DUMP\n");
 	fimc_is_get_rate_dt(dev, "GATE_ISP_EWGEN_ISPHQ");
 	fimc_is_get_rate_dt(dev, "GATE_IS_ISPHQ_3AA");
 	fimc_is_get_rate_dt(dev, "GATE_IS_ISPHQ_ISPHQ");

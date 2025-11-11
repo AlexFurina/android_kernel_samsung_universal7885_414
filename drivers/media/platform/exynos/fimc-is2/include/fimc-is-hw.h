@@ -12,8 +12,6 @@
 #ifndef FIMC_IS_HW_H
 #define FIMC_IS_HW_H
 
-#include <linux/phy/phy.h>
-
 #include "fimc-is-type.h"
 #include "fimc-is-hw-chain.h"
 #include "fimc-is-framemgr.h"
@@ -35,11 +33,6 @@
 #define CSI_MODE_VC_ONLY	2
 #define CSI_MODE_VC_DT		3
 
-#define DECOMP_PREDICT_BIT	(7)
-#define DECOMP_EN_BIT		(6)
-#define DECOMP_SIMPLE(x)	((x) | 1 << DECOMP_EN_BIT | 0 << DECOMP_PREDICT_BIT)
-#define DECOMP_ADVANC(x)	((x) | 1 << DECOMP_EN_BIT | 1 << DECOMP_PREDICT_BIT)
-
 #define HW_FORMAT_EMBEDDED_8BIT	0x12
 #define HW_FORMAT_YUV420_8BIT	0x18
 #define HW_FORMAT_YUV420_10BIT	0x19
@@ -49,13 +42,9 @@
 #define HW_FORMAT_RGB666	0x23
 #define HW_FORMAT_RGB888	0x24
 #define HW_FORMAT_RAW6		0x28
-#define HW_FORMAT_RAW6_DA	DECOMP_ADVANC(HW_FORMAT_RAW6) /* 6 -> 10 */
 #define HW_FORMAT_RAW7		0x29
-#define HW_FORMAT_RAW7_DS	DECOMP_SIMPLE(HW_FORMAT_RAW7) /* 7 -> 10 */
 #define HW_FORMAT_RAW8		0x2A
-#define HW_FORMAT_RAW8_DS	DECOMP_SIMPLE(HW_FORMAT_RAW8) /* 8 -> 10 */
 #define HW_FORMAT_RAW10 	0x2B
-#define HW_FORMAT_RAW10_DA	DECOMP_ADVANC(HW_FORMAT_RAW10) /* 10 -> 14 */
 #define HW_FORMAT_RAW12 	0x2C
 #define HW_FORMAT_RAW14 	0x2D
 #define HW_FORMAT_USER		0x30
@@ -146,8 +135,6 @@ enum csis_hw_err_id {
 	CSIS_ERR_SOT_SYNC_HS = 13,
 	CSIS_ERR_MAL_CRC = 14,
 	CSIS_ERR_DMA_ABORT_DONE = 15,
-	CSIS_ERR_VRESOL_MISMATCH = 16,
-	CSIS_ERR_HRESOL_MISMATCH = 17,
 	CSIS_ERR_END
 };
 
@@ -160,7 +147,6 @@ enum csis_hw_control_id {
 	CSIS_CTRL_BUS_WIDTH,
 	CSIS_CTRL_DMA_ABORT_REQ,
 	CSIS_CTRL_ENABLE_LINE_IRQ,
-	CSIS_CTRL_PIXEL_ALIGN_MODE,
 };
 
 /*
@@ -183,12 +169,20 @@ struct csis_irq_src {
 	u32			err_id[CSI_VIRTUAL_CH_MAX];
 };
 
+enum vci_dma_mode {
+	VCI_DMA_NORMAL,
+	VCI_DMA_INTERNAL,
+};
+
 struct fimc_is_vci_config {
 	u32			map;
 	u32			hwformat;
-	u32			type;
-	u32			width;
-	u32			height;
+	u32			dma_mode;
+};
+
+struct fimc_is_vci {
+	u32				pixelformat;
+	struct fimc_is_vci_config	config[CSI_VIRTUAL_CH_MAX];
 };
 
 /*
@@ -229,13 +223,6 @@ enum flite_hw_control_id {
 	FLITE_CTRL_LINE_RATIO,
 };
 
-
-/*
- * This enum will be used in bts_control api to adjust BTS for specific scen.
- */
-enum camera_bts_scn {
-	BTS_SCN_THERMAL,
-};
 /*
  * ******************
  * MIPI-CSIS H/W APIS
@@ -254,10 +241,6 @@ int csi_hw_g_irq_src(u32 __iomem *base_reg, struct csis_irq_src *src, bool clear
 int csi_hw_enable(u32 __iomem *base_reg);
 int csi_hw_disable(u32 __iomem *base_reg);
 int csi_hw_dump(u32 __iomem *base_reg);
-int csi_hw_vcdma_dump(u32 __iomem *base_reg);
-int csi_hw_vcdma_cmn_dump(u32 __iomem *base_reg);
-int csi_hw_phy_dump(u32 __iomem *base_reg, u32 instance);
-int csi_hw_common_dma_dump(u32 __iomem *base_reg);
 #if defined(CONFIG_USE_CSI_DMAOUT_FEATURE)
 void csi_hw_s_frameptr(u32 __iomem *base_reg, u32 vc, u32 number, bool clear);
 u32 csi_hw_g_frameptr(u32 __iomem *base_reg, u32 vc);
@@ -272,22 +255,13 @@ int csi_hw_s_config_dma(u32 __iomem *base_reg, u32 channel, struct fimc_is_frame
 int csi_hw_s_config_dma(u32 __iomem *base_reg, u32 channel, struct fimc_is_image *image, u32 hwformat);
 #endif
 int csi_hw_dma_common_reset(void);
-int csi_hw_s_dma_common_dynamic(u32 __iomem *base_reg, size_t size, u32 dma_ch);
 int csi_hw_s_dma_common(u32 __iomem *base_reg);
+int csi_hw_s_dma_common_dynamic(u32 __iomem *base_reg, size_t size, unsigned int dma_ch);
 #endif
-int csi_hw_s_dma_common_pattern_enable(u32 __iomem *base_reg, u32 width, u32 height, u32 fps, u32 clk);
-void csi_hw_s_dma_common_pattern_disable(u32 __iomem *base_reg);
-
-int csi_hw_s_dma_irq_msk(u32 __iomem *base_reg, bool on);
-int csi_hw_g_dma_irq_src(u32 __iomem *base_reg, struct csis_irq_src *src, bool clear);
-int csi_hw_g_dma_irq_src_vc(u32 __iomem *base_reg, struct csis_irq_src *src, u32 vc_abs, bool clear);
-int csi_hw_s_config_dma_cmn(u32 __iomem *base_reg, u32 vc, u32 actual_vc, u32 hwformat);
-
+#if defined(CONFIG_CSIS_V5_0)
 int csi_hw_s_phy_default_value(u32 __iomem *base_reg, u32 instance);
-int csi_hw_s_phy_config(u32 __iomem *base_reg,
-	u32 lanes, u32 mipi_speed, u32 settle, u32 instance);
-int csi_hw_s_phy_set(struct phy *phy, u32 lanes, u32 mipi_speed,
-		u32 settle, u32 instance);
+#endif
+
 /*
  * ************************************
  * ISCHAIN AND CAMIF CONFIGURE H/W APIS
@@ -306,7 +280,6 @@ enum hw_s_ctrl_id {
 	HW_S_CTRL_FULL_BYPASS,
 	HW_S_CTRL_CHAIN_IRQ,
 	HW_S_CTRL_HWFC_IDX_RESET,
-	HW_S_CTRL_MCSC_SET_INPUT,
 };
 
 /*
@@ -338,11 +311,10 @@ int fimc_is_hw_shared_meta_update(struct fimc_is_device_ischain *device,
 		struct fimc_is_group *group, struct fimc_is_frame *frame, int shot_done_flag);
 void __iomem *fimc_is_hw_get_sysreg(ulong core_regs);
 u32 fimc_is_hw_find_settle(u32 mipi_speed);
-void fimc_is_hw_set_bts_ext_ctrl(enum camera_bts_scn bts_scn, bool enable);
+unsigned int get_dma(struct fimc_is_device_sensor *device, u32 *dma_ch);
 #ifdef ENABLE_FULLCHAIN_OVERFLOW_RECOVERY
 int fimc_is_hw_overflow_recovery(void);
 #endif
-unsigned int get_dma(struct fimc_is_device_sensor *device, u32 *dma_ch);
 
 /*
  * *****************
@@ -404,15 +376,4 @@ int fimc_is_ischain_runtime_suspend(struct device *dev);
 int fimc_is_ischain_runtime_resume(struct device *dev);
 
 int fimc_is_runtime_suspend_post(struct device *dev);
-
-/*
- * ********************
- * Virtual OTF Clk FUNCTIONS
- * ********************
- */
-#ifdef ENABLE_VIRTUAL_OTF
-void fimc_is_hw_cip_clk_enable(bool enable);
-void fimc_is_hw_c2sync_ring_clock(enum c2sync_type type, bool enable);
-#endif
-
 #endif

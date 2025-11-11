@@ -55,19 +55,10 @@ int mfc_pm_clock_on(struct mfc_dev *dev)
 	 * -> IP Protection enable -> clock on
 	 */
 	dev->pm.clock_on_steps |= 0x1 << 1;
-	if (dev->pm.base_type != MFCBUF_INVALID) {
-		dev->pm.clock_on_steps |= 0x1 << 2;
-		ret = mfc_wait_pending(dev);
-		if (ret != 0) {
-			mfc_err_dev("pending wait failed (%d)\n", ret);
-			call_dop(dev, dump_and_stop_debug_mode, dev);
-			return ret;
-		}
-		dev->pm.clock_on_steps |= 0x1 << 3;
+	if (dev->pm.base_type != MFCBUF_INVALID)
 		mfc_set_risc_base_addr(dev, dev->pm.base_type);
-	}
 
-	dev->pm.clock_on_steps |= 0x1 << 4;
+	dev->pm.clock_on_steps |= 0x1 << 2;
 #ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
 	if (dev->curr_ctx_is_drm) {
 		unsigned long flags;
@@ -76,7 +67,7 @@ int mfc_pm_clock_on(struct mfc_dev *dev)
 		mfc_debug(3, "Begin: enable protection\n");
 		ret = exynos_smc(SMC_PROTECTION_SET, 0,
 					dev->id, SMC_PROTECTION_ENABLE);
-		dev->pm.clock_on_steps |= 0x1 << 5;
+		dev->pm.clock_on_steps |= 0x1 << 3;
 		if (ret != DRMDRV_OK) {
 			mfc_err_dev("Protection Enable failed! ret(%u)\n", ret);
 			call_dop(dev, dump_and_stop_debug_mode, dev);
@@ -88,7 +79,7 @@ int mfc_pm_clock_on(struct mfc_dev *dev)
 	}
 #endif
 
-	dev->pm.clock_on_steps |= 0x1 << 6;
+	dev->pm.clock_on_steps |= 0x1 << 4;
 	ret = clk_enable(dev->pm.clock);
 	if (ret < 0) {
 		mfc_err_dev("clk_enable failed (%d)\n", ret);
@@ -96,13 +87,13 @@ int mfc_pm_clock_on(struct mfc_dev *dev)
 		return ret;
 	}
 
-	dev->pm.clock_on_steps |= 0x1 << 7;
+	dev->pm.clock_on_steps |= 0x1 << 5;
 	atomic_inc_return(&dev->clk_ref);
 
-	dev->pm.clock_on_steps |= 0x1 << 8;
+	dev->pm.clock_on_steps |= 0x1 << 6;
 	state = atomic_read(&dev->clk_ref);
 	mfc_debug(2, "+ %d\n", state);
-	MFC_TRACE_DEV("** clock_on end: ref(%d) step(%#x)\n", state, dev->pm.clock_on_steps);
+	MFC_TRACE_DEV("** clock_on end: ref state(%d)\n", state);
 	MFC_TRACE_LOG_DEV("c+%d", state);
 
 	return 0;
@@ -169,7 +160,7 @@ void mfc_pm_clock_off(struct mfc_dev *dev)
 	dev->pm.clock_off_steps |= 0x1 << 7;
 	state = atomic_read(&dev->clk_ref);
 	mfc_debug(2, "- %d\n", state);
-	MFC_TRACE_DEV("** clock_off end: ref(%d) step(%#x)\n", state, dev->pm.clock_off_steps);
+	MFC_TRACE_DEV("** clock_off end: ref state(%d)\n", state);
 	MFC_TRACE_LOG_DEV("c-%d", state);
 }
 

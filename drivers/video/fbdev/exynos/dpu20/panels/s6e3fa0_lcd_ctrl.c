@@ -89,7 +89,7 @@ struct decon_lcd s6e3fa0_lcd_info = {
  *	- mic : if mic is enabled, MIC_ENABLE command must be sent
  *	- mode : LCD init sequence depends on command or video mode
  */
-void s6e3fa0_lcd_init(int id, struct decon_lcd *lcd)
+void lcd_init(int id, struct decon_lcd *lcd)
 {
 	if (dsim_wr_data(id, MIPI_DSI_DCS_LONG_WRITE, (unsigned long)SEQ_TEST_KEY_ON_F0,
 				ARRAY_SIZE(SEQ_TEST_KEY_ON_F0)) < 0)
@@ -153,11 +153,6 @@ void s6e3fa0_lcd_init(int id, struct decon_lcd *lcd)
 		dsim_err("fail to send SEQ_TEST_KEY_ON_C0 command.\n");
 	mdelay(12);
 
-	if (dsim_wr_data(id, MIPI_DSI_DCS_LONG_WRITE, (unsigned long)SEQ_B_CTRL_ON,
-				ARRAY_SIZE(SEQ_B_CTRL_ON)) < 0)
-		dsim_err("fail to send SEQ_B_CTRL_ON command.\n");
-	mdelay(12);
-
 	if (lcd->mode == DECON_MIPI_COMMAND_MODE) {
 		if (dsim_wr_data(id, MIPI_DSI_DCS_SHORT_WRITE, SEQ_TE_ON[0], 0) < 0)
 			dsim_err("fail to send SEQ_TE_ON command.\n");
@@ -168,34 +163,15 @@ void s6e3fa0_lcd_init(int id, struct decon_lcd *lcd)
 		mdelay(120);
 }
 
-void s6e3fa0_lcd_enable(int id)
+void lcd_enable(int id)
 {
 	if (dsim_wr_data(id, MIPI_DSI_DCS_SHORT_WRITE, SEQ_DISPLAY_ON[0], 0) < 0)
 		dsim_err("fail to send SEQ_DISPLAY_ON command.\n");
 }
 
-void s6e3fa0_lcd_disable(int id)
+void lcd_disable(int id)
 {
-	if (dsim_wr_data(id, MIPI_DSI_DCS_LONG_WRITE, (unsigned long)SEQ_DISPLAY_OFF,
-				ARRAY_SIZE(SEQ_DISPLAY_OFF)) < 0)
-		dsim_err("fail to send SEQ_DISPLAY_OFF command.\n");
-	mdelay(20);
-}
-
-void s6e3fa0_lcd_sleepin(int id)
-{
-	if (dsim_wr_data(id, MIPI_DSI_DCS_LONG_WRITE, (unsigned long)SEQ_SLEEP_IN,
-				ARRAY_SIZE(SEQ_SLEEP_IN)) < 0)
-		dsim_err("fail to send SEQ_SLEEP_IN command.\n");
-	mdelay(120);
-}
-
-void s6e3fa0_lcd_sleepout(int id)
-{
-	if (dsim_wr_data(id, MIPI_DSI_DCS_SHORT_WRITE, SEQ_SLEEP_OUT[0], 0) < 0)
-		dsim_err("fail to send SEQ_SLEEP_OUT command.\n");
-	mdelay(120);
-
+	/* This function needs to implement */
 }
 
 /*
@@ -204,7 +180,7 @@ void s6e3fa0_lcd_sleepout(int id)
  * Parameter
  *	- backlightlevel : It is from 0 to 26.
  */
-int s6e3fa0_lcd_gamma_ctrl(int id, u32 backlightlevel)
+int lcd_gamma_ctrl(int id, u32 backlightlevel)
 {
 	int ret;
 
@@ -218,7 +194,7 @@ int s6e3fa0_lcd_gamma_ctrl(int id, u32 backlightlevel)
 	return 0;
 }
 
-int s6e3fa0_lcd_gamma_update(int id)
+int lcd_gamma_update(int id)
 {
 	int ret;
 

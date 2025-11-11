@@ -1,6 +1,6 @@
 /* sound/soc/samsung/abox/abox_gic.h
  *
- * ALSA SoC Audio Layer - Samsung Abox GIC driver
+ * ALSA SoC - Samsung Abox driver
  *
  * Copyright (c) 2016 Samsung Electronics Co. Ltd.
  *
@@ -74,5 +74,11 @@ extern int abox_gic_disable_irq(struct device *dev);
  * @param[in]	dev	pointer to abox_gic device
  */
 extern void abox_gic_init_gic(struct device *dev);
+
+/**
+ * Enable A-Box GICD
+ * @param[in]	pdev	pointer to platform_device of abox_gic device
+ */
+extern void abox_gicd_enable(struct device *dev, bool en);
 
 #endif /* __SND_SOC_ABOX_GIC_H */

@@ -52,16 +52,16 @@ struct dwc3_otg {
 	struct wake_lock	wakelock;
 
 	unsigned		ready:1;
-	int			otg_connection;
 
 	struct regulator	*vbus_reg;
-	int			*ldo_num;
-	int			ldos;
 
 	struct dwc3_ext_otg_ops *ext_otg_ops;
 #if defined(CONFIG_TYPEC)
 	struct intf_typec	*typec;
 #endif
+	struct notifier_block	pm_nb;
+	struct completion	resume_cmpl;
+	int			dwc3_suspended;
 };
 
 static inline int dwc3_ext_otg_setup(struct dwc3_otg *dotg)

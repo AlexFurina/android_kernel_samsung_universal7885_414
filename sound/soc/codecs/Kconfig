@@ -50,10 +50,10 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_CS35L33 if I2C
 	select SND_SOC_CS35L34 if I2C
 	select SND_SOC_CS35L35 if I2C
+	select SND_SOC_CS35L41_I2C if I2C
+	select SND_SOC_CS35L41_SPI if SPI_MASTER
 	select SND_SOC_CS42L42 if I2C
 	select SND_SOC_CS42L51_I2C if I2C
-	select SND_SOC_CS35L41_SPI if SPI_MASTER
-	select SND_SOC_CS35L41_I2C if I2C
 	select SND_SOC_CS42L52 if I2C && INPUT
 	select SND_SOC_CS42L56 if I2C && INPUT
 	select SND_SOC_CS42L73 if I2C
@@ -65,11 +65,6 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_CS43130 if I2C
 	select SND_SOC_CS4349 if I2C
 	select SND_SOC_CS47L24 if MFD_CS47L24
-	select SND_SOC_CS47L15 if MFD_CS47L15
-	select SND_SOC_CS47L35 if MFD_CS47L35
-	select SND_SOC_CS47L85 if MFD_CS47L85
-	select SND_SOC_CS47L90 if MFD_CS47L90
-	select SND_SOC_CS47L92 if MFD_CS47L92
 	select SND_SOC_CS53L30 if I2C
 	select SND_SOC_CX20442 if TTY
 	select SND_SOC_DA7210 if SND_SOC_I2C_AND_SPI
@@ -100,7 +95,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_MAX98504 if I2C
 	select SND_SOC_MAX9867 if I2C
 	select SND_SOC_MAX98925 if I2C
-	select SND_SOC_MAX98926 if I2C
+	select SND_SOC_MAX98506 if I2C
 	select SND_SOC_MAX98927 if I2C
 	select SND_SOC_MAX9850 if I2C
 	select SND_SOC_MAX9860 if I2C
@@ -140,6 +135,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_SGTL5000 if I2C
 	select SND_SOC_SI476X if MFD_SI476X_CORE
 	select SND_SOC_SIRF_AUDIO_CODEC
+	select SND_SOC_SMA1303 if I2C
 	select SND_SOC_SN95031 if INTEL_SCU_IPC
 	select SND_SOC_SPDIF
 	select SND_SOC_SSM2518 if I2C
@@ -155,6 +151,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_TAS5086 if I2C
 	select SND_SOC_TAS571X if I2C
 	select SND_SOC_TAS5720 if I2C
+	select SND_SOC_TFA9872 if I2C
 	select SND_SOC_TFA9879 if I2C
 	select SND_SOC_TLV320AIC23_I2C if I2C
 	select SND_SOC_TLV320AIC23_SPI if SPI_MASTER
@@ -259,26 +256,15 @@ config SND_SOC_WM_HUBS
 config SND_SOC_WM_ADSP
 	tristate
 	select SND_SOC_COMPRESS
-	default y if SND_SOC_MADERA=y
 	default y if SND_SOC_CS47L24=y
 	default y if SND_SOC_WM5102=y
 	default y if SND_SOC_WM5110=y
 	default y if SND_SOC_WM2200=y
-	default m if SND_SOC_MADERA=m
 	default m if SND_SOC_CS47L24=m
 	default m if SND_SOC_WM5102=m
 	default m if SND_SOC_WM5110=m
 	default m if SND_SOC_WM2200=m
-config SND_SOC_AOV_TRIGGER
-	tristate "AOV Trigger"
-	default n
-        help
-          Always-On-Audio trigger driver is needed to expose
-          audio DSP voice trigger events to user space. An app should
-          register to receive a trigger and rearm it each time after
-          reading a voice data from DSP.
-
-          If unsure select "N".
+	default y if SND_SOC_CS35L41=y
 
 config SND_SOC_AB8500_CODEC
 	tristate
@@ -442,24 +428,13 @@ config SND_SOC_CS35L35
 	tristate "Cirrus Logic CS35L35 CODEC"
 	depends on I2C
 
+config SND_SOC_CS35L41
+	tristate "Cirrus Logic CS35L41 CODEC"
+	select SND_SOC_WM_ADSP
+
 config SND_SOC_CS42L42
 	tristate "Cirrus Logic CS42L42 CODEC"
 	depends on I2C
-config SND_SOC_CS35L41
-	tristate
-	select SND_SOC_WM_ADSP
-
-config SND_SOC_CS35L41_SPI
-	tristate "Cirrus Logic CS35L41 CODEC (SPI)"
-	depends on SPI_MASTER
-	select SND_SOC_CS35L41
-	select REGMAP_SPI
-
-config SND_SOC_CS35L41_I2C
-	tristate "Cirrus Logic CS35L41 CODEC (I2C)"
-	depends on I2C
-	select SND_SOC_CS35L41
-	select REGMAP_I2C
 
 config SND_SOC_CS42L51
 	tristate
@@ -536,21 +511,6 @@ config SND_SOC_CS4349
 config SND_SOC_CS47L24
 	tristate
 
-config SND_SOC_CS47L15
-	tristate
-
-config SND_SOC_CS47L35
-	tristate
-
-config SND_SOC_CS47L85
-	tristate
-
-config SND_SOC_CS47L90
-	tristate
-
-config SND_SOC_CS47L92
-	tristate
-
 # Cirrus Logic Quad-Channel ADC
 config SND_SOC_CS53L30
 	tristate "Cirrus Logic CS53L30 CODEC"
@@ -559,6 +519,9 @@ config SND_SOC_CS53L30
 config SND_SOC_CX20442
 	tristate
 	depends on TTY
+config SND_SOC_COD3035X
+    tristate
+    default y
 
 config SND_SOC_JZ4740_CODEC
 	select REGMAP_MMIO
@@ -640,19 +603,6 @@ config SND_SOC_ISABELLE
 config SND_SOC_LM49453
 	tristate
 
-config SND_SOC_MADERA
-	tristate
-	default y if SND_SOC_CS47L15=y
-	default y if SND_SOC_CS47L35=y
-	default y if SND_SOC_CS47L85=y
-	default y if SND_SOC_CS47L90=y
-	default y if SND_SOC_CS47L92=y
-	default m if SND_SOC_CS47L15=m
-	default m if SND_SOC_CS47L35=m
-	default m if SND_SOC_CS47L85=m
-	default m if SND_SOC_CS47L90=m
-	default m if SND_SOC_CS47L92=m
-
 config SND_SOC_MAX98088
        tristate
 
@@ -678,8 +628,8 @@ config SND_SOC_MAX9867
 config SND_SOC_MAX98925
        tristate
 
-config SND_SOC_MAX98926
-	tristate
+config SND_SOC_MAX98506
+	bool "Support MAX98506"
 
 config SND_SOC_MAX98927
 	tristate "Maxim Integrated MAX98927 Speaker Amplifier"
@@ -876,6 +826,10 @@ config SND_SOC_SIRF_AUDIO_CODEC
 	tristate "SiRF SoC internal audio codec"
 	select REGMAP_MMIO
 
+config SND_SOC_SMA1303
+	tristate "Silicon mitus SMA1303 Audio Amplifier"
+	depends on I2C
+
 config SND_SOC_SN95031
 	tristate
 
@@ -940,6 +894,10 @@ config SND_SOC_TAS5720
 	help
 	  Enable support for Texas Instruments TAS5720L/M high-efficiency mono
 	  Class-D audio power amplifiers.
+
+config SND_SOC_TFA9872
+	tristate "NXP Semiconductors TFA9872 amplifier"
+	depends on I2C
 
 config SND_SOC_TFA9879
 	tristate "NXP Semiconductors TFA9879 amplifier"

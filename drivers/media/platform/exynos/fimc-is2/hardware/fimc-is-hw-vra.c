@@ -18,7 +18,7 @@ void fimc_is_hw_vra_save_debug_info(struct fimc_is_hw_ip *hw_ip,
 	struct fimc_is_hardware *hardware;
 	u32 hw_fcount, index, instance;
 
-	FIMC_BUG_VOID(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	hardware = hw_ip->hardware;
 	instance = atomic_read(&hw_ip->instance);
@@ -39,11 +39,6 @@ void fimc_is_hw_vra_save_debug_info(struct fimc_is_hw_ip *hw_ip,
 		index = hw_ip->debug_index[1];
 		hw_ip->debug_info[index].cpuid[DEBUG_POINT_FRAME_END] = raw_smp_processor_id();
 		hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_END] = local_clock();
-
-		dbg_isr("[F:%d][S-E] %05llu us\n", hw_ip, hw_fcount,
-			(hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_END] -
-			hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_START]) / 1000);
-
 		if (!atomic_read(&hardware->streaming[hardware->sensor_position[instance]]))
 			msinfo_hw("[F:%d]F.E\n", instance, hw_ip, hw_fcount);
 
@@ -69,11 +64,11 @@ static int fimc_is_hw_vra_ch0_handle_interrupt(u32 id, void *context)
 	struct fimc_is_lib_vra *lib_vra;
 	u32 hw_fcount;
 
-	FIMC_BUG(!context);
+	BUG_ON(!context);
 	hw_ip = (struct fimc_is_hw_ip *)context;
 	hw_fcount = atomic_read(&hw_ip->fcount);
 
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip->priv_info);
 	hw_vra = (struct fimc_is_hw_vra *)hw_ip->priv_info;
 	if (unlikely(!hw_vra)) {
 		serr_hw("[ch0]: hw_vra is null", hw_ip);
@@ -156,7 +151,7 @@ static int fimc_is_hw_vra_ch1_handle_interrupt(u32 id, void *context)
 	u32 ch1_mode;
 	u32 hw_fcount;
 
-	FIMC_BUG(!context);
+	BUG_ON(!context);
 	hw_ip = (struct fimc_is_hw_ip *)context;
 	hardware = hw_ip->hardware;
 	instance = atomic_read(&hw_ip->instance);
@@ -164,7 +159,7 @@ static int fimc_is_hw_vra_ch1_handle_interrupt(u32 id, void *context)
 
 	ret = fimc_is_hw_g_ctrl(NULL, 0, HW_G_CTRL_HAS_VRA_CH1_ONLY, (void *)&has_vra_ch1_only);
 
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip->priv_info);
 	hw_vra = (struct fimc_is_hw_vra *)hw_ip->priv_info;
 	if (unlikely(!hw_vra)) {
 		serr_hw("isr[ch1]: hw_vra is null", hw_ip);
@@ -198,10 +193,6 @@ static int fimc_is_hw_vra_ch1_handle_interrupt(u32 id, void *context)
 				fimc_is_hw_vra_save_debug_info(hw_ip, lib_vra, DEBUG_POINT_FRAME_START);
 				atomic_set(&hw_ip->status.Vvalid, V_VALID);
 				clear_bit(HW_CONFIG, &hw_ip->state);
-#ifdef ENABLE_VRA_FDONE_WITH_CALLBACK
-				clear_bit(instance, &lib_vra->done_vra_callback_out_ready);
-				clear_bit(instance, &lib_vra->done_vra_hw_intr);
-#endif
 			}
 
 			if (hw_ip->cur_s_int < hw_ip->num_buffers) {
@@ -211,11 +202,10 @@ static int fimc_is_hw_vra_ch1_handle_interrupt(u32 id, void *context)
 					unsigned char *buffer_dva = NULL;
 					mframe->cur_buf_index = hw_ip->cur_s_int;
 					/* TODO: It is required to support other YUV format */
-					/* Y-plane index of NV21 */
-					buffer_kva = (unsigned char *)
-						(mframe->kvaddr_buffer[mframe->cur_buf_index * 2]);
-					buffer_dva = (unsigned char *)
-						(mframe->dvaddr_buffer[mframe->cur_buf_index * 2]);
+					buffer_kva = (unsigned char *)(mframe->kvaddr_buffer \
+						[mframe->cur_buf_index * 2]); /* Y-plane index of NV21 */
+					buffer_dva = (unsigned char *)(ulong)(mframe->dvaddr_buffer \
+						[mframe->cur_buf_index * 2]);
 					ret = fimc_is_lib_vra_new_frame(lib_vra, buffer_kva, buffer_dva, atomic_read(&hw_ip->instance));
 					if (ret)
 						mserr_hw("lib_vra_new_frame is fail (%d)",
@@ -234,39 +224,21 @@ static int fimc_is_hw_vra_ch1_handle_interrupt(u32 id, void *context)
 			|| test_bit(VRA_LIB_BYPASS_REQUESTED, &lib_vra->state))
 			msinfo_hw("[ch1]: END_OF_CONTEXT [F:%d](%d)\n", instance, hw_ip,
 				atomic_read(&hw_ip->fcount),
-				(atomic_read(&hw_vra->ch1_count) % VRA_CH1_INTR_CNT_PER_FRAME));
+				(atomic_read(&hw_vra->ch1_count) % 4));
 		atomic_inc(&hw_ip->count.dma);
 		atomic_inc(&hw_vra->ch1_count);
 
 		msdbg_hw(2, "[ch1]: END_OF_CONTEXT\n", instance, hw_ip);
 		if (has_vra_ch1_only && (ch1_mode == VRA_CH1_DETECT_MODE)) {
 			/* detect mode */
-
 			set_bit(HW_VRA_CH1_START, &hw_ip->state);
 			atomic_inc(&hw_ip->count.fe);
 			hw_ip->cur_e_int++;
 			if (hw_ip->cur_e_int >= hw_ip->num_buffers) {
 				atomic_set(&hw_ip->status.Vvalid, V_BLANK);
 				fimc_is_hw_vra_save_debug_info(hw_ip, lib_vra, DEBUG_POINT_FRAME_END);
-#ifdef ENABLE_VRA_FDONE_WITH_CALLBACK
-				set_bit(instance, &lib_vra->done_vra_hw_intr);
-
-				spin_lock(&lib_vra->fdone_cb_lock);
-				if (test_bit(instance, &lib_vra->done_vra_hw_intr)
-					&& test_bit(instance, &lib_vra->done_vra_callback_out_ready)) {
-					clear_bit(instance, &lib_vra->done_vra_callback_out_ready);
-					clear_bit(instance, &lib_vra->done_vra_hw_intr);
-					spin_unlock(&lib_vra->fdone_cb_lock);
-
-					fimc_is_hardware_frame_done(hw_ip, NULL, -1,
-						FIMC_IS_HW_CORE_END, IS_SHOT_SUCCESS, true);
-				} else {
-					spin_unlock(&lib_vra->fdone_cb_lock);
-				}
-#else
 				fimc_is_hardware_frame_done(hw_ip, NULL, -1,
 					FIMC_IS_HW_CORE_END, IS_SHOT_SUCCESS, true);
-#endif
 				wake_up(&hw_ip->status.wait_queue);
 
 				hw_ip->mframe = NULL;
@@ -280,34 +252,18 @@ static int fimc_is_hw_vra_ch1_handle_interrupt(u32 id, void *context)
 	return ret;
 }
 
-static void fimc_is_hw_vra_reset(struct fimc_is_hw_ip *hw_ip)
-{
-	u32 all_intr;
-	bool has_vra_ch1_only = false;
-	int ret = 0;
-
-	/* Interrupt clear */
-	ret = fimc_is_hw_g_ctrl(NULL, 0, HW_G_CTRL_HAS_VRA_CH1_ONLY, (void *)&has_vra_ch1_only);
-	if (!has_vra_ch1_only) {
-		all_intr = fimc_is_vra_chain0_get_all_intr(hw_ip->regs);
-		fimc_is_vra_chain0_set_clear_intr(hw_ip->regs, all_intr);
-	}
-
-	all_intr = fimc_is_vra_chain1_get_all_intr(hw_ip->regs);
-	fimc_is_vra_chain1_set_clear_intr(hw_ip->regs, all_intr);
-}
-
-static int __nocfi fimc_is_hw_vra_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
+static int fimc_is_hw_vra_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	struct fimc_is_group *group)
 {
 	int ret = 0;
 	int ret_err = 0;
+	int i = 0;
 	ulong dma_addr;
 	struct fimc_is_hw_vra *hw_vra = NULL;
 	struct fimc_is_subdev *leader;
 	enum fimc_is_lib_vra_input_type input_type;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (test_bit(HW_OPEN, &hw_ip->state))
 		return 0;
@@ -334,6 +290,9 @@ static int __nocfi fimc_is_hw_vra_open(struct fimc_is_hw_ip *hw_ip, u32 instance
 
 	fimc_is_hw_vra_reset(hw_ip);
 
+	for (i = 0; i < SENSOR_POSITION_MAX; i++) {
+		hw_vra->applied_setfile[i] = NULL;
+	}
 #ifdef ENABLE_FPSIMD_FOR_USER
 	fpsimd_get();
 	get_lib_vra_func((void *)&hw_vra->lib_vra.itf_func);
@@ -361,9 +320,6 @@ static int __nocfi fimc_is_hw_vra_open(struct fimc_is_hw_ip *hw_ip, u32 instance
 		mserr_hw("failed to init. task(%d)", instance, hw_ip, ret);
 		goto err_vra_init_task;
 	}
-#ifdef ENABLE_VRA_FDONE_WITH_CALLBACK
-		hw_vra->lib_vra.hw_ip = hw_ip;
-#endif
 
 #if defined(VRA_DMA_TEST_BY_IMAGE)
 	ret = fimc_is_lib_vra_test_image_load(&hw_vra->lib_vra);
@@ -394,7 +350,6 @@ err_vra_frame_work_init:
 		mserr_hw("lib_vra_free_memory is fail (%d)", instance, hw_ip, ret_err);
 err_vra_alloc_memory:
 	vfree(hw_ip->priv_info);
-	hw_ip->priv_info = NULL;
 err_alloc:
 	frame_manager_close(hw_ip->framemgr);
 	frame_manager_close(hw_ip->framemgr_late);
@@ -410,9 +365,9 @@ static int fimc_is_hw_vra_init(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	struct fimc_is_subdev *leader;
 	enum fimc_is_lib_vra_input_type input_type;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!hw_ip->priv_info);
-	FIMC_BUG(!group);
+	BUG_ON(!hw_ip);
+	BUG_ON(!hw_ip->priv_info);
+	BUG_ON(!group);
 
 	hw_vra = (struct fimc_is_hw_vra *)hw_ip->priv_info;
 	lib_vra = &hw_vra->lib_vra;
@@ -452,7 +407,7 @@ static int fimc_is_hw_vra_close(struct fimc_is_hw_ip *hw_ip, u32 instance)
 	int ret = 0;
 	struct fimc_is_hw_vra *hw_vra = NULL;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit(HW_OPEN, &hw_ip->state))
 		return 0;
@@ -476,11 +431,11 @@ static int fimc_is_hw_vra_close(struct fimc_is_hw_ip *hw_ip, u32 instance)
 	}
 
 	vfree(hw_ip->priv_info);
-	hw_ip->priv_info = NULL;
 	frame_manager_close(hw_ip->framemgr);
 	frame_manager_close(hw_ip->framemgr_late);
 
 	clear_bit(HW_OPEN, &hw_ip->state);
+	msinfo_hw("close (%d)\n", instance, hw_ip, atomic_read(&hw_ip->rsccount));
 
 	return ret;
 }
@@ -490,7 +445,7 @@ static int fimc_is_hw_vra_enable(struct fimc_is_hw_ip *hw_ip, u32 instance,
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
@@ -514,7 +469,7 @@ static int fimc_is_hw_vra_disable(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	long timetowait;
 	struct fimc_is_hw_vra *hw_vra = NULL;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
@@ -562,57 +517,6 @@ static int fimc_is_hw_vra_disable(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	return 0;
 }
 
-static int fimc_is_hw_vra_update_param(struct fimc_is_hw_ip *hw_ip,
-	struct vra_param *param, u32 lindex, u32 hindex, u32 instance, u32 fcount)
-{
-	int ret = 0;
-	struct fimc_is_hw_vra *hw_vra;
-	struct fimc_is_lib_vra *lib_vra;
-
-	hw_vra = (struct fimc_is_hw_vra *)hw_ip->priv_info;
-
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!param);
-
-	lib_vra = &hw_vra->lib_vra;
-
-#ifdef VRA_DMA_TEST_BY_IMAGE
-	ret = fimc_is_lib_vra_test_input(lib_vra, instance);
-	if (ret) {
-		mserr_hw("test_input is fail (%d)", instance, hw_ip, ret);
-		return ret;
-	}
-	return 0;
-#endif
-
-	if (param->otf_input.cmd == OTF_INPUT_COMMAND_ENABLE) {
-		if ((lindex & LOWBIT_OF(PARAM_FD_OTF_INPUT))
-			|| (hindex & HIGHBIT_OF(PARAM_FD_OTF_INPUT))) {
-			ret = fimc_is_lib_vra_otf_input(lib_vra, param, instance, fcount);
-			if (ret) {
-				mserr_hw("otf_input is fail (%d)", instance, hw_ip, ret);
-				return ret;
-			}
-		}
-	} else if (param->dma_input.cmd == DMA_INPUT_COMMAND_ENABLE) {
-		if ((lindex & LOWBIT_OF(PARAM_FD_DMA_INPUT))
-			|| (hindex & HIGHBIT_OF(PARAM_FD_DMA_INPUT))) {
-			ret = fimc_is_lib_vra_dma_input(lib_vra, param, instance, fcount);
-			if (ret) {
-				mserr_hw("dma_input is fail (%d)", instance, hw_ip, ret);
-				return ret;
-			}
-		}
-	} else {
-		mserr_hw("param setting is wrong! otf_input.cmd(%d), dma_input.cmd(%d)",
-			instance, hw_ip, param->otf_input.cmd, param->dma_input.cmd);
-		return -EINVAL;
-	}
-
-	return ret;
-}
-
-
 static int fimc_is_hw_vra_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
 	ulong hw_map)
 {
@@ -626,8 +530,8 @@ static int fimc_is_hw_vra_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 	unsigned char *buffer_dva = NULL;
 	bool has_vra_ch1_only = false;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!frame);
+	BUG_ON(!hw_ip);
+	BUG_ON(!frame);
 
 	/* multi-buffer */
 	hw_ip->cur_s_int = 0;
@@ -652,10 +556,30 @@ static int fimc_is_hw_vra_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 
 	if (frame->type == SHOT_TYPE_INTERNAL) {
 		msdbg_hw(2, "request not exist\n", instance, hw_ip);
+		hw_ip->internal_fcount = frame->fcount;
 		goto new_frame;
+	} else {
+		BUG_ON(!frame->shot);
+		/* per-frame control
+		 * check & update size from region
+		 */
+		lindex = frame->shot->ctl.vendor_entry.lowIndexParam;
+		hindex = frame->shot->ctl.vendor_entry.highIndexParam;
+
+		/* if internal -> normat shot case
+		 * lindex/hindex set for update param forcely
+		 */
+		if (hw_ip->internal_fcount != 0) {
+			hw_ip->internal_fcount = 0;
+			lindex |= LOWBIT_OF(PARAM_FD_OTF_INPUT);
+			lindex |= LOWBIT_OF(PARAM_FD_DMA_INPUT);
+
+			hindex |= HIGHBIT_OF(PARAM_FD_OTF_INPUT);
+			hindex |= HIGHBIT_OF(PARAM_FD_DMA_INPUT);
+		}
 	}
 
-	FIMC_BUG(!frame->shot);
+	BUG_ON(!frame->shot);
 	/* per-frame control
 	 * check & update size from region */
 	lindex = frame->shot->ctl.vendor_entry.lowIndexParam;
@@ -721,11 +645,8 @@ new_frame:
 	/* Add for CH1 DMA input */
 	if (lib_vra->fr_work_init.dram_input) {
 		/* TODO: It is required to support other YUV format */
-		/* Y-plane index of NV21 */
-		buffer_kva = (unsigned char *)
-			(frame->kvaddr_buffer[frame->cur_buf_index * 2]);
-		buffer_dva = (unsigned char *)
-			(frame->dvaddr_buffer[frame->cur_buf_index * 2]);
+		buffer_kva = (unsigned char *)(frame->kvaddr_buffer[frame->cur_buf_index * 2]); /* Y-plane index of NV21 */
+		buffer_dva = (unsigned char *)(u64)(frame->dvaddr_buffer[frame->cur_buf_index * 2]);
 		hw_ip->mframe = frame;
 	}
 	msdbg_hw(2, "[F:%d]lib_vra_new_frame\n", instance, hw_ip, frame->fcount);
@@ -758,8 +679,8 @@ static int fimc_is_hw_vra_set_param(struct fimc_is_hw_ip *hw_ip,
 	struct fimc_is_lib_vra *lib_vra;
 	u32 fcount;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!region);
+	BUG_ON(!hw_ip);
+	BUG_ON(!region);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
@@ -800,6 +721,56 @@ static int fimc_is_hw_vra_set_param(struct fimc_is_hw_ip *hw_ip,
 	return ret;
 }
 
+int fimc_is_hw_vra_update_param(struct fimc_is_hw_ip *hw_ip,
+	struct vra_param *param, u32 lindex, u32 hindex, u32 instance, u32 fcount)
+{
+	int ret = 0;
+	struct fimc_is_hw_vra *hw_vra;
+	struct fimc_is_lib_vra *lib_vra;
+
+	hw_vra = (struct fimc_is_hw_vra *)hw_ip->priv_info;
+
+	BUG_ON(!hw_ip);
+	BUG_ON(!param);
+
+	lib_vra = &hw_vra->lib_vra;
+
+#ifdef VRA_DMA_TEST_BY_IMAGE
+	ret = fimc_is_lib_vra_test_input(lib_vra, instance);
+	if (ret) {
+		mserr_hw("test_input is fail (%d)", instance, hw_ip, ret);
+		return ret;
+	}
+	return 0;
+#endif
+
+	if (param->otf_input.cmd == OTF_INPUT_COMMAND_ENABLE) {
+		if ((lindex & LOWBIT_OF(PARAM_FD_OTF_INPUT))
+			|| (hindex & HIGHBIT_OF(PARAM_FD_OTF_INPUT))) {
+			ret = fimc_is_lib_vra_otf_input(lib_vra, param, instance, fcount);
+			if (ret) {
+				mserr_hw("otf_input is fail (%d)", instance, hw_ip, ret);
+				return ret;
+			}
+		}
+	} else if (param->dma_input.cmd == DMA_INPUT_COMMAND_ENABLE) {
+		if ((lindex & LOWBIT_OF(PARAM_FD_DMA_INPUT))
+			|| (hindex & HIGHBIT_OF(PARAM_FD_DMA_INPUT))) {
+			ret = fimc_is_lib_vra_dma_input(lib_vra, param, instance, fcount);
+			if (ret) {
+				mserr_hw("dma_input is fail (%d)", instance, hw_ip, ret);
+				return ret;
+			}
+		}
+	} else {
+		mserr_hw("param setting is wrong! otf_input.cmd(%d), dma_input.cmd(%d)",
+			instance, hw_ip, param->otf_input.cmd, param->dma_input.cmd);
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
 static int fimc_is_hw_vra_frame_ndone(struct fimc_is_hw_ip *hw_ip,
 	struct fimc_is_frame *frame, u32 instance, enum ShotErrorType done_type)
 {
@@ -807,8 +778,8 @@ static int fimc_is_hw_vra_frame_ndone(struct fimc_is_hw_ip *hw_ip,
 	int wq_id;
 	int output_id;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!frame);
+	BUG_ON(!hw_ip);
+	BUG_ON(!frame);
 
 	wq_id     = -1;
 	output_id = FIMC_IS_HW_CORE_END;
@@ -829,7 +800,7 @@ static int fimc_is_hw_vra_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance
 	u32 size, index;
 	int flag = 0, ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
 		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
@@ -886,7 +857,7 @@ static int fimc_is_hw_vra_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenari
 	u32 setfile_index;
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
 		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
@@ -939,9 +910,11 @@ static int fimc_is_hw_vra_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance
 {
 	struct fimc_is_hw_vra *hw_vra = NULL;
 	struct fimc_is_hw_ip_setfile *setfile;
+	struct fimc_is_hw_vra_setfile *setfile_addr;
 	enum exynos_sensor_position sensor_position;
+	int setfile_index = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
 		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
@@ -973,6 +946,28 @@ static int fimc_is_hw_vra_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance
 		break;
 	}
 
+	if (setfile->table[0].size != sizeof(struct fimc_is_hw_vra_setfile))
+		mswarn_hw("tuneset size(%x) is not matched to setfile structure size(%lx)",
+				instance, hw_ip, setfile->table[0].size,
+				sizeof(struct fimc_is_hw_vra_setfile));
+
+	/* Copy VRA setfile set */
+	setfile_addr = (struct fimc_is_hw_vra_setfile *)setfile->table[0].addr;
+	memcpy(hw_vra->setfile[sensor_position], setfile_addr,
+			sizeof(struct fimc_is_hw_vra_setfile) * setfile->using_count);
+
+	/* Check each setfile Magic number */
+	for (setfile_index = 0; setfile_index < setfile->using_count; setfile_index++) {
+		setfile_addr = &hw_vra->setfile[sensor_position][setfile_index];
+
+		if (setfile_addr->setfile_version != VRA_SETFILE_VERSION) {
+			mserr_hw("setfile[%d] version(0x%x) is incorrect",
+					instance, hw_ip, setfile_index,
+					setfile_addr->setfile_version);
+			return -EINVAL;
+		}
+	}
+
 	set_bit(HW_TUNESET, &hw_ip->state);
 
 	return 0;
@@ -991,7 +986,7 @@ static int fimc_is_hw_vra_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenari
 	u32 p_rot_mask;
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
 		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
@@ -1024,9 +1019,13 @@ static int fimc_is_hw_vra_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenari
 	msinfo_hw("setfile (%d) scenario (%d)\n", instance, hw_ip,
 		setfile_index, scenario);
 
-	hw_vra->setfile = *(struct fimc_is_hw_vra_setfile *)setfile->table[setfile_index].addr;
-	setfile_vra = &hw_vra->setfile;
+	if (!hw_vra->setfile[sensor_position]) {
+		mserr_hw("hw_vra->setfile(null)", instance, hw_ip);
+		return -ENOMEM;
+	}
 
+	setfile_vra = (struct fimc_is_hw_vra_setfile *)
+			&hw_vra->setfile[sensor_position][setfile_index];
 	if (setfile_vra->setfile_version != VRA_SETFILE_VERSION)
 		mserr_hw("setfile version is wrong:(%#x) expected version (%#x)",
 			instance, hw_ip, setfile_vra->setfile_version, VRA_SETFILE_VERSION);
@@ -1069,6 +1068,9 @@ static int fimc_is_hw_vra_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenari
 		return ret;
 	}
 
+	hw_vra->applied_setfile[sensor_position] =
+		&hw_vra->setfile[sensor_position][setfile_index];
+
 	return 0;
 }
 #endif
@@ -1076,9 +1078,37 @@ static int fimc_is_hw_vra_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenari
 static int fimc_is_hw_vra_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance,
 		ulong hw_map)
 {
-	clear_bit(HW_TUNESET, &hw_ip->state);
+	BUG_ON(!hw_ip);
 
+	if (!test_bit_variables(hw_ip->id, &hw_map)) {
+		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
+		return 0;
+	}
+
+	if (!test_bit(HW_TUNESET, &hw_ip->state)) {
+		msdbg_hw(2, "setfile already deleted", instance, hw_ip);
+		return 0;
+	}
+
+	clear_bit(HW_TUNESET, &hw_ip->state);
 	return 0;
+}
+
+void fimc_is_hw_vra_reset(struct fimc_is_hw_ip *hw_ip)
+{
+	u32 all_intr;
+	bool has_vra_ch1_only = false;
+	int ret = 0;
+
+	/* Interrupt clear */
+	ret = fimc_is_hw_g_ctrl(NULL, 0, HW_G_CTRL_HAS_VRA_CH1_ONLY, (void *)&has_vra_ch1_only);
+	if(!has_vra_ch1_only) {
+		all_intr = fimc_is_vra_chain0_get_all_intr(hw_ip->regs);
+		fimc_is_vra_chain0_set_clear_intr(hw_ip->regs, all_intr);
+	}
+
+	all_intr = fimc_is_vra_chain1_get_all_intr(hw_ip->regs);
+	fimc_is_vra_chain1_set_clear_intr(hw_ip->regs, all_intr);
 }
 
 static int fimc_is_hw_vra_get_meta(struct fimc_is_hw_ip *hw_ip,
@@ -1132,9 +1162,9 @@ int fimc_is_hw_vra_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface *
 	int hw_slot = -1;
 	bool has_vra_ch1_only = false;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!itf);
-	FIMC_BUG(!itfc);
+	BUG_ON(!hw_ip);
+	BUG_ON(!itf);
+	BUG_ON(!itfc);
 
 	/* initialize device hardware */
 	hw_ip->id   = id;

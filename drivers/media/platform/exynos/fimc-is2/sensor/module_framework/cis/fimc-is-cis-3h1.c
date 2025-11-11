@@ -37,9 +37,9 @@
 #include "fimc-is-resourcemgr.h"
 #include "fimc-is-dt.h"
 #include "fimc-is-cis-3h1.h"
-#include "fimc-is-vender.h"
 #include "fimc-is-cis-3h1-setA.h"
 #include "fimc-is-cis-3h1-setB.h"
+
 #include "fimc-is-helper-i2c.h"
 
 #define SENSOR_NAME "S5K3H1"
@@ -51,26 +51,12 @@ static const u32 *sensor_3h1_setfile_sizes;
 static const struct sensor_pll_info_compact **sensor_3h1_pllinfos;
 static u32 sensor_3h1_max_setfile_num;
 
-static bool sensor_3h1_cis_is_wdr_mode_on(cis_shared_data *cis_data)
-{
-	unsigned int mode = cis_data->sens_config_index_cur;
-
-	if (fimc_is_vender_wdr_mode_on(cis_data) &&
-		(mode == SENSOR_3H1_3280X2464_30FPS
-		|| mode == SENSOR_3H1_2448X2448_30FPS
-		|| mode == SENSOR_3H1_3264X1836_30FPS
-		|| mode == SENSOR_3H1_3264X1592_30FPS))
-		return true;
-
-	return false;
-}
-
 static void sensor_3h1_cis_data_calculation(const struct sensor_pll_info_compact *pll_info_compact, cis_shared_data *cis_data)
 {
 	u32 vt_pix_clk_hz = 0;
 	u32 frame_rate = 0, max_fps = 0, frame_valid_us = 0;
 
-	FIMC_BUG_VOID(!pll_info_compact);
+	BUG_ON(!pll_info_compact);
 
 	/* 1. get pclk value from pll info */
 	vt_pix_clk_hz = pll_info_compact->pclk;
@@ -134,7 +120,7 @@ static int sensor_3h1_wait_stream_off_status(cis_shared_data *cis_data)
 	int ret = 0;
 	u32 timeout = 0;
 
-	FIMC_BUG(!cis_data);
+	BUG_ON(!cis_data);
 
 #define STREAM_OFF_WAIT_TIME 250
 	while (timeout < STREAM_OFF_WAIT_TIME) {
@@ -159,11 +145,14 @@ int sensor_3h1_cis_init(struct v4l2_subdev *subdev)
 	struct fimc_is_cis *cis;
 	u32 setfile_index = 0;
 	cis_setting_info setinfo;
-	int retry_cnt = 3;
+#ifdef USE_CAMERA_HW_BIG_DATA
+	struct cam_hw_param *hw_param = NULL;
+	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
+#endif
 	setinfo.param = NULL;
 	setinfo.return_value = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -172,22 +161,22 @@ int sensor_3h1_cis_init(struct v4l2_subdev *subdev)
 		goto p_err;
 	}
 
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis->cis_data);
 	memset(cis->cis_data, 0, sizeof(cis_shared_data));
 	cis->rev_flag = false;
 
-retry:
 	ret = sensor_cis_check_rev(cis);
 	if (ret < 0) {
-		if (retry_cnt-- > 0) {
-			err("sensor_3h1_check_rev is fail. retry %d", retry_cnt);
-			usleep_range(10000, 10000);
-			goto retry;
-		} else {
-			warn("sensor_3h1_check_rev is fail when cis init, ret(%d)", ret);
-			cis->rev_flag = true;
-			goto p_err;
-		}
+#ifdef USE_CAMERA_HW_BIG_DATA
+		sensor_peri = container_of(cis, struct fimc_is_device_sensor_peri, cis);
+		if (sensor_peri)
+			fimc_is_sec_get_hw_param(&hw_param, sensor_peri->module->position);
+		if (hw_param)
+			hw_param->i2c_sensor_err_cnt++;
+#endif
+		warn("sensor_3h1_check_rev is fail when cis init");
+		cis->rev_flag = true;
+		ret = 0;
 	}
 
 	cis->cis_data->product_name = cis->id;
@@ -234,7 +223,7 @@ int sensor_3h1_cis_log_status(struct v4l2_subdev *subdev)
 	u8 data8 = 0;
 	u16 data16 = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -277,12 +266,12 @@ static int sensor_3h1_cis_group_param_hold_func(struct v4l2_subdev *subdev, unsi
 	struct fimc_is_cis *cis = NULL;
 	struct i2c_client *client = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -322,12 +311,12 @@ int sensor_3h1_cis_group_param_hold(struct v4l2_subdev *subdev, bool hold)
 	int ret = 0;
 	struct fimc_is_cis *cis = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
 	ret = sensor_3h1_cis_group_param_hold_func(subdev, hold);
@@ -346,11 +335,11 @@ int sensor_3h1_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 	struct fimc_is_device_sensor *device;
 	struct fimc_is_device_sensor_peri *sensor_peri;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	device = (struct fimc_is_device_sensor *)v4l2_get_subdev_hostdata(subdev);
 	if (unlikely(!device)) {
@@ -364,7 +353,7 @@ int sensor_3h1_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 		return -EINVAL;
 	}
 
-	if (mode >= sensor_3h1_max_setfile_num) {
+	if (mode > sensor_3h1_max_setfile_num) {
 		err("invalid mode(%d)!!", mode);
 		ret = -EINVAL;
 		goto p_err;
@@ -416,10 +405,10 @@ int sensor_3h1_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_dat
 	struct timeval st, end;
 	do_gettimeofday(&st);
 #endif
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	dbg_sensor(1, "[MOD:D:%d] %s\n", cis->id, __func__);
 
@@ -567,7 +556,6 @@ int sensor_3h1_cis_stream_on(struct v4l2_subdev *subdev)
 	int ret = 0;
 	struct fimc_is_cis *cis;
 	struct i2c_client *client;
-	struct fimc_is_device_sensor *device;
 	cis_shared_data *cis_data;
 
 #ifdef DEBUG_SENSOR_TIME
@@ -575,24 +563,18 @@ int sensor_3h1_cis_stream_on(struct v4l2_subdev *subdev)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
 		err("client is NULL");
 		ret = -EINVAL;
 		goto p_err;
-	}
-
-	device = (struct fimc_is_device_sensor *)v4l2_get_subdev_hostdata(subdev);
-	if (unlikely(!device)) {
-		err("device sensor is null");
-		return -EINVAL;
 	}
 
 	cis_data = cis->cis_data;
@@ -610,7 +592,7 @@ int sensor_3h1_cis_stream_on(struct v4l2_subdev *subdev)
 	fimc_is_sensor_write8(client, 0x0100, 0x01);
 
 	/* WDR */
-	if (sensor_3h1_cis_is_wdr_mode_on(cis_data))
+	if (fimc_is_vender_wdr_mode_on(cis_data))
 		fimc_is_sensor_write8(client, 0x0216, 0x01);
 	else
 		fimc_is_sensor_write8(client, 0x0216, 0x00);
@@ -639,12 +621,12 @@ int sensor_3h1_cis_stream_off(struct v4l2_subdev *subdev)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -697,13 +679,13 @@ int sensor_3h1_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_param
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!target_exposure);
+	BUG_ON(!subdev);
+	BUG_ON(!target_exposure);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -772,7 +754,7 @@ int sensor_3h1_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_param
 	}
 
 	/* WDR mode */
-	if (sensor_3h1_cis_is_wdr_mode_on(cis_data)) {
+	if (fimc_is_vender_wdr_mode_on(cis_data)) {
 		fimc_is_sensor_write16(client, 0x0216, 0x0100);
 	} else {
 		fimc_is_sensor_write16(client, 0x0216, 0x0000);
@@ -784,7 +766,7 @@ int sensor_3h1_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_param
 		goto p_err;
 
 	/* Long exposure */
-	if (sensor_3h1_cis_is_wdr_mode_on(cis_data)) {
+	if (fimc_is_vender_wdr_mode_on(cis_data)) {
 		ret = fimc_is_sensor_write16(client, 0x021E, long_coarse_int);
 		if (ret < 0)
 			goto p_err;
@@ -822,13 +804,13 @@ int sensor_3h1_cis_get_min_exposure_time(struct v4l2_subdev *subdev, u32 *min_ex
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!min_expo);
+	BUG_ON(!subdev);
+	BUG_ON(!min_expo);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -874,13 +856,13 @@ int sensor_3h1_cis_get_max_exposure_time(struct v4l2_subdev *subdev, u32 *max_ex
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!max_expo);
+	BUG_ON(!subdev);
+	BUG_ON(!max_expo);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -935,13 +917,13 @@ int sensor_3h1_cis_adjust_frame_duration(struct v4l2_subdev *subdev,
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!target_duration);
+	BUG_ON(!subdev);
+	BUG_ON(!target_duration);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -984,12 +966,12 @@ int sensor_3h1_cis_set_frame_duration(struct v4l2_subdev *subdev, u32 frame_dura
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1059,12 +1041,12 @@ int sensor_3h1_cis_set_frame_rate(struct v4l2_subdev *subdev, u32 min_fps)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1118,13 +1100,13 @@ int sensor_3h1_cis_adjust_analog_gain(struct v4l2_subdev *subdev, u32 input_agai
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!target_permile);
+	BUG_ON(!subdev);
+	BUG_ON(!target_permile);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1166,13 +1148,13 @@ int sensor_3h1_cis_set_analog_gain(struct v4l2_subdev *subdev, struct ae_param *
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!again);
+	BUG_ON(!subdev);
+	BUG_ON(!again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1187,20 +1169,16 @@ int sensor_3h1_cis_set_analog_gain(struct v4l2_subdev *subdev, struct ae_param *
 	long_gain = (u16)sensor_cis_calc_again_code(again->long_val);
 
 	if (long_gain < cis->cis_data->min_analog_gain[0]) {
-		info("[%s] not proper long_gain value, reset to min_analog_gain\n", __func__);
 		long_gain = cis->cis_data->min_analog_gain[0];
 	}
 	if (long_gain > cis->cis_data->max_analog_gain[0]) {
-		info("[%s] not proper long_gain value, reset to max_analog_gain\n", __func__);
 		long_gain = cis->cis_data->max_analog_gain[0];
 	}
 
 	if (short_gain < cis->cis_data->min_analog_gain[0]) {
-		info("[%s] not proper short_gain value, reset to min_analog_gain\n", __func__);
 		short_gain = cis->cis_data->min_analog_gain[0];
 	}
 	if (short_gain > cis->cis_data->max_analog_gain[0]) {
-		info("[%s] not proper short_gain value, reset to max_analog_gain\n", __func__);
 		short_gain = cis->cis_data->max_analog_gain[0];
 	}
 
@@ -1264,12 +1242,12 @@ int sensor_3h1_cis_get_analog_gain(struct v4l2_subdev *subdev, u32 *again)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!again);
+	BUG_ON(!subdev);
+	BUG_ON(!again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1324,13 +1302,13 @@ int sensor_3h1_cis_get_min_analog_gain(struct v4l2_subdev *subdev, u32 *min_agai
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!min_again);
+	BUG_ON(!subdev);
+	BUG_ON(!min_again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1377,13 +1355,13 @@ int sensor_3h1_cis_get_max_analog_gain(struct v4l2_subdev *subdev, u32 *max_agai
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!max_again);
+	BUG_ON(!subdev);
+	BUG_ON(!max_again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1432,13 +1410,13 @@ int sensor_3h1_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_param 
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1453,20 +1431,16 @@ int sensor_3h1_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_param 
 	short_gain = (u16)sensor_cis_calc_dgain_code(dgain->short_val);
 
 	if (long_gain < cis->cis_data->min_digital_gain[0]) {
-		info("[%s] not proper long_gain value, reset to min_digital_gain\n", __func__);
 		long_gain = cis->cis_data->min_digital_gain[0];
 	}
 	if (long_gain > cis->cis_data->max_digital_gain[0]) {
-		info("[%s] not proper long_gain value, reset to max_digital_gain\n", __func__);
 		long_gain = cis->cis_data->max_digital_gain[0];
 	}
 
 	if (short_gain < cis->cis_data->min_digital_gain[0]) {
-		info("[%s] not proper short_gain value, reset to min_digital_gain\n", __func__);
 		short_gain = cis->cis_data->min_digital_gain[0];
 	}
 	if (short_gain > cis->cis_data->max_digital_gain[0]) {
-		info("[%s] not proper short_gain value, reset to max_digital_gain\n", __func__);
 		short_gain = cis->cis_data->max_digital_gain[0];
 	}
 
@@ -1481,7 +1455,7 @@ int sensor_3h1_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_param 
 	}
 
 	/* DGain WDR Mode */
-	if (sensor_3h1_cis_is_wdr_mode_on(cis_data)) {
+	if (fimc_is_vender_wdr_mode_on(cis_data)) {
 		fimc_is_sensor_write16(client, 0x31E8, 0x0100);
 	} else {
 		fimc_is_sensor_write16(client, 0x31E8, 0x0000);
@@ -1493,7 +1467,7 @@ int sensor_3h1_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_param 
 		goto p_err;
 
 	/* Long digital gain */
-	if (sensor_3h1_cis_is_wdr_mode_on(cis_data)) {
+	if (fimc_is_vender_wdr_mode_on(cis_data)) {
 		ret = fimc_is_sensor_write16(client, 0x0C82, long_gain);
 		if (ret < 0)
 			goto p_err;
@@ -1528,12 +1502,12 @@ int sensor_3h1_cis_get_digital_gain(struct v4l2_subdev *subdev, u32 *dgain)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1588,13 +1562,13 @@ int sensor_3h1_cis_get_min_digital_gain(struct v4l2_subdev *subdev, u32 *min_dga
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!min_dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!min_dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1641,13 +1615,13 @@ int sensor_3h1_cis_get_max_digital_gain(struct v4l2_subdev *subdev, u32 *max_dga
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!max_dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!max_dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1708,7 +1682,7 @@ static struct fimc_is_cis_ops cis_ops = {
 	.cis_wait_streamon = sensor_cis_wait_streamon,
 };
 
-static int cis_3h1_probe(struct i2c_client *client,
+int cis_3h1_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -1717,7 +1691,7 @@ static int cis_3h1_probe(struct i2c_client *client,
 	struct fimc_is_cis *cis = NULL;
 	struct fimc_is_device_sensor *device = NULL;
 	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
-	u32 sensor_id[FIMC_IS_SENSOR_COUNT] = {0, };
+	u32 sensor_id[FIMC_IS_STREAM_COUNT] = {0, };
 	u32 sensor_id_len;
 	const u32 *sensor_id_spec;
 	char const *setfile;
@@ -1725,8 +1699,8 @@ static int cis_3h1_probe(struct i2c_client *client,
 	struct device_node *dnode;
 	int i;
 
-	FIMC_BUG(!client);
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!client);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -1743,7 +1717,7 @@ static int cis_3h1_probe(struct i2c_client *client,
 		goto p_err;
 	}
 
-	sensor_id_len /= (unsigned int)sizeof(*sensor_id_spec);
+	sensor_id_len /= sizeof(*sensor_id_spec);
 
 	probe_info("%s sensor_id_spec %d, sensor_id_len %d\n", __func__,
 			*sensor_id_spec, sensor_id_len);
@@ -1760,7 +1734,7 @@ static int cis_3h1_probe(struct i2c_client *client,
 
 		sensor_peri = find_peri_by_cis_id(device, SENSOR_NAME_S5K3H1);
 		if (!sensor_peri) {
-			probe_info("3H1 : sensor peri is net yet probed");
+			probe_info("3H1 : sensor peri is not yet probed");
 			return -EPROBE_DEFER;
 		}
 	}
@@ -1786,6 +1760,7 @@ static int cis_3h1_probe(struct i2c_client *client,
 		sensor_peri->module->client = cis->client;
 		cis->i2c_lock = NULL;
 		cis->ctrl_delay = N_PLUS_TWO_FRAME;
+
 		cis->cis_data = kzalloc(sizeof(cis_shared_data), GFP_KERNEL);
 		if (!cis->cis_data) {
 			err("cis_data is NULL");
@@ -1798,10 +1773,12 @@ static int cis_3h1_probe(struct i2c_client *client,
 		cis->bayer_order = OTF_INPUT_ORDER_BAYER_GR_BG;
 
 		if (of_property_read_bool(dnode, "sensor_f_number")) {
-			if (of_property_read_u32(dnode, "sensor_f_number", &cis->aperture_num))
+			ret = of_property_read_u32(dnode, "sensor_f_number", &cis->aperture_num);
+			if (ret) {
 				warn("f-number read is fail(%d)",ret);
+			}
 		} else {
-			cis->aperture_num = F1_9;
+			cis->aperture_num = F2_2;
 		}
 
 		probe_info("%s f-number %d\n", __func__, cis->aperture_num);
@@ -1814,7 +1791,8 @@ static int cis_3h1_probe(struct i2c_client *client,
 		snprintf(subdev_cis->name, V4L2_SUBDEV_NAME_SIZE, "cis-subdev.%d", cis->id);
 	}
 
-	if (of_property_read_string(dnode, "setfile", &setfile)) {
+	ret = of_property_read_string(dnode, "setfile", &setfile);
+	if (ret) {
 		err("setfile index read fail(%d), take default setfile!!", ret);
 		setfile = "default";
 	}
@@ -1825,7 +1803,7 @@ static int cis_3h1_probe(struct i2c_client *client,
 		sensor_3h1_setfiles = sensor_3h1_setfiles_A;
 		sensor_3h1_setfile_sizes = sensor_3h1_setfile_A_sizes;
 		sensor_3h1_pllinfos = sensor_3h1_pllinfos_A;
-		sensor_3h1_max_setfile_num = ARRAY_SIZE(sensor_3h1_setfiles_A);
+		sensor_3h1_max_setfile_num = sizeof(sensor_3h1_setfiles_A) / sizeof(sensor_3h1_setfiles_A[0]);
 	}
 #if 0
 	else if (strcmp(setfile, "setB") == 0) {
@@ -1833,7 +1811,7 @@ static int cis_3h1_probe(struct i2c_client *client,
 		sensor_3h1_setfiles = sensor_3h1_setfiles_B;
 		sensor_3h1_setfile_sizes = sensor_3h1_setfile_B_sizes;
 		sensor_3h1_pllinfos = sensor_3h1_pllinfos_B;
-		sensor_3h1_max_setfile_num = ARRAY_SIZE(sensor_3h1_setfiles_B);
+		sensor_3h1_max_setfile_num = sizeof(sensor_3h1_setfiles_B) / sizeof(sensor_3h1_setfiles_B[0]);
 	}
 #endif
 	else {
@@ -1841,7 +1819,7 @@ static int cis_3h1_probe(struct i2c_client *client,
 		sensor_3h1_setfiles = sensor_3h1_setfiles_A;
 		sensor_3h1_setfile_sizes = sensor_3h1_setfile_A_sizes;
 		sensor_3h1_pllinfos = sensor_3h1_pllinfos_A;
-		sensor_3h1_max_setfile_num = ARRAY_SIZE(sensor_3h1_setfiles_A);
+		sensor_3h1_max_setfile_num = sizeof(sensor_3h1_setfiles_A) / sizeof(sensor_3h1_setfiles_A[0]);
 	}
 
 	probe_info("%s done\n", __func__);
@@ -1850,39 +1828,33 @@ p_err:
 	return ret;
 }
 
-static const struct of_device_id sensor_cis_3h1_match[] = {
+static int cis_3h1_remove(struct i2c_client *client)
+{
+	int ret = 0;
+	return ret;
+}
+
+static const struct of_device_id exynos_fimc_is_cis_3h1_match[] = {
 	{
 		.compatible = "samsung,exynos5-fimc-is-cis-3h1",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, sensor_cis_3h1_match);
+MODULE_DEVICE_TABLE(of, exynos_fimc_is_cis_3h1_match);
 
-static const struct i2c_device_id sensor_cis_3h1_idt[] = {
+static const struct i2c_device_id cis_3h1_idt[] = {
 	{ SENSOR_NAME, 0 },
 	{},
 };
 
-static struct i2c_driver sensor_cis_3h1_driver = {
-	.probe	= cis_3h1_probe,
+static struct i2c_driver cis_3h1_driver = {
 	.driver = {
 		.name	= SENSOR_NAME,
 		.owner	= THIS_MODULE,
-		.of_match_table = sensor_cis_3h1_match,
-		.suppress_bind_attrs = true,
+		.of_match_table = exynos_fimc_is_cis_3h1_match
 	},
-	.id_table = sensor_cis_3h1_idt
+	.probe	= cis_3h1_probe,
+	.remove	= cis_3h1_remove,
+	.id_table = cis_3h1_idt
 };
-
-static int __init sensor_cis_3h1_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&sensor_cis_3h1_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_cis_3h1_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(sensor_cis_3h1_init);
+module_i2c_driver(cis_3h1_driver);

@@ -87,7 +87,7 @@ int fimc_is_spi_reset(struct fimc_is_spi *spi)
 	struct spi_transfer t_r;
 	struct spi_message m;
 
-	FIMC_BUG(!spi->device);
+	BUG_ON(!spi->device);
 
 	memset(&t_c, 0x00, sizeof(t_c));
 	memset(&t_r, 0x00, sizeof(t_r));
@@ -118,7 +118,7 @@ int fimc_is_spi_read(struct fimc_is_spi *spi, void *buf, u32 addr, size_t size)
 	struct spi_transfer t_r;
 	struct spi_message m;
 
-	FIMC_BUG(!spi->device);
+	BUG_ON(!spi->device);
 
 	memset(&t_c, 0x00, sizeof(t_c));
 	memset(&t_r, 0x00, sizeof(t_r));

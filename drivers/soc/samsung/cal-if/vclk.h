@@ -10,6 +10,8 @@ struct vclk_trans_ops {
 	void (*restore_trans)(unsigned int from, unsigned int to);
 	void (*set_pll)(unsigned int id, unsigned int to);
 	unsigned int (*get_pll)(unsigned int id);
+	int (*enable)(unsigned int id);
+        int (*disable)(unsigned int id);
 };
 
 #ifdef CONFIG_CMUCAL

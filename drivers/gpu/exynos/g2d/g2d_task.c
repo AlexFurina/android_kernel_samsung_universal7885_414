@@ -43,23 +43,19 @@ static int g2d_map_cmd_data(struct g2d_task *task)
 {
 	bool self_prot = task->g2d_dev->caps & G2D_DEVICE_CAPS_SELF_PROTECTION;
 	struct scatterlist sgl;
-	int prot = IOMMU_READ;
 
 	if (!self_prot && IS_ENABLED(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION))
 		return 0;
-
-	if (device_get_dma_attr(task->g2d_dev->dev) == DEV_DMA_COHERENT)
-		prot |= IOMMU_CACHE;
 
 	/* mapping the command data */
 	sg_init_table(&sgl, 1);
 	sg_set_page(&sgl, task->cmd_page, G2D_CMD_LIST_SIZE, 0);
 	task->cmd_addr = iovmm_map(task->g2d_dev->dev, &sgl, 0,
-				   G2D_CMD_LIST_SIZE, DMA_TO_DEVICE, prot);
+				   G2D_CMD_LIST_SIZE, DMA_TO_DEVICE,
+				   IOMMU_READ | IOMMU_CACHE);
 
 	if (IS_ERR_VALUE(task->cmd_addr)) {
-		dev_err(task->g2d_dev->dev,
-			"%s: Unable to allocate IOVA for cmd data\n", __func__);
+		perrfndev(task->g2d_dev, "Unable to alloc IOVA for cmd data");
 		return task->cmd_addr;
 	}
 
@@ -76,8 +72,7 @@ struct g2d_task *g2d_get_active_task_from_id(struct g2d_device *g2d_dev,
 			return task;
 	}
 
-	dev_err(g2d_dev->dev,
-		"%s: No active task entry is found for ID %d\n", __func__, id);
+	perrfndev(g2d_dev, "No active task entry is found for ID %d", id);
 
 	return NULL;
 }
@@ -141,8 +136,7 @@ void g2d_finish_task_with_id(struct g2d_device *g2d_dev,
 		return;
 
 	if (is_task_state_killed(task)) {
-		dev_err(g2d_dev->dev, "%s: Killed task ID %d is completed\n",
-			__func__, job_id);
+		perrfndev(g2d_dev, "Killed task ID %d is completed", job_id);
 		success = false;
 	}
 
@@ -153,14 +147,13 @@ void g2d_flush_all_tasks(struct g2d_device *g2d_dev)
 {
 	struct g2d_task *task;
 
-	dev_err(g2d_dev->dev, "%s: Flushing all active tasks\n", __func__);
+	perrfndev(g2d_dev, "Flushing all active tasks");
 
 	while (!list_empty(&g2d_dev->tasks_active)) {
 		task = list_first_entry(&g2d_dev->tasks_active,
 					struct g2d_task, node);
 
-		dev_err(g2d_dev->dev, "%s: Flushed task of ID %d\n",
-			__func__, task->sec.job_id);
+		perrfndev(g2d_dev, "Flushed task of ID %d", task->sec.job_id);
 
 		mark_task_state_killed(task);
 
@@ -242,13 +235,13 @@ static void g2d_schedule_task(struct g2d_task *task)
 	 */
 	ret = pm_runtime_get_sync(g2d_dev->dev);
 	if (ret < 0) {
-		dev_err(g2d_dev->dev, "Failed to enable power (%d)\n", ret);
+		perrfndev(g2d_dev, "Failed to enable power (%d)", ret);
 		goto err_pm;
 	}
 
 	ret = clk_prepare_enable(g2d_dev->clock);
 	if (ret < 0) {
-		dev_err(g2d_dev->dev, "Failed to enable clock (%d)\n", ret);
+		perrfndev(g2d_dev, "Failed to enable clock (%d)", ret);
 		goto err_clk;
 	}
 
@@ -366,12 +359,11 @@ struct g2d_task *g2d_get_free_task(struct g2d_device *g2d_dev,
 		spin_unlock_irqrestore(&g2d_dev->lock_task, flags);
 
 		if (list_empty(taskfree))
-			dev_err(g2d_dev->dev,
-				"%s : no free task slot found (hwfc %d)",
-				__func__, hwfc);
+			perrfndev(g2d_dev,
+				  "no free task slot found (hwfc %d)", hwfc);
 		else
-			dev_err(g2d_dev->dev, "%s : queued %d >= max %d",
-				__func__, num_queued, max_queued);
+			perrfndev(g2d_dev, "queued %d >= max %d",
+				  num_queued, max_queued);
 
 		if (!block_on_contension)
 			return NULL;
@@ -383,9 +375,9 @@ struct g2d_task *g2d_get_free_task(struct g2d_device *g2d_dev,
 			   !list_empty(taskfree) &&
 			   (g2d_queued_task_count(g2d_dev) < max_queued));
 
-		dev_err(g2d_dev->dev,
-			"%s : wait to resolve contension for %d us", __func__,
-			(int)ktime_us_delta(ktime_get(), ktime_pending));
+		perrfndev(g2d_dev,
+			  "wait to resolve contension for %d us",
+			  (int)ktime_us_delta(ktime_get(), ktime_pending));
 
 		spin_lock_irqsave(&g2d_dev->lock_task, flags);
 	}

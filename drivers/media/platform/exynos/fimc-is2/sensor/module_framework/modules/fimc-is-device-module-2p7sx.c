@@ -38,31 +38,25 @@
 
 #include "fimc-is-device-module-base.h"
 
-/* #define S5K2P7SX_PDAF_MAXWIDTH	144 */
-/* #define S5K2P7SX_PDAF_MAXHEIGHT	864 */
-/* #define S5K2P7SX_PDAF_ELEMENT	2 */
-/* #define S5K2P7SX_PDAF_STAT_TYPE	VC_STAT_TYPE_TAIL_MSPD_GLOBAL */
 static struct fimc_is_sensor_cfg config_module_2p7sx[] = {
 	/* 4608x3456@30fps */
-	FIMC_IS_SENSOR_CFG_EXT(4608, 3456, 30, 0, 0, CSI_DATA_LANES_4, 1495,
-			SET_VC(VC_TAIL_MODE_PDAF, 144, 864), 0, 0),
-	/* 2320X1728@30fps */
-	FIMC_IS_SENSOR_CFG_EXT(2304, 1728, 30, 0, 1, CSI_DATA_LANES_4, 1300,
-			SET_VC(VC_TAIL_MODE_PDAF, 144, 864), 0, 0),
-	/* 2320X1296@30fps */
-	FIMC_IS_SENSOR_CFG_EXT(2304, 1296, 120, 0, 2, CSI_DATA_LANES_4, 1300, 0, 0, 0),
+	FIMC_IS_SENSOR_CFG_EXT(4608, 3456, 30, 32, 0, CSI_DATA_LANES_4, 1495, 0, 0, 0),
+	/* 2320X1744@30fps */
+	FIMC_IS_SENSOR_CFG_EXT(2304, 1728, 30, 30, 1, CSI_DATA_LANES_4, 1300, 0, 0, 0),
+	/* 2320X1744@30fps */
+	FIMC_IS_SENSOR_CFG_EXT(2304, 1296, 120, 30, 2, CSI_DATA_LANES_4, 1300, 0, 0, 0),
 };
 
 static struct fimc_is_vci vci_module_2p7sx[] = {
 	{
 		.pixelformat = V4L2_PIX_FMT_SBGGR10,
-		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_USER}, {2, HW_FORMAT_USER}, {3, 0} }
+		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_UNKNOWN}, {2, HW_FORMAT_USER}, {3, 0} }
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SBGGR12,
-		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_USER}, {2, HW_FORMAT_USER}, {3, 0} }
+		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_UNKNOWN}, {2, HW_FORMAT_USER}, {3, 0} }
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SBGGR16,
-		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_USER}, {2, HW_FORMAT_USER}, {3, 0} }
+		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_UNKNOWN}, {2, HW_FORMAT_USER}, {3, 0} }
 	}
 };
 
@@ -77,7 +71,6 @@ static const struct v4l2_subdev_core_ops core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_routing = sensor_module_s_routing,
 	.s_stream = sensor_module_s_stream,
 	.s_parm = sensor_module_s_param
 };
@@ -100,7 +93,7 @@ static int sensor_module_2p7sx_power_setpin(struct device *dev,
 	int gpio_none = 0;
 	int gpio_vdd28_drv_en = 0, gpio_avdd28_en = 0;
 
-	FIMC_BUG(!dev);
+	BUG_ON(!dev);
 
 	dnode = dev->of_node;
 
@@ -163,7 +156,7 @@ static int sensor_module_2p7sx_power_setpin(struct device *dev,
 	return 0;
 }
 
-static int __init sensor_module_2p7sx_probe(struct platform_device *pdev)
+int sensor_module_2p7sx_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -174,7 +167,7 @@ static int __init sensor_module_2p7sx_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -216,7 +209,7 @@ static int __init sensor_module_2p7sx_probe(struct platform_device *pdev)
 	module->pixel_height = module->active_height;
 	module->max_framerate = 120;
 	module->position = pdata->position;
-	module->mode = CSI_MODE_VC_DT;
+	module->mode = CSI_MODE_CH0_ONLY;
 	module->lanes = CSI_DATA_LANES_4;
 	module->bitwidth = 10;
 	module->vcis = ARRAY_SIZE(vci_module_2p7sx);
@@ -303,6 +296,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_2p7sx_remove(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	info("%s\n", __func__);
+
+	return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_2p7sx_match[] = {
 	{
 		.compatible = "samsung,sensor-module-2p7sx",
@@ -315,6 +317,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_2p7sx_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_2p7sx_match);
 
 static struct platform_driver sensor_module_2p7sx_driver = {
+	.probe  = sensor_module_2p7sx_probe,
+	.remove = sensor_module_2p7sx_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-2P7SX",
 		.owner  = THIS_MODULE,
@@ -322,16 +326,4 @@ static struct platform_driver sensor_module_2p7sx_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_2p7sx_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_module_2p7sx_driver,
-				sensor_module_2p7sx_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_2p7sx_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_2p7sx_init);
+module_platform_driver(sensor_module_2p7sx_driver);

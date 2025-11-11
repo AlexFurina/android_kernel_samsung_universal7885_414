@@ -76,9 +76,9 @@ struct init_vclk exynos9610_cam_hwacg_vclks[] __initdata = {
 
 struct init_vclk exynos9610_cmgp_hwacg_vclks[] __initdata = {
 	HWACG_VCLK(MUX_CMGP_ADC, MUX_CLK_CMGP_ADC, "MUX_CMGP_ADC", NULL, 0, VCLK_GATE, NULL),
-	HWACG_VCLK(MUX_CMGP_I2C, MUX_CLK_CMGP_I2C, "MUX_CMGP_I2C", NULL, 0, VCLK_GATE, NULL),
+	HWACG_VCLK(MUX_CMGP_I2C, MUX_CLK_CMGP_I2C, "MUX_CMGP_I2C", NULL, 0, 0, NULL),
 	HWACG_VCLK(MUX_CMGP_USI00, MUX_CLK_CMGP_USI00, "MUX_CMGP_USI00", NULL, 0, VCLK_GATE, NULL),
-	HWACG_VCLK(MUX_CMGP_USI01, MUX_CLK_CMGP_USI01, "MUX_CMGP_USI01", NULL, 0, VCLK_GATE, NULL),
+	HWACG_VCLK(MUX_CMGP_USI01, MUX_CLK_CMGP_USI01, "MUX_CMGP_USI01", NULL, 0, 0, NULL),
 	HWACG_VCLK(MUX_CMGP_USI02, MUX_CLK_CMGP_USI02, "MUX_CMGP_USI02", NULL, 0, VCLK_GATE, NULL),
 	HWACG_VCLK(MUX_CMGP_USI03, MUX_CLK_CMGP_USI03, "MUX_CMGP_USI03", NULL, 0, VCLK_GATE, NULL),
 	HWACG_VCLK(MUX_CMGP_USI04, MUX_CLK_CMGP_USI04, "MUX_CMGP_USI04", NULL, 0, VCLK_GATE, NULL),
@@ -274,7 +274,7 @@ struct init_vclk exynos9610_cmgp_vclks[] __initdata = {
 struct init_vclk exynos9610_fsys_vclks[] __initdata = {
 	VCLK(MMC_EMBD, CLKCMU_FSYS_MMC_EMBD, "MMC_EMBD", 0, 0, NULL),
 	VCLK(MMC_CARD, CLKCMU_FSYS_MMC_CARD, "MMC_CARD", 0, 0, NULL),
-	VCLK(UFS_EMBD, CLKCMU_FSYS_BUS, "UFS_EMBD", 0, 0, NULL),
+	VCLK(UFS_EMBD, CLKCMU_FSYS_UFS_EMBD, "UFS_EMBD", 0, 0, NULL),
 };
 
 struct init_vclk exynos9610_usb_vclks[] __initdata = {
@@ -312,6 +312,8 @@ static __initdata struct of_device_id ext_clk_match[] = {
 void exynos9610_vclk_init(void)
 {
 	cal_clk_setrate(DIV_CLK_AUD_FM, 40000);
+	cal_clk_setrate(MUX_CLK_CMGP_I2C, 24576000);
+	cal_clk_setrate(MUX_CLK_CMGP_USI01, 24576000);
 }
 
 /* register exynos9610 clocks */

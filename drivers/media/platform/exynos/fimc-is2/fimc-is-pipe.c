@@ -192,9 +192,9 @@ static int fimc_is_pipe_callback(struct fimc_is_device_ischain *device,
 	struct camera2_node *node;
 	struct fimc_is_queue *queue;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!group);
-	FIMC_BUG(!group->leader.vctx);
+	BUG_ON(!device);
+	BUG_ON(!group);
+	BUG_ON(!group->leader.vctx);
 
 	if (!test_bit(FIMC_IS_GROUP_PIPE_OUTPUT, &group->state))
 		goto p_err;
@@ -322,8 +322,8 @@ static int fimc_is_pipe_qbuf(struct fimc_is_video_ctx *vctx,
 	struct fimc_is_video_ctx  *src_vctx, *junction_vctx, *dst_vctx;
 	bool qbuf_proxy = false;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!vctx->video);
+	BUG_ON(!vctx);
+	BUG_ON(!vctx->video);
 
 	mvdbgs(3, "%s(%d)\n", vctx, &vctx->queue, __func__, buf->index);
 
@@ -389,8 +389,8 @@ static int fimc_is_pipe_dqbuf(struct fimc_is_video_ctx *vctx,
 	struct camera2_node *dst_node, *cap_node;
 	struct fimc_is_queue *queue;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!vctx->video);
+	BUG_ON(!vctx);
+	BUG_ON(!vctx->video);
 
 	mvdbgs(3, "%s\n", vctx, &vctx->queue, __func__);
 
@@ -575,8 +575,8 @@ static int fimc_is_pipe_done(struct fimc_is_video_ctx *vctx,
 	struct fimc_is_frame *dst_frame;
 	struct fimc_is_video_ctx *dst_vctx;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!vctx->video);
+	BUG_ON(!vctx);
+	BUG_ON(!vctx->video);
 
 	mvdbgs(3, "%s(%d)\n", vctx, &vctx->queue, __func__, index);
 
@@ -612,12 +612,12 @@ int fimc_is_pipe_create(struct fimc_is_pipe *pipe,
 	int ret = 0;
 	int i = 0;
 
-	FIMC_BUG(!pipe);
-	FIMC_BUG(!src);
-	FIMC_BUG(!src->leader.vctx);
-	FIMC_BUG(!src->junction->vctx);
-	FIMC_BUG(!dst);
-	FIMC_BUG(!dst->leader.vctx);
+	BUG_ON(!pipe);
+	BUG_ON(!src);
+	BUG_ON(!src->leader.vctx);
+	BUG_ON(!src->junction->vctx);
+	BUG_ON(!dst);
+	BUG_ON(!dst->leader.vctx);
 
 	pipe->id = 0;
 	pipe->src = src;

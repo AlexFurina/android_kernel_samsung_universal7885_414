@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2016-2017 Samsung Electronics Co. Ltd.
  *
@@ -7,7 +8,7 @@
  * (at your option) any later version.
  */
 
-  /* usb notify layer v3.1 */
+  /* usb notify layer v3.4 */
 
 #ifndef __LINUX_USBLOG_PROC_NOTIFY_H__
 #define __LINUX_USBLOG_PROC_NOTIFY_H__
@@ -21,6 +22,12 @@ enum usblog_type {
 	NOTIFY_USBMODE_EXTRA,
 	NOTIFY_USBSTATE,
 	NOTIFY_EVENT,
+	NOTIFY_PORT_CONNECT,
+	NOTIFY_PORT_DISCONNECT,
+	NOTIFY_PORT_CLASS,
+	NOTIFY_PCM_PLAYBACK,
+	NOTIFY_PCM_CAPTURE,
+	NOTIFY_EXTRA,
 };
 
 enum usblog_state {
@@ -57,6 +64,10 @@ enum usblog_status {
 	NOTIFY_ATTACH_DRP,
 };
 
+/*
+ *	You should refer "linux/usb/typec/common/pdic_notifier.h"
+ *	ccic_device, ccic_id may be different at each branch
+ */
 enum ccic_device {
 	NOTIFY_DEV_INITIAL = 0,
 	NOTIFY_DEV_USB,
@@ -64,11 +75,11 @@ enum ccic_device {
 	NOTIFY_DEV_PDIC,
 	NOTIFY_DEV_MUIC,
 	NOTIFY_DEV_CCIC,
-#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
 	NOTIFY_DEV_MANAGER,
-#endif
 	NOTIFY_DEV_DP,
 	NOTIFY_DEV_USB_DP,
+	NOTIFY_DEV_SUB_BATTERY,
+	NOTIFY_DEV_SECOND_MUIC,
 };
 
 enum ccic_id {
@@ -76,22 +87,30 @@ enum ccic_id {
 	NOTIFY_ID_ATTACH,
 	NOTIFY_ID_RID,
 	NOTIFY_ID_USB,
-#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
 	NOTIFY_ID_POWER_STATUS,
-#endif
 	NOTIFY_ID_WATER,
 	NOTIFY_ID_VCONN,
+	NOTIFY_ID_OTG,
+	NOTIFY_ID_TA,
 	NOTIFY_ID_DP_CONNECT,
 	NOTIFY_ID_DP_HPD,
 	NOTIFY_ID_DP_LINK_CONF,
 	NOTIFY_ID_USB_DP,
 	NOTIFY_ID_ROLE_SWAP,
+	NOTIFY_ID_FAC,
+	NOTIFY_ID_CC_PIN_STATUS,
+	NOTIFY_ID_WATER_CABLE,
 };
 
 enum ccic_rid {
 	NOTIFY_RID_UNDEFINED = 0,
+#if defined(CONFIG_USB_CCIC_NOTIFIER_USING_QC)
+	NOTIFY_RID_GND,
+	NOTIFY_RID_056K,
+#else
 	NOTIFY_RID_000K,
 	NOTIFY_RID_001K,
+#endif
 	NOTIFY_RID_255K,
 	NOTIFY_RID_301K,
 	NOTIFY_RID_523K,
@@ -133,6 +152,29 @@ enum ccic_pin_assignment {
 	NOTIFY_DP_PIN_F,
 };
 
+enum ccic_pin_status {
+	NOTIFY_PIN_NOTERMINATION = 0,
+	NOTIFY_PIN_CC1_ACTIVE,
+	NOTIFY_PIN_CC2_ACTIVE,
+	NOTIFY_PIN_AUDIO_ACCESSORY,
+};
+
+enum extra {
+	NOTIFY_EXTRA_USBKILLER = 0,
+	NOTIFY_EXTRA_HARDRESET_SENT,
+	NOTIFY_EXTRA_HARDRESET_RECEIVED,
+	NOTIFY_EXTRA_SYSERROR_BOOT_WDT,
+	NOTIFY_EXTRA_SYSMSG_BOOT_POR,
+	NOTIFY_EXTRA_SYSMSG_CC_SHORT,
+	NOTIFY_EXTRA_SYSMSG_SBU_GND_SHORT,
+	NOTIFY_EXTRA_SYSMSG_SBU_VBUS_SHORT,
+	NOTIFY_EXTRA_UVDM_TIMEOUT,
+	NOTIFY_EXTRA_CCOPEN_REQ_SET,
+	NOTIFY_EXTRA_CCOPEN_REQ_CLEAR,
+	NOTIFY_EXTRA_USB_ANALOGAUDIO,
+	NOTIFY_EXTRA_USBHOST_OVERCURRENT,
+};
+
 #define ALTERNATE_MODE_NOT_READY	(1 << 0)
 #define ALTERNATE_MODE_READY		(1 << 1)
 #define ALTERNATE_MODE_STOP		(1 << 2)
@@ -140,15 +182,21 @@ enum ccic_pin_assignment {
 #define ALTERNATE_MODE_RESET		(1 << 4)
 
 #ifdef CONFIG_USB_NOTIFY_PROC_LOG
-extern void store_usblog_notify(int type, void *param1, void *parma2);
+extern void store_usblog_notify(int type, void *param1, void *param2);
 extern void store_ccic_version(unsigned char *hw, unsigned char *sw_main,
 			unsigned char *sw_boot);
+extern unsigned long long show_ccic_version(void);
+extern void store_ccic_bin_version(const unsigned char *sw_main,
+					const unsigned char *sw_boot);
 extern int register_usblog_proc(void);
 extern void unregister_usblog_proc(void);
 #else
-static inline void store_usblog_notify(int type, void *param1, void *parma2) {}
+static inline void store_usblog_notify(int type, void *param1, void *param2) {}
 static inline void store_ccic_version(unsigned char *hw, unsigned char *sw_main,
 			unsigned char *sw_boot) {}
+static inline unsigned long long show_ccic_version(void) {return 0; }
+static inline void store_ccic_bin_version(const unsigned char *sw_main,
+			const unsigned char *sw_boot) {}
 static inline int register_usblog_proc(void)
 			{return 0; }
 static inline void unregister_usblog_proc(void) {}

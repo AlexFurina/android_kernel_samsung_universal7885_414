@@ -37,9 +37,9 @@
 
 #include "fimc-is-device-sensor.h"
 
-ulong frame_fcount(struct fimc_is_frame *frame, void *data)
+int frame_fcount(struct fimc_is_frame *frame, void *data)
 {
-	return (ulong)frame->fcount - (ulong)data;
+	return frame->fcount - (u32)(ulong)data;
 }
 
 int put_frame(struct fimc_is_framemgr *this, struct fimc_is_frame *frame,
@@ -140,7 +140,7 @@ struct fimc_is_frame *peek_frame_tail(struct fimc_is_framemgr *this,
 
 struct fimc_is_frame *find_frame(struct fimc_is_framemgr *this,
 		enum fimc_is_frame_state state,
-		ulong (*fn)(struct fimc_is_frame *, void *), void *data)
+		int (*fn)(struct fimc_is_frame *, void *), void *data)
 {
 	struct fimc_is_frame *frame;
 
@@ -148,8 +148,8 @@ struct fimc_is_frame *find_frame(struct fimc_is_framemgr *this,
 		return NULL;
 
 	if (!this->queued_count[state]) {
-		err("[F%lu] %s frame queue is empty (%s)",
-			(ulong)data, frame_state_name[state], this->name);
+		err("%s frame queue is empty (%s)", frame_state_name[state],
+							this->name);
 		return NULL;
 	}
 
@@ -280,12 +280,12 @@ int frame_manager_close(struct fimc_is_framemgr *this)
 	u32 i;
 	unsigned long flag;
 
-	spin_lock_irqsave(&this->slock, flag);
-
 	if (this->frames) {
-		vfree_atomic(this->frames);
+		vfree(this->frames);
 		this->frames = NULL;
 	}
+
+	spin_lock_irqsave(&this->slock, flag);
 
 	this->num_frames = 0;
 
@@ -314,7 +314,7 @@ int frame_manager_flush(struct fimc_is_framemgr *this)
 
 	spin_unlock_irqrestore(&this->slock, flag);
 
-	FIMC_BUG(this->queued_count[FS_FREE] != this->num_frames);
+	BUG_ON(this->queued_count[FS_FREE] != this->num_frames);
 
 	return 0;
 }

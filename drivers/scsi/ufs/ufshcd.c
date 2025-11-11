@@ -46,8 +46,6 @@
 #include <scsi/ufs/ioctl.h>
 #include <linux/of.h>
 #include <linux/blkdev.h>
-#include <linux/gpio.h>
-
 #include "ufshcd.h"
 #include "ufs_quirks.h"
 #include "unipro.h"
@@ -69,6 +67,9 @@
 #define NOP_OUT_RETRIES    10
 /* Timeout after 30 msecs if NOP OUT hangs without response */
 #define NOP_OUT_TIMEOUT    30 /* msecs */
+
+/* Device initialization completion timeout, unit: ms */
+#define DEV_INIT_COMPL_TIMEOUT  500
 
 /* Query request retries */
 #define QUERY_REQ_RETRIES 3
@@ -200,6 +201,8 @@ ufs_get_pm_lvl_to_link_pwr_state(enum ufs_pm_level lvl)
 
 static struct ufs_dev_fix ufs_fixups[] = {
 	/* UFS cards deviations table */
+	UFS_FIX(UFS_VENDOR_MICRON, UFS_ANY_MODEL,
+		UFS_DEVICE_QUIRK_DELAY_BEFORE_LPM),
 	UFS_FIX(UFS_VENDOR_SAMSUNG, UFS_ANY_MODEL,
 		UFS_DEVICE_QUIRK_DELAY_BEFORE_LPM),
 	UFS_FIX(UFS_VENDOR_SAMSUNG, UFS_ANY_MODEL, UFS_DEVICE_NO_VCCQ),
@@ -251,8 +254,6 @@ static int ufshcd_set_dev_pwr_mode(struct ufs_hba *hba,
 				     enum ufs_dev_pwr_mode pwr_mode);
 static int ufshcd_send_request_sense(struct ufs_hba *hba,
                                struct scsi_device *sdp);
-static void ufshcd_vreg_set_lpm(struct ufs_hba *hba);
-static int ufshcd_vreg_set_hpm(struct ufs_hba *hba);
 static inline bool ufshcd_valid_tag(struct ufs_hba *hba, int tag)
 {
 	return tag >= 0 && tag < hba->nutrs;
@@ -277,6 +278,19 @@ static ssize_t ufshcd_monitor_store(struct device *dev,
 
 	hba->monitor.flag = value;
 	return count;
+}
+
+static void ufshcd_bus_dump(struct ufs_hba *hba)
+{
+	dev_err(hba->dev, "================================\n");
+	dev_err(hba->dev, "imp_err : 0x%08x\n", readl(hba->err_reg + 0x10));
+	dev_err(hba->dev, "slave si0 : 0x%08x\n", readl(hba->monitor_reg));
+	dev_err(hba->dev, "slave si1 : 0x%08x\n", readl(hba->monitor_reg + 0x4));
+	dev_err(hba->dev, "slave si2 : 0x%08x\n", readl(hba->monitor_reg + 0x8));
+	dev_err(hba->dev, "master mi0 : 0x%08x\n", readl(hba->monitor_reg + 0x100));
+	dev_err(hba->dev, "master mi1 : 0x%08x\n", readl(hba->monitor_reg + 0x104));
+	dev_err(hba->dev, "master mi2 : 0x%08x\n", readl(hba->monitor_reg + 0x108));
+	dev_err(hba->dev, "================================\n");
 }
 
 static void ufshcd_init_monitor(struct ufs_hba *hba)
@@ -452,15 +466,17 @@ void ufshcd_print_trs(struct ufs_hba *hba, unsigned long bitmap, bool pr_prdt)
 				sizeof(struct utp_upiu_rsp));
 
 		if (hba->quirks & UFSHCD_QUIRK_PRDT_BYTE_GRAN)
-			prdt_length = le16_to_cpu(lrbp->utr_descriptor_ptr->prd_table_length)
+			prdt_length = le16_to_cpu(
+					lrbp->utr_descriptor_ptr->prd_table_length)
 				/ sizeof(struct ufshcd_sg_entry);
 		else
-			prdt_length = le16_to_cpu(lrbp->utr_descriptor_ptr->prd_table_length);
-
+			prdt_length = le16_to_cpu(
+					lrbp->utr_descriptor_ptr->prd_table_length);
 		dev_err(hba->dev,
 			"UPIU[%d] - PRDT - %d entries  phys@0x%llx\n",
 			tag, prdt_length,
 			(u64)lrbp->ucd_prdt_dma_addr);
+
 		if (pr_prdt)
 			ufshcd_hex_dump("UPIU PRDT: ", lrbp->ucd_prdt_ptr,
 				sizeof(struct ufshcd_sg_entry) * prdt_length);
@@ -885,6 +901,32 @@ static inline void ufshcd_hba_start(struct ufs_hba *hba)
 {
 	ufshcd_writel(hba, CONTROLLER_ENABLE, REG_CONTROLLER_ENABLE);
 }
+
+#ifdef CUSTOMIZE_UPIU_FLAGS
+SIO_PATCH_VERSION(UPIU_customize, 1, 1, "");
+
+/* IOPP-ufs_cp-v1.0.4.9 */
+static void set_customized_upiu_flags(struct ufshcd_lrb *lrbp, u32 *upiu_flags)
+{
+	if (lrbp->command_type == UTP_CMD_TYPE_SCSI) {
+		switch (req_op(lrbp->cmd->request)) {
+		case REQ_OP_READ:
+			*upiu_flags |= UPIU_COMMAND_PRIORITY_HIGH;
+			break;
+		case REQ_OP_WRITE:
+			if (lrbp->cmd->request->cmd_flags & REQ_SYNC)
+				*upiu_flags |= UPIU_COMMAND_PRIORITY_HIGH;
+			break;
+		case REQ_OP_FLUSH:
+			*upiu_flags |= UPIU_TASK_ATTR_HEADQ;
+			break;
+		case REQ_OP_DISCARD:
+			*upiu_flags |= UPIU_TASK_ATTR_ORDERED;
+			break;
+		}
+	}
+}
+#endif
 
 /**
  * ufshcd_is_hba_active - Get controller state
@@ -1522,6 +1564,7 @@ unblock_reqs:
 int ufshcd_hold(struct ufs_hba *hba, bool async)
 {
 	int rc = 0;
+	bool flush_result;
 	unsigned long flags;
 
 	if (!ufshcd_is_clkgating_allowed(hba))
@@ -1906,7 +1949,8 @@ int ufshcd_copy_query_response(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 	memcpy(&query_res->upiu_res, &lrbp->ucd_rsp_ptr->qr, QUERY_OSF_SIZE);
 
 	/* Get the descriptor */
-	if (lrbp->ucd_rsp_ptr->qr.opcode == UPIU_QUERY_OPCODE_READ_DESC) {
+	if (hba->dev_cmd.query.descriptor &&
+	    lrbp->ucd_rsp_ptr->qr.opcode == UPIU_QUERY_OPCODE_READ_DESC) {
 		u8 *descp = (u8 *)lrbp->ucd_rsp_ptr +
 				GENERAL_UPIU_REQUEST_SIZE;
 		u16 resp_len;
@@ -2114,8 +2158,6 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 	struct scsi_cmnd *cmd;
 	int sg_segments;
 	int i, ret;
-	int sector_offset = 0;
-	int page_index = 0;
 
 	cmd = lrbp->cmd;
 	sg_segments = scsi_dma_map(cmd);
@@ -2142,18 +2184,16 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 				cpu_to_le32(upper_32_bits(sg->dma_address));
 			prd_table[i].reserved = 0;
 			hba->transferred_sector += prd_table[i].size;
-
-			ret = ufshcd_vops_crypto_engine_cfg(hba, lrbp, sg, i, sector_offset, page_index++);
-			if (ret) {
-				dev_err(hba->dev,
-					"%s: failed to configure crypto engine (%d)\n",
-					__func__, ret);
-				return ret;
-			}
-			sector_offset += UFSHCI_SECTOR_SIZE / MIN_SECTOR_SIZE;
 		}
 	} else {
 		lrbp->utr_descriptor_ptr->prd_table_length = 0;
+	}
+	ret = ufshcd_vops_crypto_engine_cfg(hba, lrbp);
+	if (ret) {
+		dev_err(hba->dev,
+			"%s: failed to configure crypto engine (%d)\n",
+			__func__, ret);
+		return ret;
 	}
 
 	return 0;
@@ -2201,6 +2241,29 @@ static void ufshcd_disable_intr(struct ufs_hba *hba, u32 intrs)
 	ufshcd_writel(hba, set, REG_INTERRUPT_ENABLE);
 }
 
+/* IOPP-upiu_flags-v1.2.k5.4 */
+static void set_customized_upiu_flags(struct ufshcd_lrb *lrbp, u32 *upiu_flags)
+{
+	if (!lrbp->cmd || !lrbp->cmd->request)
+		return;
+
+	switch (req_op(lrbp->cmd->request)) {
+	case REQ_OP_READ:
+		*upiu_flags |= UPIU_CMD_PRIO_HIGH;
+		break;
+	case REQ_OP_WRITE:
+		if (lrbp->cmd->request->cmd_flags & REQ_SYNC)
+			*upiu_flags |= UPIU_CMD_PRIO_HIGH;
+		break;
+	case REQ_OP_FLUSH:
+		*upiu_flags |= UPIU_TASK_ATTR_HEADQ;
+		break;
+	case REQ_OP_DISCARD:
+		*upiu_flags |= UPIU_TASK_ATTR_ORDERED;
+		break;
+	}
+}
+
 /**
  * ufshcd_prepare_req_desc_hdr() - Fills the requests header
  * descriptor according to request
@@ -2225,6 +2288,8 @@ static void ufshcd_prepare_req_desc_hdr(struct ufshcd_lrb *lrbp,
 		data_direction = UTP_NO_DATA_TRANSFER;
 		*upiu_flags = UPIU_CMD_FLAGS_NONE;
 	}
+
+	set_customized_upiu_flags(lrbp, upiu_flags);
 
 	dword_0 = data_direction | (lrbp->command_type
 				<< UPIU_COMMAND_TYPE_OFFSET);
@@ -2534,8 +2599,10 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 
 	err = ufshcd_map_sg(hba, lrbp);
 	if (err) {
+		ufshcd_release(hba);
 		lrbp->cmd = NULL;
 		clear_bit_unlock(tag, &hba->lrb_in_use);
+		ufshcd_release(hba);
 		goto out;
 	}
 	/* Make sure descriptors are ready before ringing the doorbell */
@@ -2711,7 +2778,8 @@ static bool ufshcd_get_dev_cmd_tag(struct ufs_hba *hba, int *tag_out)
 
 	do {
 		tmp = ~hba->lrb_in_use;
-		tag = find_last_bit(&tmp, hba->nutrs);
+		tmp &= BITMAP_LAST_WORD_MASK(hba->nutrs);
+		tag = (int)(tmp) ? __fls(tmp) : ~0;
 		if (tag >= hba->nutrs)
 			goto out;
 	} while (test_and_set_bit_lock(tag, &hba->lrb_in_use));
@@ -3058,10 +3126,10 @@ static int __ufshcd_query_descriptor(struct ufs_hba *hba,
 		goto out_unlock;
 	}
 
-	hba->dev_cmd.query.descriptor = NULL;
 	*buf_len = be16_to_cpu(response->upiu_res.length);
 
 out_unlock:
+	hba->dev_cmd.query.descriptor = NULL;
 	mutex_unlock(&hba->dev_cmd.lock);
 out:
 	ufshcd_release(hba);
@@ -3940,15 +4008,24 @@ static int __ufshcd_uic_hibern8_enter(struct ufs_hba *hba)
 			     ktime_to_us(ktime_sub(ktime_get(), start)), ret);
 
 	if (ret) {
+		int err;
+
 		dev_err(hba->dev, "%s: hibern8 enter failed. ret = %d\n",
 			__func__, ret);
 		ssleep(2);
 		/*
-		 * If link recovery fails then return error so that caller
-		 * don't retry the hibern8 enter again.
+		 * If link recovery fails then return error code returned from
+		 * ufshcd_link_recovery().
+		 * If link recovery succeeds then return -EAGAIN to attempt
+		 * hibern8 enter retry again.
 		 */
-		if (ufshcd_link_recovery(hba))
-			ret = -ENOLINK;
+		err = ufshcd_link_recovery(hba);
+		if (err) {
+			dev_err(hba->dev, "%s: link recovery failed", __func__);
+			ret = err;
+		} else {
+			ret = -EAGAIN;
+		}
 	}
 
 	return ret;
@@ -3960,7 +4037,7 @@ static int ufshcd_uic_hibern8_enter(struct ufs_hba *hba)
 
 	for (retries = UIC_HIBERN8_ENTER_RETRIES; retries > 0; retries--) {
 		ret = __ufshcd_uic_hibern8_enter(hba);
-		if (!ret || ret == -ENOLINK)
+		if (!ret)
 			goto out;
 	}
 out:
@@ -4010,18 +4087,37 @@ static void ufshcd_init_pwr_info(struct ufs_hba *hba)
 
 static int ufshcd_link_hibern8_ctrl(struct ufs_hba *hba, bool en)
 {
-	int ret;
+	int ret = 0;
 
 	if (hba->vops && hba->vops->hibern8_notify)
 		hba->vops->hibern8_notify(hba, en, PRE_CHANGE);
 
-	if (en)
+	if (en) {
 		ret = ufshcd_uic_hibern8_enter(hba);
-	else
-		ret = ufshcd_uic_hibern8_exit(hba);
+		if (ret)
+			goto err_chk;
 
-	if (ret)
+		if (hba->vops && hba->vops->hibern8_prepare)
+			ret = hba->vops->hibern8_prepare(hba, en, POST_CHANGE);
+
+	} else {
+		if (hba->vops && hba->vops->hibern8_prepare)
+			ret = hba->vops->hibern8_prepare(hba, en, PRE_CHANGE);
+
+		if (!ret)
+			ret = ufshcd_uic_hibern8_exit(hba);
+	}
+
+err_chk:
+	if (ret || (hba->saved_err & INT_FATAL_ERRORS) ||
+		((hba->saved_err & UIC_ERROR) &&
+		((hba->saved_uic_err & UFSHCD_UIC_DL_PA_INIT_ERROR) ||
+		(hba->saved_uic_err & UFSHCD_UIC_DL_ERROR)))) {
+
+		if (!ret)
+			ret = hba->saved_err;
 		goto out;
+	}
 
 	if (hba->monitor.flag & UFSHCD_MONITOR_LEVEL2) {
 		if (en)
@@ -4229,9 +4325,9 @@ EXPORT_SYMBOL_GPL(ufshcd_config_pwr_mode);
  */
 static int ufshcd_complete_dev_init(struct ufs_hba *hba)
 {
-	int i;
 	int err;
 	bool flag_res = 1;
+	unsigned long timeout;
 
 	err = ufshcd_query_flag_retry(hba, UPIU_QUERY_OPCODE_SET_FLAG,
 		QUERY_FLAG_IDN_FDEVICEINIT, NULL);
@@ -4242,22 +4338,30 @@ static int ufshcd_complete_dev_init(struct ufs_hba *hba)
 		goto out;
 	}
 
-	/* poll for max. 1000 iterations for fDeviceInit flag to clear */
-	for (i = 0; i < 1000 && !err && flag_res; i++)
-		err = ufshcd_query_flag_retry(hba, UPIU_QUERY_OPCODE_READ_FLAG,
-			QUERY_FLAG_IDN_FDEVICEINIT, &flag_res);
+	/* Poll fDeviceInit flag to be cleared */
+	timeout = jiffies + msecs_to_jiffies(DEV_INIT_COMPL_TIMEOUT);
 
-	if (!err && flag_res)
-		udelay(100);
+	do {
+		err = ufshcd_query_flag(hba, UPIU_QUERY_OPCODE_READ_FLAG,
+					QUERY_FLAG_IDN_FDEVICEINIT, &flag_res);
+		if (!flag_res)
+			break;
+		usleep_range(1000, 1000);
+	} while (time_before(jiffies, timeout));
 
-	if (err)
+	if (err) {
 		dev_err(hba->dev,
 			"%s reading fDeviceInit flag failed with error %d\n",
 			__func__, err);
-	else if (flag_res)
+		goto out;
+	}
+
+	if (flag_res) {
 		dev_err(hba->dev,
 			"%s fDeviceInit was not cleared by the device\n",
 			__func__);
+		err = -EBUSY;
+	}
 
 out:
 	return err;
@@ -4352,6 +4456,7 @@ static inline void ufshcd_hba_stop(struct ufs_hba *hba, bool can_sleep)
 static int __ufshcd_hba_enable(struct ufs_hba *hba)
 {
 	int retry;
+	int ret = 0;
 
 	/*
 	 * msleep of 1 and 5 used in this function might result in msleep(20),
@@ -4399,9 +4504,9 @@ static int __ufshcd_hba_enable(struct ufs_hba *hba)
 	/* enable UIC related interrupts */
 	ufshcd_enable_intr(hba, UFSHCD_UIC_MASK);
 
-	ufshcd_vops_hce_enable_notify(hba, POST_CHANGE);
+	ret = ufshcd_vops_hce_enable_notify(hba, POST_CHANGE);
 
-	return 0;
+	return ret;
 }
 
 static int ufshcd_disable_tx_lcc(struct ufs_hba *hba, bool peer)
@@ -4923,7 +5028,7 @@ ufshcd_transfer_rsp_status(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 		break;
 	} /* end of switch */
 
-	if (host_byte(result) != DID_OK)
+	if ((host_byte(result) != DID_OK) && !hba->silence_err_logs)
 		ufshcd_print_trs(hba, 1 << lrbp->task_tag, true);
 	return result;
 }
@@ -5170,6 +5275,7 @@ static int ufshcd_disable_auto_bkops(struct ufs_hba *hba)
 
 	hba->auto_bkops_enabled = false;
 	trace_ufshcd_auto_bkops_state(dev_name(hba->dev), "Disabled");
+	hba->is_urgent_bkops_lvl_checked = false;
 out:
 	return err;
 }
@@ -5183,21 +5289,18 @@ out:
  * as well. This function would change the auto-bkops state based on
  * UFSHCD_CAP_KEEP_AUTO_BKOPS_ENABLED_EXCEPT_SUSPEND.
  */
-static int ufshcd_force_reset_auto_bkops(struct ufs_hba *hba)
+static void ufshcd_force_reset_auto_bkops(struct ufs_hba *hba)
 {
-	int ret = 0;
-
 	if (ufshcd_keep_autobkops_enabled_except_suspend(hba)) {
 		hba->auto_bkops_enabled = false;
 		hba->ee_ctrl_mask |= MASK_EE_URGENT_BKOPS;
-		ret = ufshcd_enable_auto_bkops(hba);
+		ufshcd_enable_auto_bkops(hba);
 	} else {
 		hba->auto_bkops_enabled = true;
 		hba->ee_ctrl_mask &= ~MASK_EE_URGENT_BKOPS;
-		ret = ufshcd_disable_auto_bkops(hba);
+		ufshcd_disable_auto_bkops(hba);
 	}
-
-	return ret;
+	hba->is_urgent_bkops_lvl_checked = false;
 }
 
 static inline int ufshcd_get_bkops_status(struct ufs_hba *hba, u32 *status)
@@ -5431,7 +5534,6 @@ out:
 static void ufshcd_err_handler(struct work_struct *work)
 {
 	struct ufs_hba *hba;
-	struct ufs_vreg_info *info;
 	struct exynos_ufs *ufs;
 	unsigned long flags;
 	u32 err_xfer = 0;
@@ -5441,7 +5543,6 @@ static void ufshcd_err_handler(struct work_struct *work)
 	bool needs_reset = false;
 
 	hba = container_of(work, struct ufs_hba, eh_work);
-	info = &hba->vreg_info;
 
 	pm_runtime_get_sync(hba->dev);
 	ufshcd_hold(hba, false);
@@ -5456,12 +5557,6 @@ static void ufshcd_err_handler(struct work_struct *work)
 
 	/* Dump debugging information to system memory */
 	ufshcd_vops_dbg_register_dump(hba);
-
-	/* Dump UFS power & reset_n GPIO status */
-	if (gpio_is_valid(info->ufs_power_gpio))
-		dev_info(hba->dev, "%s: UFS power pin: 0x%08x\n", __func__, gpio_get_value(info->ufs_power_gpio));
-	if (gpio_is_valid(info->ufs_reset_n_gpio))
-		dev_info(hba->dev, "%s: RESET_N: 0x%08x\n", __func__, gpio_get_value(info->ufs_reset_n_gpio));
 
 	spin_lock_irqsave(hba->host->host_lock, flags);
 	if (hba->ufshcd_state == UFSHCD_STATE_RESET)
@@ -5494,8 +5589,8 @@ static void ufshcd_err_handler(struct work_struct *work)
 
 	/*
 	 * if host reset is required then skip clearing the pending
-	 * transfers forcefully because they will automatically get
-	 * cleared after link startup.
+	 * transfers forcefully because they will get cleared during
+	 * host reset and restore
 	 */
 	if (needs_reset)
 		goto skip_pending_xfer_clear;
@@ -5621,13 +5716,7 @@ static void ufshcd_update_uic_error(struct ufs_hba *hba)
 
 	if (reg & UIC_DATA_LINK_LAYER_ERROR_PA_INIT)
 		hba->uic_error |= UFSHCD_UIC_DL_PA_INIT_ERROR;
-	else if (reg & UIC_DATA_LINK_LAYER_ERROR_PA_ERROR_IND_RECEIVED) {
-		if (hba->saved_uic_phy_err_cnt > 10) {
-			hba->uic_error |= UFSHCD_UIC_DL_PA_INIT_ERROR;
-			hba->saved_uic_phy_err_cnt = 0;
-		} else
-			hba->saved_uic_phy_err_cnt++;
-	} else if (hba->dev_quirks &
+	else if (hba->dev_quirks &
 		   UFS_DEVICE_QUIRK_RECOVERY_FROM_DL_NAC_ERRORS) {
 		if (reg & UIC_DATA_LINK_LAYER_ERROR_NAC_RECEIVED)
 			hba->uic_error |=
@@ -5716,6 +5805,7 @@ static void ufshcd_check_errors(struct ufs_hba *hba)
 				ufshcd_print_tmrs(hba, hba->outstanding_tasks);
 				ufshcd_print_trs(hba, hba->outstanding_reqs,
 							pr_prdt);
+				ufshcd_bus_dump(hba);
 			}
 			schedule_work(&hba->eh_work);
 		}
@@ -5752,8 +5842,6 @@ static void ufshcd_sl_intr(struct ufs_hba *hba, u32 intr_status)
 	hba->errors = UFSHCD_ERROR_MASK & intr_status;
 	if (hba->errors)
 		ufshcd_check_errors(hba);
-	else
-		hba->saved_uic_phy_err_cnt = 0;
 
 	if (intr_status & UFSHCD_UIC_MASK)
 		ufshcd_uic_cmd_compl(hba, intr_status);
@@ -5763,10 +5851,6 @@ static void ufshcd_sl_intr(struct ufs_hba *hba, u32 intr_status)
 
 	if (intr_status & UTP_TRANSFER_REQ_COMPL)
 		ufshcd_transfer_req_compl(hba, 0);
-
-	/* Interrupt disable for stop UIC interrupts storm */
-	if (hba->saved_uic_err && (hba->ufshcd_state != UFSHCD_STATE_RESET))
-		ufshcd_disable_intr(hba, UIC_ERROR);
 }
 
 /**
@@ -5779,22 +5863,33 @@ static void ufshcd_sl_intr(struct ufs_hba *hba, u32 intr_status)
  */
 static irqreturn_t ufshcd_intr(int irq, void *__hba)
 {
-	u32 intr_status, enabled_intr_status;
+	u32 intr_status, enabled_intr_status = 0;
 	irqreturn_t retval = IRQ_NONE;
 	struct ufs_hba *hba = __hba;
+	int retries = hba->nutrs;
 
 	spin_lock(hba->host->host_lock);
 	intr_status = ufshcd_readl(hba, REG_INTERRUPT_STATUS);
-	enabled_intr_status =
-		intr_status & ufshcd_readl(hba, REG_INTERRUPT_ENABLE);
 
-	if (intr_status)
-		ufshcd_writel(hba, intr_status, REG_INTERRUPT_STATUS);
+	/*
+	 * There could be max of hba->nutrs reqs in flight and in worst case
+	 * if the reqs get finished 1 by 1 after the interrupt status is
+	 * read, make sure we handle them by checking the interrupt status
+	 * again in a loop until we process all of the reqs before returning.
+	 */
+	while (intr_status && retries--) {
+		enabled_intr_status =
+			intr_status & ufshcd_readl(hba, REG_INTERRUPT_ENABLE);
+		if (intr_status)
+			ufshcd_writel(hba, intr_status, REG_INTERRUPT_STATUS);
+		if (enabled_intr_status) {
+			ufshcd_sl_intr(hba, enabled_intr_status);
+			retval = IRQ_HANDLED;
+		}
 
-	if (enabled_intr_status) {
-		ufshcd_sl_intr(hba, enabled_intr_status);
-		retval = IRQ_HANDLED;
+		intr_status = ufshcd_readl(hba, REG_INTERRUPT_STATUS);
 	}
+
 	spin_unlock(hba->host->host_lock);
 	return retval;
 }
@@ -6058,6 +6153,16 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 
 	/* Dump debugging information to system memory */
 	ufshcd_vops_dbg_register_dump(hba);
+
+	/* check smu abort */
+	err = ufshcd_vops_access_control_abort(hba);
+	if (err == ACCESS_CONTROL_ABORT)
+		dev_err(hba->dev, "%s: Access Control Abort, newly initialized",
+					__func__);
+	else if (err && (err != ACCESS_CONTROL_ABORT))
+		dev_err(hba->dev, "%s: Fail to check Access Control status (%d)",
+					__func__, err);
+
 	reg = ufshcd_readl(hba, REG_UTP_TRANSFER_REQ_DOOR_BELL);
 	/* If command is already aborted/completed, return SUCCESS */
 	if (!(test_bit(tag, &hba->outstanding_reqs))) {
@@ -6071,7 +6176,7 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 		dev_err(hba->dev,
 		"%s: cmd was completed, but without a notifying intr, tag = %d",
 		__func__, tag);
-		goto clean;
+		goto cleanup;
 	}
 
 	/* Print Transfer Request of aborted task */
@@ -6125,7 +6230,7 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 			/* command completed already */
 			dev_err(hba->dev, "%s: cmd at tag %d successfully cleared from DB.\n",
 				__func__, tag);
-			goto out;
+			goto cleanup;
 		} else {
 			dev_err(hba->dev,
 				"%s: no response from device. tag = %d, err %d\n",
@@ -6164,7 +6269,8 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 			__func__, tag, err);
 		goto out;
 	}
-clean:
+
+cleanup:
 	scsi_dma_unmap(cmd);
 
 	spin_lock_irqsave(host->host_lock, flags);
@@ -6207,11 +6313,17 @@ static int ufshcd_host_reset_and_restore(struct ufs_hba *hba)
 	int err = 0;
 	unsigned long flags;
 
-	/* Reset the host controller */
+	/*
+	 * Stop the host controller and complete the requests
+	 * cleared by h/w
+	 */
 	spin_lock_irqsave(hba->host->host_lock, flags);
 	hba->ufshcd_state = UFSHCD_STATE_RESET;
 	ufshcd_set_eh_in_progress(hba);
 	ufshcd_hba_stop(hba, false);
+	hba->silence_err_logs = true;
+	ufshcd_complete_requests(hba);
+	hba->silence_err_logs = false;
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
 
 #if defined(CONFIG_PM_DEVFREQ)
@@ -6253,7 +6365,6 @@ static int ufshcd_host_reset_and_restore(struct ufs_hba *hba)
 static int ufshcd_reset_and_restore(struct ufs_hba *hba)
 {
 	int err = 0;
-	unsigned long flags;
 	int retries = MAX_HOST_RESET_RETRIES;
 
 	int tag;
@@ -6270,15 +6381,6 @@ static int ufshcd_reset_and_restore(struct ufs_hba *hba)
 	do {
 		err = ufshcd_host_reset_and_restore(hba);
 	} while (err && --retries);
-
-	/*
-	 * After reset the door-bell might be cleared, complete
-	 * outstanding requests in s/w here.
-	 */
-	spin_lock_irqsave(hba->host->host_lock, flags);
-	ufshcd_transfer_req_compl(hba, DID_RESET);
-	ufshcd_tmc_handler(hba);
-	spin_unlock_irqrestore(hba->host->host_lock, flags);
 
 	return err;
 }
@@ -6403,19 +6505,19 @@ static u32 ufshcd_find_max_sup_active_icc_level(struct ufs_hba *hba,
 		goto out;
 	}
 
-	if (hba->vreg_info.vcc)
+	if (hba->vreg_info.vcc && hba->vreg_info.vcc->max_uA)
 		icc_level = ufshcd_get_max_icc_level(
 				hba->vreg_info.vcc->max_uA,
 				POWER_DESC_MAX_ACTV_ICC_LVLS - 1,
 				&desc_buf[PWR_DESC_ACTIVE_LVLS_VCC_0]);
 
-	if (hba->vreg_info.vccq)
+	if (hba->vreg_info.vccq && hba->vreg_info.vccq->max_uA)
 		icc_level = ufshcd_get_max_icc_level(
 				hba->vreg_info.vccq->max_uA,
 				icc_level,
 				&desc_buf[PWR_DESC_ACTIVE_LVLS_VCCQ_0]);
 
-	if (hba->vreg_info.vccq2)
+	if (hba->vreg_info.vccq2 && hba->vreg_info.vccq2->max_uA)
 		icc_level = ufshcd_get_max_icc_level(
 				hba->vreg_info.vccq2->max_uA,
 				icc_level,
@@ -6740,37 +6842,19 @@ static int ufshcd_probe_hba(struct ufs_hba *hba)
 {
 	struct ufs_dev_desc card = {0};
 	struct ufs_pa_layer_attr *pwr_info = &hba->max_pwr_info.info;
-	struct ufs_vreg_info *info = &hba->vreg_info;
 	int re_cnt = 0;
-	int ret, link_startup_fail = 0, device_reset = 0;
+	int ret;
 	ktime_t start = ktime_get();
 	unsigned long flags;
 
 retry:
-	/* For deivce power control when link startup fail. */
-	if (link_startup_fail || device_reset) {
-		ufshcd_vreg_set_lpm(hba);
-		ret = ufshcd_vreg_set_hpm(hba);
-		device_reset = 0;
-
-		if (gpio_is_valid(info->ufs_power_gpio))
-			dev_info(hba->dev, "%s: UFS power pin: 0x%08x\n", __func__, gpio_get_value(info->ufs_power_gpio));
-		if (gpio_is_valid(info->ufs_reset_n_gpio))
-			dev_info(hba->dev, "%s: RESET_N: 0x%08x\n", __func__, gpio_get_value(info->ufs_reset_n_gpio));
-		if (ret)
-			goto out;
-	}
-
 	ret = ufshcd_hba_enable(hba);
 	if (ret)
 		goto out;
 
 	ret = ufshcd_link_startup(hba);
-	if (ret) {
-		link_startup_fail = 1;
+	if (ret)
 		goto out;
-	}
-	link_startup_fail = 0;
 
 	dev_info(hba->dev, "UFS link established\n");
 
@@ -6792,6 +6876,8 @@ retry:
 	if (ret)
 		goto out;
 
+	dev_info(hba->dev, "UFS device initialized\n");
+
 	/* Init check for device descriptor sizes */
 	ufshcd_init_desc_sizes(hba);
 
@@ -6812,11 +6898,7 @@ retry:
 
 	/* UFS device is also active now */
 	ufshcd_set_ufs_dev_active(hba);
-	ret = ufshcd_force_reset_auto_bkops(hba);
-	if (ret) {
-		device_reset = 1;
-		goto out;
-	}
+	ufshcd_force_reset_auto_bkops(hba);
 	hba->wlun_dev_clr_ua = true;
 
 	if (ufshcd_get_max_pwr_mode(hba)) {
@@ -6824,14 +6906,24 @@ retry:
 			"%s: Failed getting max supported power mode\n",
 			__func__);
 	} else {
-		if ((pwr_info->lane_rx != pwr_info->peer_available_lane_rx)
-			|| (pwr_info->lane_tx != pwr_info->peer_available_lane_tx)) {
-			dev_info(hba->dev,
-				"%s: availabele lanes, Host:Device Lane tx %d%d rx %d:%d\n",
-				__func__,
-				pwr_info->lane_tx, pwr_info->peer_available_lane_tx,
-				pwr_info->lane_rx, pwr_info->peer_available_lane_rx);
+		if (pwr_info->lane_rx != min(pwr_info->peer_available_lane_rx,
+					pwr_info->available_lane_rx)) {
+			dev_err(hba->dev,
+				"%s: connected lane rx= %d, peer_available lane rx= %d\n",
+				__func__, pwr_info->lane_rx,
+				pwr_info->peer_available_lane_rx);
+			goto out;
 		}
+
+		if (pwr_info->lane_tx != min(pwr_info->peer_available_lane_tx,
+					pwr_info->available_lane_tx)) {
+			dev_err(hba->dev,
+				"%s: connected lane tx= %d, peer_available lane tx= %d\n",
+				__func__, pwr_info->lane_tx,
+				pwr_info->peer_available_lane_tx);
+			goto out;
+		}
+
 		ret = ufshcd_config_pwr_mode(hba, &hba->max_pwr_info.info);
 		if (ret) {
 			dev_err(hba->dev, "%s: Failed setting power mode, err = %d\n",
@@ -6861,15 +6953,9 @@ retry:
 
 		/* clear any previous UFS device information */
 		memset(&hba->dev_info, 0, sizeof(hba->dev_info));
-		ret = ufshcd_query_flag_retry(hba, UPIU_QUERY_OPCODE_READ_FLAG,
-				QUERY_FLAG_IDN_PWR_ON_WPE, &flag);
-		if (!ret)
+		if (!ufshcd_query_flag_retry(hba, UPIU_QUERY_OPCODE_READ_FLAG,
+				QUERY_FLAG_IDN_PWR_ON_WPE, &flag))
 			hba->dev_info.f_power_on_wp_en = flag;
-		else {
-			device_reset = 1;
-			goto out;
-		}
-		device_reset = 0;
 
 		if (!hba->is_init_prefetch)
 			ufshcd_init_icc_levels(hba);
@@ -6878,11 +6964,8 @@ retry:
 
 		/* Add required well known logical units to scsi mid layer */
 		ret = ufshcd_scsi_add_wlus(hba);
-		if (ret) {
-			dev_warn(hba->dev, "%s failed to add w-lus %d\n",
-				__func__, ret);
-			ret = 0;
-		}
+		if (ret)
+			goto out;
 
 		/* Initialize devfreq after UFS device is detected */
 		if (ufshcd_is_clkscaling_supported(hba)) {
@@ -6909,8 +6992,8 @@ retry:
 
 		pm_runtime_put_sync(hba->dev);
 	}
-
-	hba->host->wlun_clr_uac = true;
+	if (hba->sdev_rpmb)
+		hba->host->wlun_clr_uac = true;
 	if (!hba->is_init_prefetch)
 		hba->is_init_prefetch = true;
 
@@ -7227,11 +7310,17 @@ static int ufshcd_ioctl(struct scsi_device *dev, int cmd, void __user *buffer)
 	}
 	switch (cmd) {
 	case SCSI_UFS_REQUEST_SENSE:
-		err = ufshcd_send_request_sense(hba, hba->sdev_rpmb);
-		if (err) {
-			dev_warn(hba->dev, "%s failed to clear uac on rpmb(w-lu) %d\n",
-					__func__, err);
+		if (hba->sdev_rpmb) {
+			err = ufshcd_send_request_sense(hba, hba->sdev_rpmb);
+			if (err) {
+				dev_warn(hba->dev, "%s failed to clear uac on rpmb(w-lu) %d\n",
+						__func__, err);
 			}
+		} else {
+			dev_err(hba->dev, "%s: sdev_rpmb is NULL!\n", __func__);
+			err = -ENXIO;
+			break;
+		}
 		hba->host->wlun_clr_uac = false;
 		break;
 	case UFS_IOCTL_QUERY:
@@ -7283,6 +7372,15 @@ static int ufshcd_config_vreg_load(struct device *dev, struct ufs_vreg *vreg,
 	if (!vreg)
 		return 0;
 
+	/*
+	 * "set_load" operation shall be required on those regulators
+	 * which specifically configured current limitation. Otherwise
+	 * zero max_uA may cause unexpected behavior when regulator is
+	 * enabled or set as high power mode.
+	 */
+	if (!vreg->max_uA)
+		return 0;
+
 	ret = regulator_set_load(vreg->reg, ua);
 	if (ret < 0) {
 		dev_err(dev, "%s: %s set load (ua=%d) failed, err=%d\n",
@@ -7329,12 +7427,15 @@ static int ufshcd_config_vreg(struct device *dev,
 	name = vreg->name;
 
 	if (regulator_count_voltages(reg) > 0) {
-		min_uV = on ? vreg->min_uV : 0;
-		ret = regulator_set_voltage(reg, min_uV, vreg->max_uV);
-		if (ret) {
-			dev_err(dev, "%s: %s set voltage failed, err=%d\n",
+		if (vreg->min_uV && vreg->max_uV) {
+			min_uV = on ? vreg->min_uV : 0;
+			ret = regulator_set_voltage(reg, min_uV, vreg->max_uV);
+			if (ret) {
+				dev_err(dev,
+					"%s: %s set voltage failed, err=%d\n",
 					__func__, name, ret);
-			goto out;
+				goto out;
+			}
 		}
 
 		uA_load = on ? vreg->max_uA : 0;
@@ -7813,10 +7914,8 @@ static int ufshcd_set_dev_pwr_mode(struct ufs_hba *hba,
 	 * callbacks hence set the RQF_PM flag so that it doesn't resume the
 	 * already suspended childs.
 	 */
-	pr_info("%s %d\n", __func__, __LINE__);
 	ret = scsi_execute(sdp, cmd, DMA_NONE, NULL, 0, NULL, &sshdr,
-			(23 * HZ), 0, 0, RQF_PM, NULL);
-	pr_info("%s %d\n", __func__, __LINE__);
+			START_STOP_TIMEOUT, 0, 0, RQF_PM, NULL);
 	if (ret) {
 		sdev_printk(KERN_WARNING, sdp,
 			    "START_STOP failed for power mode: %d, result %x\n",
@@ -8149,7 +8248,9 @@ enable_gating:
 	ufshcd_release(hba);
 out:
 	hba->pm_op_in_progress = 0;
-	dev_info(hba->dev, "UFS suspend done\n");
+
+	if (hba->monitor.flag & UFSHCD_MONITOR_LEVEL1)
+		dev_info(hba->dev, "UFS suspend done\n");
 
 	return ret;
 }
@@ -8581,6 +8682,9 @@ int ufshcd_shutdown(struct ufs_hba *hba)
 {
 	int ret = 0;
 
+	if (!hba->is_powered)
+		goto out;
+
 	if (ufshcd_is_ufs_dev_poweroff(hba) && ufshcd_is_link_off(hba))
 		goto out;
 
@@ -8842,6 +8946,10 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 
 	async_schedule(ufshcd_async_scan, hba);
 	ufshcd_add_sysfs_nodes(hba);
+
+	/* ITMON DEBUG */
+	hba->err_reg = ioremap(0x12200000, 0x100);
+	hba->monitor_reg = ioremap(0x12290000, 0x1000);
 
 	return 0;
 

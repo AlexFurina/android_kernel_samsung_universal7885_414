@@ -16,7 +16,9 @@
 #include <soc/samsung/bts.h>
 #include <soc/samsung/cal-if.h>
 #include <linux/apm-exynos.h>
+#include <soc/samsung/exynos-el3_mon.h>
 #include <sound/samsung/abox.h>
+#include <linux/sec_debug.h>
 
 struct exynos_pm_domain *exynos_pd_lookup_name(const char *domain_name)
 {
@@ -73,15 +75,37 @@ static void exynos_pd_power_on_pre(struct exynos_pm_domain *pd)
 
 static void exynos_pd_power_on_post(struct exynos_pm_domain *pd)
 {
+	int ret;
+#if defined(CONFIG_EXYNOS_BCM)
+	if(cal_pd_status(pd->cal_pdid) && pd->bcm)
+		bcm_pd_sync(pd->bcm, true);
+#endif
+	if (pd->need_smc) {
+		ret = exynos_tz_peri_restore(pd->need_smc);
+		if (ret)
+			pr_err(EXYNOS_PD_PREFIX "%s: %s peri_restore "
+			"funciton returns 0x%x\n", __func__, pd->name, ret);
+	}
 }
 
 static void exynos_pd_power_off_pre(struct exynos_pm_domain *pd)
 {
+	int ret;
 #ifdef CONFIG_EXYNOS_CL_DVFS_G3D
 	if (!strcmp(pd->name, "pd-g3d")) {
 		exynos_g3d_power_down_noti_apm();
 	}
 #endif /* CONFIG_EXYNOS_CL_DVFS_G3D */
+#if defined(CONFIG_EXYNOS_BCM)
+	if(cal_pd_status(pd->cal_pdid) && pd->bcm)
+		bcm_pd_sync(pd->bcm, false);
+#endif
+	if (pd->need_smc) {
+		ret = exynos_tz_peri_save(pd->need_smc);
+		if (ret)
+			pr_err(EXYNOS_PD_PREFIX "%s: %s peri_restore "
+			"funciton returns 0x%x\n", __func__, pd->name, ret);
+	}
 	if (!strcmp(pd->name, "pd-dispaud"))
 		abox_poweroff();
 }
@@ -166,11 +190,13 @@ static int exynos_pd_power_off(struct generic_pm_domain *genpd)
 			exynos_pd_prepare_forced_off(pd);
 			ret = pd->pd_control(pd->cal_pdid, 0);
 			if (unlikely(ret)) {
-				pr_err(EXYNOS_PD_PREFIX "%s occur error at power off!\n", genpd->name);
+				pr_auto(ASL1, EXYNOS_PD_PREFIX "%s occur error at power off!\n", genpd->name);
+				sec_debug_set_extra_info_epd((char *)(genpd->name));
 				goto acc_unlock;
 			}
 		} else {
-			pr_err(EXYNOS_PD_PREFIX "%s occur error at power off!\n", genpd->name);
+			pr_auto(ASL1, EXYNOS_PD_PREFIX "%s occur error at power off!!\n", genpd->name);
+			sec_debug_set_extra_info_epd((char *)(genpd->name));
 			goto acc_unlock;
 		}
 	}

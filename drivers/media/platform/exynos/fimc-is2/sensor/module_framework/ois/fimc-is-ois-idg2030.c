@@ -32,7 +32,7 @@ int fimc_is_ois_read_cal(struct fimc_is_ois *ois)
 	u8 version[20] = {0, };
 	u8 read_ver[3] = {0, };
 
-	FIMC_BUG(!ois);
+	BUG_ON(!ois);
 
 	version[0] = 0x21;
 	version[1] = 0x43;
@@ -85,7 +85,7 @@ int fimc_is_ois_read_user_data(struct fimc_is_ois *ois)
 	u8 send_data[2];
 	u8 read_data[73] = {0, };
 
-	FIMC_BUG(!ois);
+	BUG_ON(!ois);
 
 	/* OIS servo OFF */
 	ret = fimc_is_ois_write(ois->client ,0x0000, 0x00);
@@ -134,7 +134,7 @@ int fimc_is_ois_fw_ver_copy(struct fimc_is_ois *ois, u8 *buf, long size)
 {
 	int ret = 0;
 
-	FIMC_BUG(!ois);
+	BUG_ON(!ois);
 
 	memcpy(p_ois_fw_ver, (void *)buf + OIS_BIN_HEADER, size);
 	memcpy(&p_ois_fw_ver[3], (void *)buf + OIS_BIN_HEADER - 4, 4);
@@ -148,7 +148,7 @@ int fimc_is_ois_fw_version(struct fimc_is_ois *ois)
 	int ret = 0;
 	char version[7] = {0, };
 
-	FIMC_BUG(!ois);
+	BUG_ON(!ois);
 
 	ret = fimc_is_ois_read(ois->client, 0x00FB, &version[0]);
 	if (ret < 0) {
@@ -207,7 +207,7 @@ int fimc_is_ois_fw_ready(struct fimc_is_ois *ois)
 	u8 ois_status[4] = {0, };
 	u32 ois_status32 = 0;
 
-	FIMC_BUG(!ois);
+	BUG_ON(!ois);
 
 	ret = fimc_is_ois_read_multi(ois->client, 0x00FC, ois_status, 4);
 	if (ret < 0) {
@@ -271,7 +271,7 @@ int fimc_is_ois_fw_download(struct fimc_is_ois *ois)
 	int ret = 0;
 	u8 send_data[256];
 
-	FIMC_BUG(!ois);
+	BUG_ON(!ois);
 
 	/* Update a User Program */
 	/* SET FWUP_CTRL REG */
@@ -307,7 +307,7 @@ int fimc_is_ois_fw_update(struct v4l2_subdev *subdev)
 	int ret = 0;
 	struct fimc_is_ois *ois = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	ois = (struct fimc_is_ois *)v4l2_get_subdevdata(subdev);
 	if (!ois) {
@@ -342,7 +342,7 @@ int fimc_is_ois_shift_compensation(struct v4l2_subdev *subdev, int position)
 	u8 shift_x = 0;
 	u8 shift_y = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	ois = (struct fimc_is_ois *)v4l2_get_subdevdata(subdev);
 	if (!ois) {
@@ -383,7 +383,7 @@ int fimc_is_ois_mode_change(struct v4l2_subdev *subdev, int mode)
 	struct i2c_client *client = NULL;
 	u8 write_data[2] = {0,};
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	ois = (struct fimc_is_ois *)v4l2_get_subdevdata(subdev);
 	if (!ois) {
@@ -440,7 +440,7 @@ int fimc_is_ois_init(struct v4l2_subdev *subdev)
 	u16 ois_shift_y_cal = 0;
 	u8 cal_data[2];
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	ois = (struct fimc_is_ois *)v4l2_get_subdevdata(subdev);
 	if(!ois) {
@@ -504,7 +504,7 @@ static struct fimc_is_ois_ops ois_ops = {
 	.ois_fw_update = fimc_is_ois_fw_update,
 };
 
-static int sensor_ois_idg2030_probe(struct i2c_client *client,
+int ois_idg2030_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -517,8 +517,8 @@ static int sensor_ois_idg2030_probe(struct i2c_client *client,
 	struct device_node *dnode;
 	u32 sensor_id = 0;
 
-	FIMC_BUG(!fimc_is_dev);
-	FIMC_BUG(!client);
+	BUG_ON(!fimc_is_dev);
+	BUG_ON(!client);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -583,39 +583,34 @@ p_err:
 	return ret;
 }
 
-static const struct of_device_id sensor_ois_idg2030_match[] = {
+static int ois_idg2030_remove(struct i2c_client *client)
+{
+	int ret = 0;
+	return ret;
+}
+
+static const struct of_device_id exynos_fimc_is_ois_idg2030_match[] = {
 	{
 		.compatible = "samsung,exynos5-fimc-is-ois-idg2030",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, sensor_ois_idg2030_match);
+MODULE_DEVICE_TABLE(of, exynos_fimc_is_ois_idg2030_match);
 
-static const struct i2c_device_id sensor_ois_idg2030_idt[] = {
+static const struct i2c_device_id ois_idg2030_idt[] = {
 	{ OIS_NAME, 0 },
 	{},
 };
 
-static struct i2c_driver sensor_ois_idg2030_driver = {
-	.probe	= sensor_ois_idg2030_probe,
+static struct i2c_driver ois_idg2030_driver = {
 	.driver = {
 		.name	= OIS_NAME,
 		.owner	= THIS_MODULE,
-		.of_match_table = sensor_ois_idg2030_match
-		.suppress_bind_attrs = true,
+		.of_match_table = exynos_fimc_is_ois_idg2030_match
 	},
-	.id_table = sensor_ois_idg2030_idt
+	.probe	= ois_idg2030_probe,
+	.remove	= ois_idg2030_remove,
+	.id_table = ois_idg2030_idt
 };
+module_i2c_driver(ois_idg2030_driver);
 
-static int __init sensor_ois_idg2030_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&sensor_ois_idg2030_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_ois_idg2030_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(sensor_ois_idg2030_init);

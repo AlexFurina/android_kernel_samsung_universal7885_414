@@ -46,6 +46,7 @@ static inline int packetize(struct packetizing_param *param)
 }
 static inline void set_es_size(unsigned int size)
 {
+	return;
 }
 #endif
 

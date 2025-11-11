@@ -31,7 +31,7 @@ int fimc_is_hw_group_cfg(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	device = group->device;
@@ -168,7 +168,7 @@ int fimc_is_hw_group_open(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	leader = &group->leader;

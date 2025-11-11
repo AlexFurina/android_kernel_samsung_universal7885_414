@@ -9,11 +9,7 @@
  */
 
 #include "fimc-is-hw-api-vra.h"
-#if defined(CONFIG_VRA_V2_0)
-#include "sfr/fimc-is-sfr-vra-v20.h"
-#else
 #include "sfr/fimc-is-sfr-vra-v11.h"
-#endif
 
 u32 fimc_is_vra_chain0_get_all_intr(void __iomem *base_addr)
 {

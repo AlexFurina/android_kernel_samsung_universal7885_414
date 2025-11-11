@@ -379,6 +379,16 @@ static void dpp_reg_set_csc_params(u32 id, u32 csc_eq)
 	u32 mode = (type <= CSC_DCI_P3) ? CSC_COEF_HARDWIRED : CSC_COEF_CUSTOMIZED;
 	u32 val, mask;
 
+	if (type == CSC_STANDARD_UNSPECIFIED) {
+		dpp_dbg("unspecified CSC type! -> BT_601\n");
+		type = CSC_BT_601;
+		mode = CSC_COEF_HARDWIRED;
+	}
+	if (range == CSC_RANGE_UNSPECIFIED) {
+		dpp_dbg("unspecified CSC range! -> LIMIT\n");
+		range = CSC_RANGE_LIMITED;
+	}
+
 	val = (DPP_CSC_TYPE(type) | DPP_CSC_RANGE(range) | DPP_CSC_MODE(mode));
 	mask = (DPP_CSC_TYPE_MASK | DPP_CSC_RANGE_MASK | DPP_CSC_MODE_MASK);
 	dpp_write_mask(id, DPP_IN_CON, val, mask);

@@ -7,7 +7,6 @@
 #include <linux/stddef.h>
 #include <linux/debugobjects.h>
 #include <linux/stringify.h>
-#include <linux/version.h>
 
 struct tvec_base;
 
@@ -183,6 +182,7 @@ static inline void timer_setup(struct timer_list *timer,
 
 #define from_timer(var, callback_timer, timer_fieldname) \
 	container_of(callback_timer, typeof(*var), timer_fieldname)
+
 /**
  * timer_pending - is a timer pending?
  * @timer: the timer in question

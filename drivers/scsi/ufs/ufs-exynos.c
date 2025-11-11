@@ -19,13 +19,13 @@
 #include "mphy.h"
 #include "ufshcd-pltfrm.h"
 #include "ufs-exynos.h"
-#include "ufs-exynos-fmp.h"
 #include <soc/samsung/exynos-fsys0-tcxo.h>
 #include <soc/samsung/exynos-cpupm.h>
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
 #include <linux/soc/samsung/exynos-soc.h>
 #include <linux/spinlock.h>
+#include <crypto/fmp.h>
 
 /*
  * Unipro attribute value
@@ -103,13 +103,28 @@ static inline int ufs_init_cal(struct exynos_ufs *ufs, int idx,
 	return 0;
 }
 
+static void exynos_ufs_update_active_lanes(struct ufs_hba *hba)
+{
+	struct exynos_ufs *ufs = to_exynos_ufs(hba);
+	struct ufs_cal_param *p = ufs->cal_param;
+	u32 active_tx_lane = 0;
+	u32 active_rx_lane = 0;
+
+	ufshcd_dme_get(hba, UIC_ARG_MIB(PA_ACTIVETXDATALANES), &(active_tx_lane));
+	ufshcd_dme_get(hba, UIC_ARG_MIB(PA_ACTIVERXDATALANES), &(active_rx_lane));
+
+	p->active_tx_lane = (u8) active_tx_lane;
+	p->active_rx_lane = (u8) active_rx_lane;
+
+	dev_info(ufs->dev, "active_tx_lane(%d), active_rx_lane(%d)\n", p->active_tx_lane, p->active_rx_lane);
+}
+
 static inline int ufs_pre_link(struct exynos_ufs *ufs)
 {
 	int ret = 0;
 	struct ufs_cal_param *p = ufs->cal_param;
 
 	p->mclk_rate = ufs->mclk_rate;
-	p->target_lane = ufs->num_rx_lanes;
 	p->available_lane = ufs->num_rx_lanes;
 
 	if ((ret = ufs_cal_pre_link(p)) != UFS_CAL_NO_ERROR) {
@@ -123,6 +138,9 @@ static inline int ufs_pre_link(struct exynos_ufs *ufs)
 static inline int ufs_post_link(struct exynos_ufs *ufs)
 {
 	int ret = 0;
+
+	/* update active lanes after link*/
+	exynos_ufs_update_active_lanes(ufs->hba);
 
 	if ((ret = ufs_cal_post_link(ufs->cal_param)) != UFS_CAL_NO_ERROR) {
 		dev_err(ufs->dev, "ufs_post_link = %d!!!\n", ret);
@@ -139,7 +157,6 @@ static inline int ufs_pre_gear_change(struct exynos_ufs *ufs,
 	int ret = 0;
 
 	p->pmd = pmd;
-	p->target_lane = pmd->lane;
 	if ((ret = ufs_cal_pre_pmc(p)) != UFS_CAL_NO_ERROR) {
 		dev_err(ufs->dev, "ufs_pre_gear_change = %d!!!\n", ret);
 		return -EPERM;
@@ -379,10 +396,14 @@ static void exynos_ufs_init_pmc_req(struct ufs_hba *hba,
 	struct exynos_ufs *ufs = to_exynos_ufs(hba);
 	struct uic_pwr_mode *req_pmd = &ufs->req_pmd_parm;
 	struct uic_pwr_mode *act_pmd = &ufs->act_pmd_parm;
+	struct ufs_cal_param *p = ufs->cal_param;
 
 	/* update lane variable after link */
 	ufs->num_rx_lanes = pwr_max->lane_rx;
 	ufs->num_tx_lanes = pwr_max->lane_tx;
+
+	p->connected_rx_lane = pwr_max->lane_rx;
+	p->connected_tx_lane = pwr_max->lane_tx;
 
 	pwr_req->gear_rx
 		= act_pmd->gear= min_t(u8, pwr_max->gear_rx, req_pmd->gear);
@@ -556,9 +577,6 @@ static void exynos_ufs_set_features(struct ufs_hba *hba, u32 hw_rev)
 			UFSHCD_QUIRK_UNRESET_INTR_AGGR |
 			UFSHCD_QUIRK_BROKEN_REQ_LIST_CLR;
 
-	hba->quirks |= UFSHCD_QUIRK_GET_UPMCRS_DIRECT |
-		UFSHCD_QUIRK_GET_GENERRCODE_DIRECT;
-
 	/* quirks of exynos-specific driver */
 }
 
@@ -608,8 +626,7 @@ static int exynos_ufs_init(struct ufs_hba *hba)
 		ufs->smu = id;
 
 	/* FMPSECURITY & SMU */
-	exynos_ufs_fmp_sec_cfg(ufs);
-	exynos_ufs_smu_init(ufs);
+	ufshcd_vops_crypto_sec_cfg(hba, true);
 
 	/* Enable log */
 	ret =  exynos_ufs_init_dbg(hba);
@@ -732,11 +749,6 @@ static int exynos_ufs_pre_setup_clocks(struct ufs_hba *hba, bool on)
 	} else {
 		pm_qos_update_request(&ufs->pm_qos_int, 0);
 		pm_qos_update_request(&ufs->pm_qos_fsys0, 0);
-
-		/*
-		 * BG/SQ off
-		 */
-		ret = ufs_post_h8_enter(ufs);
 	}
 
 	return ret;
@@ -749,11 +761,6 @@ static int exynos_ufs_setup_clocks(struct ufs_hba *hba, bool on)
 	unsigned long flags;
 
 	if (on) {
-		/*
-		 * BG/SQ on
-		 */
-		ret = ufs_pre_h8_exit(ufs);
-
 		pm_qos_update_request(&ufs->pm_qos_int, ufs->pm_qos_int_value);
 		pm_qos_update_request(&ufs->pm_qos_fsys0, ufs->pm_qos_fsys0_value);
 
@@ -783,6 +790,61 @@ static int exynos_ufs_setup_clocks(struct ufs_hba *hba, bool on)
 	return ret;
 }
 
+static int exynos_ufs_get_available_lane(struct ufs_hba *hba)
+{
+	struct ufs_pa_layer_attr *pwr_info = &hba->max_pwr_info.info;
+	struct exynos_ufs *ufs = to_exynos_ufs(hba);
+
+	/* Get the available lane count */
+	ufshcd_dme_get(hba, UIC_ARG_MIB(PA_AVAILRXDATALANES),
+			&pwr_info->available_lane_rx);
+	ufshcd_dme_get(hba, UIC_ARG_MIB(PA_AVAILTXDATALANES),
+			&pwr_info->available_lane_tx);
+
+	if (!pwr_info->available_lane_rx || !pwr_info->available_lane_tx) {
+		dev_err(hba->dev, "%s: invalid host available lanes value. rx=%d, tx=%d\n",
+				__func__,
+				pwr_info->available_lane_rx,
+				pwr_info->available_lane_tx);
+		return -EINVAL;
+	}
+
+	if (ufs->num_rx_lanes == 0 || ufs->num_tx_lanes == 0) {
+		ufs->num_rx_lanes = pwr_info->available_lane_rx;
+		ufs->num_tx_lanes = pwr_info->available_lane_tx;
+		WARN(ufs->num_rx_lanes != ufs->num_tx_lanes,
+				"available data lane is not equal(rx:%d, tx:%d)\n",
+				ufs->num_rx_lanes, ufs->num_tx_lanes);
+	}
+
+	return 0;
+
+}
+
+static int exynos_ufs_hce_enable_notify(struct ufs_hba *hba,
+					enum ufs_notify_change_status status)
+{
+	struct exynos_ufs *ufs = to_exynos_ufs(hba);
+	int ret = 0;
+
+	switch (status) {
+	case PRE_CHANGE:
+		break;
+	case POST_CHANGE:
+		exynos_ufs_ctrl_clk(ufs, true);
+		exynos_ufs_select_refclk(ufs, true);
+		exynos_ufs_gate_clk(ufs, false);
+		exynos_ufs_set_hwacg_control(ufs, false);
+
+		ret = exynos_ufs_get_available_lane(hba);
+		break;
+	default:
+		break;
+	}
+
+	return ret;
+}
+
 static int exynos_ufs_link_startup_notify(struct ufs_hba *hba,
 					enum ufs_notify_change_status status)
 {
@@ -798,21 +860,6 @@ static int exynos_ufs_link_startup_notify(struct ufs_hba *hba,
 		exynos_ufs_config_intr(ufs, DFES_DEF_DL_ERRS, UNIP_DL_LYR);
 		exynos_ufs_config_intr(ufs, DFES_DEF_N_ERRS, UNIP_N_LYR);
 		exynos_ufs_config_intr(ufs, DFES_DEF_T_ERRS, UNIP_T_LYR);
-
-		exynos_ufs_ctrl_clk(ufs, true);
-		exynos_ufs_select_refclk(ufs, true);
-		exynos_ufs_gate_clk(ufs, false);
-		exynos_ufs_set_hwacg_control(ufs, false);
-
-		if (ufs->num_rx_lanes == 0 || ufs->num_tx_lanes == 0) {
-			ufshcd_dme_get(hba, UIC_ARG_MIB(PA_AVAILRXDATALANES),
-					&ufs->num_rx_lanes);
-			ufshcd_dme_get(hba, UIC_ARG_MIB(PA_AVAILTXDATALANES),
-					&ufs->num_tx_lanes);
-			WARN(ufs->num_rx_lanes != ufs->num_tx_lanes,
-					"available data lane is not equal(rx:%d, tx:%d)\n",
-					ufs->num_rx_lanes, ufs->num_tx_lanes);
-		}
 
 		ufs->mclk_rate = clk_get_rate(ufs->clk_unipro);
 
@@ -849,6 +896,10 @@ static int exynos_ufs_pwr_change_notify(struct ufs_hba *hba,
 
 		break;
 	case POST_CHANGE:
+
+		/* update active lanes after pmc */
+		exynos_ufs_update_active_lanes(hba);
+
 		/* UIC configuration table after power mode change */
 		ret = ufs_post_gear_change(ufs);
 
@@ -920,6 +971,28 @@ static void exynos_ufs_hibern8_notify(struct ufs_hba *hba,
 	}
 }
 
+static int exynos_ufs_hibern8_prepare(struct ufs_hba *hba,
+				u8 enter, bool notify)
+{
+	struct exynos_ufs *ufs = to_exynos_ufs(hba);
+	int ret = 0;
+	int noti = (int) notify;
+
+	switch (noti) {
+	case PRE_CHANGE:
+		if (!enter)
+			ret = ufs_pre_h8_exit(ufs);
+		break;
+	case POST_CHANGE:
+		if (enter)
+			ret = ufs_post_h8_enter(ufs);
+		break;
+	default:
+		break;
+	}
+
+	return ret;
+}
 static int __exynos_ufs_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 {
 	struct exynos_ufs *ufs = to_exynos_ufs(hba);
@@ -951,8 +1024,7 @@ static int __exynos_ufs_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	exynos_ufs_ctrl_auto_hci_clk(ufs, false);
 
 	/* FMPSECURITY & SMU resume */
-	exynos_ufs_fmp_sec_cfg(ufs);
-	exynos_ufs_smu_resume(ufs);
+	ufshcd_vops_crypto_sec_cfg(hba, false);
 
 	/* secure log */
 #ifdef CONFIG_EXYNOS_SMC_LOGGING
@@ -981,44 +1053,125 @@ static u8 exynos_ufs_get_unipro_direct(struct ufs_hba *hba, u32 num)
 	return unipro_readl(ufs, offset[num]);
 }
 
-static int exynos_ufs_crypto_engine_cfg(struct ufs_hba *hba,
-				struct ufshcd_lrb *lrbp,
-				struct scatterlist *sg, int index,
-				int sector_offset, int page_index)
+#ifdef CONFIG_SCSI_UFS_EXYNOS_FMP
+static struct bio *get_bio(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 {
-	return exynos_ufs_fmp_cfg(hba, lrbp, sg, index, sector_offset, page_index);
+	if (!hba || !lrbp) {
+		pr_err("%s: Invalid MMC:%p data:%p\n", __func__, hba, lrbp);
+		return NULL;
+	}
+
+	if (!virt_addr_valid(lrbp->cmd)) {
+		dev_err(hba->dev, "Invalid cmd:%p\n", lrbp->cmd);
+		return NULL;
+	}
+
+	if (!virt_addr_valid(lrbp->cmd->request->bio)) {
+		if (lrbp->cmd->request->bio)
+			dev_err(hba->dev, "Invalid bio:%p\n",
+				lrbp->cmd->request->bio);
+		return NULL;
+	} else {
+		return lrbp->cmd->request->bio;
+	}
+}
+
+static int exynos_ufs_crypto_engine_cfg(struct ufs_hba *hba,
+				struct ufshcd_lrb *lrbp)
+{
+	int sg_segments = scsi_sg_count(lrbp->cmd);
+	int idx;
+	struct scatterlist *sg;
+	struct bio *bio = get_bio(hba, lrbp);
+	int ret;
+	int sector_offset = 0;
+
+	if (!bio || !sg_segments)
+		return 0;
+
+	scsi_for_each_sg(lrbp->cmd, sg, sg_segments, idx) {
+		ret = exynos_fmp_crypt_cfg(bio,
+			(void *)&lrbp->ucd_prdt_ptr[idx], idx, sector_offset);
+		sector_offset += 8; /* UFSHCI_SECTOR_SIZE / MIN_SECTOR_SIZE */
+		if (ret)
+			return ret;
+	}
+	return 0;
 }
 
 static int exynos_ufs_crypto_engine_clear(struct ufs_hba *hba,
 				struct ufshcd_lrb *lrbp)
 {
-	return exynos_ufs_fmp_clear(hba, lrbp);
+	int sg_segments = scsi_sg_count(lrbp->cmd);
+	int idx;
+	struct scatterlist *sg;
+	struct bio *bio = get_bio(hba, lrbp);
+	int ret;
+
+	if (!bio || !sg_segments)
+		return 0;
+
+	scsi_for_each_sg(lrbp->cmd, sg, sg_segments, idx) {
+		ret = exynos_fmp_crypt_clear(bio,
+			(void *)&lrbp->ucd_prdt_ptr[idx]);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
+static int exynos_ufs_crypto_sec_cfg(struct ufs_hba *hba, bool init)
+{
+	struct exynos_ufs *ufs = to_exynos_ufs(hba);
+
+	dev_err(ufs->dev, "%s: fmp:%d, smu:%d, init:%d\n",
+			__func__, ufs->fmp, ufs->smu, init);
+	return exynos_fmp_sec_cfg(ufs->fmp, ufs->smu, init);
 }
 
 static int exynos_ufs_access_control_abort(struct ufs_hba *hba)
 {
 	struct exynos_ufs *ufs = to_exynos_ufs(hba);
 
-	return exynos_ufs_smu_abort(ufs);
+	dev_err(ufs->dev, "%s: smu:%d, ret:%d\n", __func__, ufs->smu);
+	return exynos_fmp_smu_abort(ufs->smu);
 }
+#else
+static int exynos_ufs_crypto_sec_cfg(struct ufs_hba *hba, bool init)
+{
+	struct exynos_ufs *ufs = to_exynos_ufs(hba);
+
+	writel(0x0, ufs->reg_ufsp + UFSPSBEGIN0);
+	writel(0xffffffff, ufs->reg_ufsp + UFSPSEND0);
+	writel(0xff, ufs->reg_ufsp + UFSPSLUN0);
+	writel(0xf1, ufs->reg_ufsp + UFSPSCTRL0);
+
+	return 0;
+}
+#endif
 
 static struct ufs_hba_variant_ops exynos_ufs_ops = {
 	.init = exynos_ufs_init,
 	.host_reset = exynos_ufs_host_reset,
 	.pre_setup_clocks = exynos_ufs_pre_setup_clocks,
 	.setup_clocks = exynos_ufs_setup_clocks,
+	.hce_enable_notify = exynos_ufs_hce_enable_notify,
 	.link_startup_notify = exynos_ufs_link_startup_notify,
 	.pwr_change_notify = exynos_ufs_pwr_change_notify,
 	.set_nexus_t_xfer_req = exynos_ufs_set_nexus_t_xfer_req,
 	.set_nexus_t_task_mgmt = exynos_ufs_set_nexus_t_task_mgmt,
 	.hibern8_notify = exynos_ufs_hibern8_notify,
+	.hibern8_prepare = exynos_ufs_hibern8_prepare,
 	.dbg_register_dump = exynos_ufs_dump_debug_info,
 	.suspend = __exynos_ufs_suspend,
 	.resume = __exynos_ufs_resume,
 	.get_unipro_result = exynos_ufs_get_unipro_direct,
+#ifdef CONFIG_SCSI_UFS_EXYNOS_FMP
 	.crypto_engine_cfg = exynos_ufs_crypto_engine_cfg,
 	.crypto_engine_clear = exynos_ufs_crypto_engine_clear,
 	.access_control_abort = exynos_ufs_access_control_abort,
+#endif
+	.crypto_sec_cfg = exynos_ufs_crypto_sec_cfg,
 };
 
 static int exynos_ufs_populate_dt_phy(struct device *dev, struct exynos_ufs *ufs)

@@ -56,10 +56,6 @@ static ulong ramoops_pmsg_size = MIN_MEM_SIZE;
 module_param_named(pmsg_size, ramoops_pmsg_size, ulong, 0400);
 MODULE_PARM_DESC(pmsg_size, "size of user space message log");
 
-static ulong ramoops_annotate_size = MIN_MEM_SIZE;
-module_param_named(annotate_size, ramoops_annotate_size, ulong, 0400);
-MODULE_PARM_DESC(annotate_size, "size of annotation");
-
 static unsigned long long mem_address;
 module_param_hw(mem_address, ullong, other, 0400);
 MODULE_PARM_DESC(mem_address,
@@ -92,7 +88,6 @@ struct ramoops_context {
 	struct persistent_ram_zone *cprz;	/* Console zone */
 	struct persistent_ram_zone **fprzs;	/* Ftrace zones */
 	struct persistent_ram_zone *mprz;	/* PMSG zone */
-	struct persistent_ram_zone *aprz;
 	phys_addr_t phys_addr;
 	unsigned long size;
 	unsigned int memtype;
@@ -100,7 +95,6 @@ struct ramoops_context {
 	size_t console_size;
 	size_t ftrace_size;
 	size_t pmsg_size;
-	size_t annotate_size;
 	int dump_oops;
 	u32 flags;
 	struct persistent_ram_ecc_info ecc_info;
@@ -112,7 +106,6 @@ struct ramoops_context {
 	unsigned int max_ftrace_cnt;
 	unsigned int ftrace_read_cnt;
 	unsigned int pmsg_read_cnt;
-	unsigned int annotate_read_cnt;
 	struct pstore_info pstore;
 };
 
@@ -127,7 +120,6 @@ static int ramoops_pstore_open(struct pstore_info *psi)
 	cxt->console_read_cnt = 0;
 	cxt->ftrace_read_cnt = 0;
 	cxt->pmsg_read_cnt = 0;
-	cxt->annotate_read_cnt = 0;
 	return 0;
 }
 
@@ -287,11 +279,6 @@ static ssize_t ramoops_pstore_read(struct pstore_record *record)
 		prz = ramoops_get_next_prz(&cxt->mprz, &cxt->pmsg_read_cnt,
 					   1, &record->id, &record->type,
 					   PSTORE_TYPE_PMSG, 0);
-	if (!prz_ok(prz)) {
-		prz = ramoops_get_next_prz(&cxt->aprz, &cxt->annotate_read_cnt,
-					1, &record->id, &record->type, PSTORE_TYPE_ANNOTATE, 0);
-		persistent_ram_annotation_merge(prz);
-	}
 
 	/* ftrace is last since it may want to dynamically allocate memory. */
 	if (!prz_ok(prz)) {
@@ -310,6 +297,7 @@ static ssize_t ramoops_pstore_read(struct pstore_record *record)
 					  GFP_KERNEL);
 			if (!tmp_prz)
 				return -ENOMEM;
+			prz = tmp_prz;
 			free_prz = true;
 
 			while (cxt->ftrace_read_cnt < cxt->max_ftrace_cnt) {
@@ -332,7 +320,6 @@ static ssize_t ramoops_pstore_read(struct pstore_record *record)
 					goto out;
 			}
 			record->id = 0;
-			prz = tmp_prz;
 		}
 	}
 
@@ -415,11 +402,6 @@ static int notrace ramoops_pstore_write(struct pstore_record *record)
 	} else if (record->type == PSTORE_TYPE_PMSG) {
 		pr_warn_ratelimited("PMSG shouldn't call %s\n", __func__);
 		return -EINVAL;
-	} else if (record->type == PSTORE_TYPE_ANNOTATE) {
-		if (!cxt->aprz)
-			return -ENOMEM;
-		persistent_ram_write(cxt->aprz, record->buf, record->size);
-		return 0;
 	}
 
 	if (record->type != PSTORE_TYPE_DMESG)
@@ -429,7 +411,8 @@ static int notrace ramoops_pstore_write(struct pstore_record *record)
 	 * Out of the various dmesg dump types, ramoops is currently designed
 	 * to only store crash logs, rather than storing general kernel logs.
 	 */
-	if (record->reason != KMSG_DUMP_PANIC)
+	if (record->reason != KMSG_DUMP_OOPS &&
+	    record->reason != KMSG_DUMP_PANIC)
 		return -EINVAL;
 
 	/* Skip Oopes when configured to do so. */
@@ -449,6 +432,17 @@ static int notrace ramoops_pstore_write(struct pstore_record *record)
 		return -ENOSPC;
 
 	prz = cxt->dprzs[cxt->dump_write_cnt];
+
+	/*
+	 * Since this is a new crash dump, we need to reset the buffer in
+	 * case it still has an old dump present. Without this, the new dump
+	 * will get appended, which would seriously confuse anything trying
+	 * to check dump file contents. Specifically, ramoops_read_kmsg_hdr()
+	 * expects to find a dump header in the beginning of buffer data, so
+	 * we must to reset the buffer values, in order to ensure that the
+	 * header will be written to the beginning of the buffer.
+	 */
+	persistent_ram_zap(prz);
 
 	/* Build header and append record contents. */
 	hlen = ramoops_write_kmsg_hdr(prz, record);
@@ -497,9 +491,6 @@ static int ramoops_pstore_erase(struct pstore_record *record)
 		break;
 	case PSTORE_TYPE_PMSG:
 		prz = cxt->mprz;
-		break;
-	case PSTORE_TYPE_ANNOTATE:
-		prz = cxt->aprz;
 		break;
 	default:
 		return -EINVAL;
@@ -721,7 +712,6 @@ static int ramoops_parse_dt(struct platform_device *pdev,
 	parse_size("pmsg-size", pdata->pmsg_size);
 	parse_size("ecc-size", pdata->ecc_info.ecc_size);
 	parse_size("flags", pdata->flags);
-	parse_size("ramoops-annotate-size", pdata->annotate_size);
 
 #undef parse_size
 
@@ -752,7 +742,7 @@ static int ramoops_probe(struct platform_device *pdev)
 		if (err < 0)
 			goto fail_out;
 	}
-	
+
 	/*
 	 * Only a single ramoops area allowed at a time, so fail extra
 	 * probes.
@@ -769,8 +759,7 @@ static int ramoops_probe(struct platform_device *pdev)
 	}
 
 	if (!pdata->mem_size || (!pdata->record_size && !pdata->console_size &&
-			!pdata->ftrace_size && !pdata->pmsg_size &&
-			!pdata->annotate_size)) {
+			!pdata->ftrace_size && !pdata->pmsg_size)) {
 		pr_err("The memory size and the record/console size must be "
 			"non-zero\n");
 		goto fail_out;
@@ -784,13 +773,6 @@ static int ramoops_probe(struct platform_device *pdev)
 		pdata->ftrace_size = rounddown_pow_of_two(pdata->ftrace_size);
 	if (pdata->pmsg_size && !is_power_of_2(pdata->pmsg_size))
 		pdata->pmsg_size = rounddown_pow_of_two(pdata->pmsg_size);
-	if (pdata->annotate_size && !is_power_of_2(pdata->annotate_size))
-		pdata->annotate_size =
-			rounddown_pow_of_two(pdata->annotate_size);
-
-	pr_debug("All %#lx record %#lx console %#lx ftrace %#lx annotate %#lx\n",
-		pdata->mem_size, pdata->record_size, pdata->console_size,
-		pdata->ftrace_size, pdata->annotate_size);
 
 	cxt->size = pdata->mem_size;
 	cxt->phys_addr = pdata->mem_address;
@@ -799,7 +781,6 @@ static int ramoops_probe(struct platform_device *pdev)
 	cxt->console_size = pdata->console_size;
 	cxt->ftrace_size = pdata->ftrace_size;
 	cxt->pmsg_size = pdata->pmsg_size;
-	cxt->annotate_size = pdata->annotate_size;
 	cxt->dump_oops = pdata->dump_oops;
 	cxt->flags = pdata->flags;
 	cxt->ecc_info = pdata->ecc_info;
@@ -807,7 +788,7 @@ static int ramoops_probe(struct platform_device *pdev)
 	paddr = cxt->phys_addr;
 
 	dump_mem_sz = cxt->size - cxt->console_size - cxt->ftrace_size
-			- cxt->pmsg_size - cxt->annotate_size;
+			- cxt->pmsg_size;
 	err = ramoops_init_przs("dump", dev, cxt, &cxt->dprzs, &paddr,
 				dump_mem_sz, cxt->record_size,
 				&cxt->max_dump_cnt, 0, 0);
@@ -835,37 +816,37 @@ static int ramoops_probe(struct platform_device *pdev)
 	if (err)
 		goto fail_init_mprz;
 
-	 err = ramoops_init_prz("annotate", dev, cxt, &cxt->aprz, &paddr,
-				cxt->annotate_size, 0);
-
-	if (err) {
-		goto fail_init_aprz;
-	}
-
 	cxt->pstore.data = cxt;
+	/*
+	 * Prepare frontend flags based on which areas are initialized.
+	 * For ramoops_init_przs() cases, the "max count" variable tells
+	 * if there are regions present. For ramoops_init_prz() cases,
+	 * the single region size is how to check.
+	 */
+	cxt->pstore.flags = 0;
+	if (cxt->max_dump_cnt)
+		cxt->pstore.flags |= PSTORE_FLAGS_DMESG;
+	if (cxt->console_size)
+		cxt->pstore.flags |= PSTORE_FLAGS_CONSOLE;
+	if (cxt->max_ftrace_cnt)
+		cxt->pstore.flags |= PSTORE_FLAGS_FTRACE;
+	if (cxt->pmsg_size)
+		cxt->pstore.flags |= PSTORE_FLAGS_PMSG;
+
 	/*
 	 * Since bufsize is only used for dmesg crash dumps, it
 	 * must match the size of the dprz record (after PRZ header
 	 * and ECC bytes have been accounted for).
 	 */
-	cxt->pstore.bufsize = cxt->dprzs[0]->buffer_size;
-	cxt->pstore.buf = kzalloc(cxt->pstore.bufsize, GFP_KERNEL);
-	if (!cxt->pstore.buf) {
-		pr_err("cannot allocate pstore crash dump buffer\n");
-		err = -ENOMEM;
-		goto fail_clear;
+	if (cxt->pstore.flags & PSTORE_FLAGS_DMESG) {
+		cxt->pstore.bufsize = cxt->dprzs[0]->buffer_size;
+		cxt->pstore.buf = kzalloc(cxt->pstore.bufsize, GFP_KERNEL);
+		if (!cxt->pstore.buf) {
+			pr_err("cannot allocate pstore crash dump buffer\n");
+			err = -ENOMEM;
+			goto fail_clear;
+		}
 	}
-	spin_lock_init(&cxt->pstore.buf_lock);
-
-	cxt->pstore.flags = PSTORE_FLAGS_DMESG;
-	if (cxt->console_size)
-		cxt->pstore.flags |= PSTORE_FLAGS_CONSOLE;
-	if (cxt->ftrace_size)
-		cxt->pstore.flags |= PSTORE_FLAGS_FTRACE;
-	if (cxt->pmsg_size)
-		cxt->pstore.flags |= PSTORE_FLAGS_PMSG;
-	if (cxt->annotate_size)
-		cxt->pstore.flags |= PSTORE_FLAGS_ANNOTATE;
 
 	err = pstore_register(&cxt->pstore);
 	if (err) {
@@ -895,10 +876,7 @@ fail_buf:
 	kfree(cxt->pstore.buf);
 fail_clear:
 	cxt->pstore.bufsize = 0;
-	cxt->max_dump_cnt = 0;
 	persistent_ram_free(cxt->mprz);
-fail_init_aprz:
-	persistent_ram_free(cxt->aprz);
 fail_init_mprz:
 fail_init_fprz:
 	persistent_ram_free(cxt->cprz);

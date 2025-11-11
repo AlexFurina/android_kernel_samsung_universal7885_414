@@ -86,7 +86,7 @@ static u32 get_vci_channel(struct fimc_is_vci *vci,
 	u32 i;
 	u32 index = vcis;
 
-	FIMC_BUG(!vci);
+	BUG_ON(!vci);
 
 	for (i = 0; i < vcis; i++) {
 		if (vci[i].pixelformat == pixelformat) {
@@ -213,7 +213,7 @@ int fimc_is_csi_open(struct v4l2_subdev *subdev,
 	struct fimc_is_device_csi *csi;
 	struct fimc_is_device_sensor *device;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	csi = v4l2_get_subdevdata(subdev);
 	if (!csi) {
@@ -257,7 +257,7 @@ int fimc_is_csi_close(struct v4l2_subdev *subdev)
 	int ret = 0;
 	struct fimc_is_device_csi *csi;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	csi = v4l2_get_subdevdata(subdev);
 	if (!csi) {
@@ -282,7 +282,7 @@ static int csi_init(struct v4l2_subdev *subdev, u32 value)
 	struct fimc_is_module_enum *module;
 	struct fimc_is_device_sensor *device;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	csi = v4l2_get_subdevdata(subdev);
 	if (!csi) {
@@ -301,6 +301,7 @@ static int csi_init(struct v4l2_subdev *subdev, u32 value)
 	csi->image.framerate = SENSOR_DEFAULT_FRAMERATE; /* default frame rate */
 	csi->mode = module->mode;
 	csi->lanes = module->lanes;
+	csi->image.format.bitwidth = module->bitwidth;
 
 p_err:
 	return ret;
@@ -312,7 +313,7 @@ static int csi_s_power(struct v4l2_subdev *subdev,
 	int ret = 0;
 	struct fimc_is_device_csi *csi;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	csi = (struct fimc_is_device_csi *)v4l2_get_subdevdata(subdev);
 	if (!csi) {
@@ -343,8 +344,8 @@ static int csi_stream_on(struct fimc_is_device_csi *csi)
 	u32 __iomem *base_reg;
 	struct fimc_is_device_sensor *device;
 
-	FIMC_BUG(!csi);
-	FIMC_BUG(!csi->sensor_cfg);
+	BUG_ON(!csi);
+	BUG_ON(!csi->sensor_cfg);
 
 	device = container_of(csi->subdev, struct fimc_is_device_sensor, subdev_csi);
 	base_reg = csi->base_reg;
@@ -415,7 +416,7 @@ static int csi_stream_off(struct fimc_is_device_csi *csi)
 	int ret = 0;
 	u32 __iomem *base_reg;
 
-	FIMC_BUG(!csi);
+	BUG_ON(!csi);
 
 	base_reg = csi->base_reg;
 
@@ -431,7 +432,7 @@ static int csi_s_stream(struct v4l2_subdev *subdev, int enable)
 	int ret = 0;
 	struct fimc_is_device_csi *csi;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	csi = (struct fimc_is_device_csi *)v4l2_get_subdevdata(subdev);
 	if (!csi) {
@@ -467,8 +468,8 @@ static int csi_s_param(struct v4l2_subdev *subdev, struct v4l2_streamparm *param
 	struct v4l2_captureparm *cp;
 	struct v4l2_fract *tpf;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!param);
+	BUG_ON(!subdev);
+	BUG_ON(!param);
 
 	cp = &param->parm.capture;
 	tpf = &cp->timeperframe;
@@ -492,8 +493,8 @@ static int csi_s_format(struct v4l2_subdev *subdev,
 	int ret = 0;
 	struct fimc_is_device_csi *csi;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!fmt);
+	BUG_ON(!subdev);
+	BUG_ON(!fmt);
 
 	csi = (struct fimc_is_device_csi *)v4l2_get_subdevdata(subdev);
 	if (!csi) {
@@ -544,7 +545,7 @@ int fimc_is_csi_probe(void *parent, u32 instance)
 	struct resource *mem_res;
 	struct platform_device *pdev;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	subdev_csi = kzalloc(sizeof(struct v4l2_subdev), GFP_KERNEL);
 	if (!subdev_csi) {

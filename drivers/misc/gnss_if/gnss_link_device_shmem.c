@@ -40,14 +40,13 @@
 #include "gnss_link_device_shmem.h"
 
 #include "gnss_prj.h"
-#include "gnss_utils.h"
 
 void gnss_write_reg(struct shmem_link_device *shmd,
 		enum gnss_reg_type reg, u32 value)
 {
 	struct gnss_shared_reg *gnss_reg = shmd->reg[reg];
 	if (gnss_reg) {
-		switch (gnss_reg->device) {
+		switch(gnss_reg->device) {
 		case GNSS_IPC_MBOX:
 			mbox_set_value(shmd->mbx->id, gnss_reg->value.index, value);
 			break;
@@ -58,7 +57,8 @@ void gnss_write_reg(struct shmem_link_device *shmd,
 			gif_err("Don't know where to write register! (%d)\n",
 					gnss_reg->device);
 		}
-	} else {
+	}
+	else {
 		gif_err("Couldn't find the register node.\n");
 	}
 	return;
@@ -70,7 +70,7 @@ u32 gnss_read_reg(struct shmem_link_device *shmd, enum gnss_reg_type reg)
 	u32 ret = 0;
 
 	if (gnss_reg) {
-		switch (gnss_reg->device) {
+		switch(gnss_reg->device) {
 		case GNSS_IPC_MBOX:
 			ret = mbox_get_value(shmd->mbx->id, gnss_reg->value.index);
 			break;
@@ -81,7 +81,8 @@ u32 gnss_read_reg(struct shmem_link_device *shmd, enum gnss_reg_type reg)
 			gif_err("Don't know where to read register from! (%d)\n",
 					gnss_reg->device);
 		}
-	} else {
+	}
+	else {
 		gif_err("Couldn't find the register node.\n");
 	}
 
@@ -141,7 +142,7 @@ static void get_shmem_status(struct shmem_link_device *shmd,
 }
 
 static inline void update_rxq_tail_status(struct shmem_link_device *shmd,
-		struct mem_status *mst)
+                                          struct mem_status *mst)
 {
 	mst->tail[RX] = get_rxq_tail(shmd);
 }
@@ -390,8 +391,6 @@ static void shmem_irq_msg_handler(void *data)
 
 	gnss_msq_get_free_slot(&shmd->rx_msq);
 
-	shmd->rx_int_count++;
-
 	/*
 	intr = recv_int2ap(shmd);
 	if (unlikely(!INT_VALID(intr))) {
@@ -420,10 +419,8 @@ static void write_ipc_to_txq(struct shmem_link_device *shmd,
 	u8 *src = skb->data;
 	u32 len = skb->len;
 
-#ifdef DEBUG_GNSS_IPC_PKT
 	/* Print send data to GNSS */
-	gnss_log_ipc_pkt(skb, TX);
-#endif
+	/* gnss_log_ipc_pkt(skb, TX); */
 
 	/* Write data to the TXQ */
 	circ_write(buff, src, qsize, in, len);
@@ -724,6 +721,19 @@ shmem_copy_to_fault:
 	return err;
 }
 
+static void shmem_set_autorun_cmd(struct link_device *ld, u32 size)
+{
+	struct shmem_link_device *shmd = to_shmem_link_device(ld);
+	u32 *cmd = (u32 *)shmd->res_mem.vaddr;
+
+	gif_err("+++\n");
+
+	cmd[0] = GNSS_AUTO_RUN;	/* command */
+	cmd[1] = 0;		/* fw start address */
+	cmd[2] = size;		/* firmware size */
+	cmd[3] = 0;		/* reserved */
+}
+
 static int shmem_copy_reserved_from_user(struct link_device *ld, u32 offset,
 			void __user *user_src, u32 size)
 {
@@ -737,7 +747,7 @@ static int shmem_copy_reserved_from_user(struct link_device *ld, u32 offset,
 		goto shmem_copy_from_fault;
 	}
 
-	gif_info("base addr = 0x%p\n", shmd->res_mem.vaddr);
+	gif_debug("base addr = 0x%p\n", shmd->res_mem.vaddr);
 	err = copy_from_user((void *)shmd->res_mem.vaddr + offset,
 				user_src, size);
 	if (err) {
@@ -763,7 +773,7 @@ static int shmem_dump_fault_mem_to_user(struct link_device *ld,
 		goto shmem_dump_mem_to_fault;
 	}
 
-	gif_info("fault addr = 0x%p\n", shmd->fault_mem.vaddr);
+	gif_debug("fault addr = 0x%p\n", shmd->fault_mem.vaddr);
 	err = copy_to_user(user_dst, shmd->fault_mem.vaddr, size);
 
 	if (err) {
@@ -823,41 +833,6 @@ shmem_dump_mbx_to_fault:
 	return err;
 }
 
-static ssize_t rx_int_count_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct gnss_data *gnss;
-	gnss = (struct gnss_data *)dev->platform_data;
-	return sprintf(buf, "%d\n", gnss->shmd->rx_int_count);
-}
-
-static ssize_t rx_int_count_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	struct gnss_data *gnss;
-	int val = 0;
-	int ret;
-	gnss = (struct gnss_data *)dev->platform_data;
-	ret = sscanf(buf, "%u", &val);
-
-	if (val == 0)
-		gnss->shmd->rx_int_count = 0;
-	return count;
-}
-
-static DEVICE_ATTR_RW(rx_int_count);
-
-static struct attribute *shmem_attrs[] = {
-	&dev_attr_rx_int_count.attr,
-	NULL,
-};
-
-static const struct attribute_group shmem_group = {		\
-	.attrs = shmem_attrs,					\
-	.name = "shmem",
-};
-
 struct link_device *create_link_device_shmem(struct platform_device *pdev)
 {
 	struct shmem_link_device *shmd = NULL;
@@ -865,8 +840,7 @@ struct link_device *create_link_device_shmem(struct platform_device *pdev)
 	struct gnss_data *gnss = NULL;
 	struct device *dev = &pdev->dev;
 	int err = 0;
-
-	gif_info("+++\n");
+	gif_debug("+++\n");
 
 	/* Get the gnss (platform) data */
 	gnss = (struct gnss_data *)dev->platform_data;
@@ -896,6 +870,8 @@ struct link_device *create_link_device_shmem(struct platform_device *pdev)
 	ld->timeout_cnt = 0;
 	ld->name = "GNSS_SHDMEM";
 
+	ld->set_autorun_cmd = shmem_set_autorun_cmd;
+
 	/* Assign reserved memory methods */
 	ld->copy_reserved_from_user = shmem_copy_reserved_from_user;
 	ld->copy_reserved_to_user = shmem_copy_reserved_to_user;
@@ -912,11 +888,7 @@ struct link_device *create_link_device_shmem(struct platform_device *pdev)
 	ld->skb_rxq = &ld->sk_fmt_rx_q;
 
 	/* Initialize GNSS Reserved mem */
-#if defined(CONFIG_SOC_EXYNOS9610)
-	shmd->res_mem.size = gnss->shmem_size;
-#else
 	shmd->res_mem.size = gnss->ipcmem_offset;
-#endif
 	shmd->res_mem.paddr = gnss->shmem_base;
 	shmd->res_mem.vaddr = shm_request_region(shmd->res_mem.paddr,
 			shmd->res_mem.size);
@@ -954,7 +926,7 @@ struct link_device *create_link_device_shmem(struct platform_device *pdev)
 	shmd->reg = gnss->reg;
 
 	shmd->ipc_mem.size = gnss->ipc_size;
-	shmd->ipc_mem.paddr = gnss->shmem_base + gnss->ipcmem_offset;
+	shmd->ipc_mem.paddr = shmd->res_mem.paddr + shmd->res_mem.size;
 	shmd->ipc_mem.vaddr = shm_request_region(shmd->ipc_mem.paddr,
 			shmd->ipc_mem.size);
 	if (!shmd->ipc_mem.vaddr) {
@@ -1005,13 +977,7 @@ struct link_device *create_link_device_shmem(struct platform_device *pdev)
 		goto error;
 	}
 
-	/* Link link device to gnss_data */
-	gnss->shmd = shmd;
-
-	if (sysfs_create_group(&pdev->dev.kobj, &shmem_group))
-		gif_err("failed to create sysfs node\n");
-
-	gif_info("---\n");
+	gif_debug("---\n");
 	return ld;
 
 error:

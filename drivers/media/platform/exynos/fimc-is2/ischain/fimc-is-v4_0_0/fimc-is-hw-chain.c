@@ -40,7 +40,7 @@ int fimc_is_hw_group_cfg(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	device = group->device;
@@ -181,7 +181,7 @@ int fimc_is_hw_group_open(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	leader = &group->leader;
@@ -459,8 +459,8 @@ int fimc_is_hw_get_address(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	struct fimc_is_interface_hwip *itf_hwip = NULL;
 
-	FIMC_BUG(!itfc_data);
-	FIMC_BUG(!pdev_data);
+	BUG_ON(!itfc_data);
+	BUG_ON(!pdev_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -598,7 +598,7 @@ int fimc_is_hw_get_irq(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -706,7 +706,7 @@ int fimc_is_hw_request_irq(void *itfc_data, int hw_id)
 	u32 name_len = 0;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 	dbg_itfc("%s: id(%d)\n", __func__, hw_id);
 
@@ -892,7 +892,7 @@ int fimc_is_hw_s_ctrl(void *itfc_data, int hw_id, enum hw_s_ctrl_id id, void *va
 			unsigned long bypass = (unsigned long)val;
 			u32 values = 0;
 
-			FIMC_BUG(!itfc_data);
+			BUG_ON(!itfc_data);
 
 			itfc = (struct fimc_is_interface_ischain *)itfc_data;
 			switch (hw_id) {
@@ -915,7 +915,7 @@ int fimc_is_hw_s_ctrl(void *itfc_data, int hw_id, enum hw_s_ctrl_id id, void *va
 		{
 			struct fimc_is_interface *itf = NULL;
 
-			FIMC_BUG(!itfc_data);
+			BUG_ON(!itfc_data);
 
 			itf = (struct fimc_is_interface *)itfc_data;
 

@@ -657,6 +657,7 @@ int invalidate_inodes(struct super_block *sb, bool kill_dirty)
 	struct inode *inode, *next;
 	LIST_HEAD(dispose);
 
+again:
 	spin_lock(&sb->s_inode_list_lock);
 	list_for_each_entry_safe(inode, next, &sb->s_inodes, i_sb_list) {
 		spin_lock(&inode->i_lock);
@@ -679,6 +680,12 @@ int invalidate_inodes(struct super_block *sb, bool kill_dirty)
 		inode_lru_list_del(inode);
 		spin_unlock(&inode->i_lock);
 		list_add(&inode->i_lru, &dispose);
+		if (need_resched()) {
+			spin_unlock(&sb->s_inode_list_lock);
+			cond_resched();
+			dispose_list(&dispose);
+			goto again;
+		}
 	}
 	spin_unlock(&sb->s_inode_list_lock);
 
@@ -1818,8 +1825,13 @@ int file_remove_privs(struct file *file)
 	int kill;
 	int error = 0;
 
-	/* Fast path for nothing security related */
-	if (IS_NOSEC(inode))
+	/*
+	 * Fast path for nothing security related.
+	 * As well for non-regular files, e.g. blkdev inodes.
+	 * For example, blkdev_write_iter() might get here
+	 * trying to remove privs which it is not allowed to.
+	 */
+	if (IS_NOSEC(inode) || !S_ISREG(inode->i_mode))
 		return 0;
 
 	kill = dentry_needs_remove_privs(dentry);
@@ -1852,6 +1864,7 @@ int file_update_time(struct file *file)
 	struct inode *inode = file_inode(file);
 	struct timespec now;
 	int sync_it = 0;
+	int need_sync = 0;
 	int ret;
 
 	/* First try to exhaust all avenues to not sync */
@@ -1865,7 +1878,19 @@ int file_update_time(struct file *file)
 	if (!timespec_equal(&inode->i_ctime, &now))
 		sync_it |= S_CTIME;
 
-	if (IS_I_VERSION(inode))
+	/* iversion impacts on "write" performance. This code just filter inodes
+	 * by presence in integrity cache (S_IMA flag, security/integrity/iint.c).
+	 * Because only FIVE uses iversion in Samsung Kernel this patch shouldn't
+	 * affect other code.
+	 * NOTICE: iversion code has been optimized in v4.17-rc4. So this patch should be
+	 * removed since v4.17-rc4
+	 */
+	#ifdef CONFIG_FIVE
+	need_sync = IS_I_VERSION(inode) && (inode->i_flags & S_IMA);
+	#else
+	need_sync = IS_I_VERSION(inode);
+	#endif
+	if (need_sync)
 		sync_it |= S_VERSION;
 
 	if (!sync_it)

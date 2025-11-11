@@ -45,7 +45,7 @@ int dw_mci_pltfm_register(struct platform_device *pdev,
 	host->irq_flags = 0;
 	host->pdata = pdev->dev.platform_data;
 
-	regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	regs = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dw_mmc");
 	host->regs = devm_ioremap_resource(&pdev->dev, regs);
 	if (IS_ERR(host->regs))
 		return PTR_ERR(host->regs);
@@ -54,7 +54,7 @@ int dw_mci_pltfm_register(struct platform_device *pdev,
 	host->phy_regs = regs->start;
 
 	platform_set_drvdata(pdev, host);
-	return dw_mci_probe(host);
+	return dw_mci_probe(host, pdev);
 }
 EXPORT_SYMBOL_GPL(dw_mci_pltfm_register);
 

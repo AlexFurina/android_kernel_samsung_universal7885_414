@@ -33,6 +33,10 @@
 #include <linux/irq.h>
 #include <linux/irqdesc.h>
 
+#ifdef CONFIG_SEC_EXT
+#include <linux/sec_ext.h>
+#endif
+
 /* This defines are for PSTORE */
 #define DSS_LOGGER_LEVEL_HEADER		(1)
 #define DSS_LOGGER_LEVEL_PREFIX		(2)
@@ -146,6 +150,19 @@ static int dbg_snapshot_combine_pmsg(char *buffer, size_t count, unsigned int le
 				break;
 
 			logger.func_hook_logger("log_platform", buffer, count - 1);
+#ifdef CONFIG_SEC_EXT 
+			if (count > 1 && strncmp(buffer, "!@", 2) == 0) { 
+				/* To prevent potential buffer overrun 
+				 * put a null at the end of the buffer if required 
+				 */ 
+				buffer[count - 1] = '\0'; 
+				pr_info("%s\n", buffer);
+#ifdef CONFIG_SEC_BOOTSTAT
+				if (count > 5 && strncmp(buffer, "!@Boot", 6) == 0)
+					sec_bootstat_add(buffer);
+#endif /* CONFIG_SEC_BOOTSTAT */
+			} 
+#endif /* CONFIG_SEC_EXT */
 		}
 		break;
 	default:
@@ -210,19 +227,8 @@ EXPORT_SYMBOL(dbg_snapshot_hook_pmsg);
  */
 
 static struct ramoops_platform_data dss_ramoops_data = {
-#ifdef CONFIG_DEBUG_SNAPSHOT_MINIMIZED_MODE
-	.record_size	= SZ_128K,
-	.console_size	= SZ_128K,
-	.ftrace_size	= SZ_128K,
-	.pmsg_size	= SZ_128K,
-	.annotate_size  = SZ_2K,
-#else
-	.record_size	= SZ_512K,
-	.console_size	= SZ_512K,
-	.ftrace_size	= SZ_256K,
-	.pmsg_size	= SZ_512K,
-        .annotate_size  = SZ_2K,
-#endif
+	.record_size	= SZ_4K,
+	.pmsg_size	= SZ_4K,
 	.dump_oops	= 1,
 };
 
@@ -238,6 +244,8 @@ static int __init dss_pstore_init(void)
 	if (dbg_snapshot_get_enable("log_pstore")) {
 		dss_ramoops_data.mem_size = dbg_snapshot_get_item_size("log_pstore");
 		dss_ramoops_data.mem_address = dbg_snapshot_get_item_paddr("log_pstore");
+		dss_ramoops_data.pmsg_size = dss_ramoops_data.mem_size / 2;
+		dss_ramoops_data.record_size = dss_ramoops_data.mem_size / 2;
 	}
 	return platform_device_register(&dss_ramoops);
 }

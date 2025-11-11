@@ -28,7 +28,7 @@
 #include "fimc-is-regs.h"
 #include "fimc-is-core.h"
 #include "fimc-is-hw-chain.h"
-#include "fimc-is-hw-settle-10nm-lpe.h"
+#include "fimc-is-hw-settle.h"
 #include "fimc-is-device-sensor.h"
 #include "fimc-is-device-flite.h"
 #include "fimc-is-device-csi.h"
@@ -145,6 +145,7 @@ void fimc_is_hw_group_init(struct fimc_is_group *group)
 	group->subdev[ENTRY_M4P] = NULL;
 	group->subdev[ENTRY_VRA] = NULL;
 	group->subdev[ENTRY_DCP] = NULL;
+	group->subdev[ENTRY_SRDZ] = NULL;
 
 	INIT_LIST_HEAD(&group->subdev_list);
 }
@@ -156,7 +157,7 @@ int fimc_is_hw_group_cfg(void *group_data)
 	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = (struct fimc_is_group *)group_data;
 
@@ -276,7 +277,7 @@ int fimc_is_hw_group_open(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	leader = &group->leader;
@@ -342,7 +343,7 @@ int fimc_is_hw_camif_cfg(void *sensor_data)
 	struct fimc_is_device_ischain *ischain;
 	bool is_otf = false;
 
-	FIMC_BUG(!sensor_data);
+	BUG_ON(!sensor_data);
 
 	sensor = sensor_data;
 	ischain = sensor->ischain;
@@ -422,7 +423,7 @@ int fimc_is_hw_camif_open(void *sensor_data)
 	struct fimc_is_device_flite *flite;
 	struct fimc_is_device_csi *csi;
 
-	FIMC_BUG(!sensor_data);
+	BUG_ON(!sensor_data);
 
 	sensor = sensor_data;
 	flite = (struct fimc_is_device_flite *)v4l2_get_subdevdata(sensor->subdev_flite);
@@ -517,7 +518,7 @@ int fimc_is_hw_ischain_cfg(void *ischain_data)
 	u32 input_3aaw = 0, input_3aa = 1;
 	u32 input_mcsc_src0;
 
-	FIMC_BUG(!ischain_data);
+	BUG_ON(!ischain_data);
 
 	device = (struct fimc_is_device_ischain *)ischain_data;
 	if (test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state))
@@ -525,13 +526,13 @@ int fimc_is_hw_ischain_cfg(void *ischain_data)
 
 	core = (struct fimc_is_core *)platform_get_drvdata(device->pdev);
 	sensor = device->sensor;
-	FIMC_BUG(!sensor);
+	BUG_ON(!sensor);
 
 	csi = (struct fimc_is_device_csi *)v4l2_get_subdevdata(sensor->subdev_csi);
-	FIMC_BUG(!csi);
+	BUG_ON(!csi);
 
 	/* checked single/dual camera */
-	for (i = 0; i < FIMC_IS_SENSOR_COUNT; i++)
+	for (i = 0; i < FIMC_IS_STREAM_COUNT; i++)
 		if (test_bit(FIMC_IS_SENSOR_OPEN, &(core->sensor[i].state)))
 			sensor_cnt++;
 
@@ -975,6 +976,12 @@ inline int fimc_is_hw_slot_id(int hw_id)
 		slot_id = 9;
 		break;
 #endif
+#if defined(SOC_SRDZ)
+#error implementation is needed!!!
+	case DEV_HW_SRDZ:
+		slot_id = 10;
+		break;
+#endif
 	default:
 		break;
 	}
@@ -1133,8 +1140,8 @@ int fimc_is_hw_get_address(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	struct fimc_is_interface_hwip *itf_hwip = NULL;
 
-	FIMC_BUG(!itfc_data);
-	FIMC_BUG(!pdev_data);
+	BUG_ON(!itfc_data);
+	BUG_ON(!pdev_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -1325,6 +1332,23 @@ int fimc_is_hw_get_address(void *itfc_data, void *pdev_data, int hw_id)
 
 		info_itfc("[ID:%2d] DCP VA(0x%p)\n", hw_id, itf_hwip->hw_ip->regs);
 		break;
+	case DEV_HW_SRDZ:
+		mem_res = platform_get_resource(pdev, IORESOURCE_MEM, IORESOURCE_SRDZ);
+		if (!mem_res) {
+			dev_err(&pdev->dev, "Failed to get io memory region\n");
+			return -EINVAL;
+		}
+
+		itf_hwip->hw_ip->regs_start = mem_res->start;
+		itf_hwip->hw_ip->regs_end = mem_res->end;
+		itf_hwip->hw_ip->regs = ioremap_nocache(mem_res->start, resource_size(mem_res));
+		if (!itf_hwip->hw_ip->regs) {
+			dev_err(&pdev->dev, "Failed to remap io region\n");
+			return -EINVAL;
+		}
+
+		info_itfc("[ID:%2d] SRDZ VA(0x%p)\n", hw_id, itf_hwip->hw_ip->regs);
+		break;
 	default:
 		probe_err("hw_id(%d) is invalid", hw_id);
 		return -EINVAL;
@@ -1344,7 +1368,7 @@ int fimc_is_hw_get_irq(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -1468,6 +1492,13 @@ int fimc_is_hw_get_irq(void *itfc_data, void *pdev_data, int hw_id)
 			return -EINVAL;
 		}
 		break;
+	case DEV_HW_SRDZ:
+		itf_hwip->irq[INTR_HWIP1] = platform_get_irq(pdev, 18);
+		if (itf_hwip->irq[INTR_HWIP1] < 0) {
+			err("Failed to get irq srdz \n");
+			return -EINVAL;
+		}
+		break;
 	default:
 		probe_err("hw_id(%d) is invalid", hw_id);
 		return -EINVAL;
@@ -1507,7 +1538,7 @@ int fimc_is_hw_request_irq(void *itfc_data, int hw_id)
 	struct fimc_is_interface_hwip *itf_hwip = NULL;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
@@ -1550,6 +1581,9 @@ int fimc_is_hw_request_irq(void *itfc_data, int hw_id)
 	case DEV_HW_DCP:
 		ret = __fimc_is_hw_request_irq(itf_hwip, "dcp", INTR_HWIP1, fimc_is_isr1_dcp);
 		ret = __fimc_is_hw_request_irq(itf_hwip, "dcp", INTR_HWIP2, fimc_is_isr2_dcp);
+		break;
+	case DEV_HW_SRDZ:
+		ret = __fimc_is_hw_request_irq(itf_hwip, "srdz", INTR_HWIP1, fimc_is_isr1_srdz);
 		break;
 	default:
 		probe_err("hw_id(%d) is invalid", hw_id);
@@ -1624,7 +1658,7 @@ int fimc_is_hw_s_ctrl(void *itfc_data, int hw_id, enum hw_s_ctrl_id id, void *va
 			struct fimc_is_core *core;
 #endif
 
-			FIMC_BUG(!itfc_data);
+			BUG_ON(!itfc_data);
 
 			itfc = (struct fimc_is_interface_ischain *)itfc_data;
 			base_addr = itfc->regs_mcuctl;
@@ -1675,8 +1709,8 @@ int fimc_is_hw_s_ctrl(void *itfc_data, int hw_id, enum hw_s_ctrl_id id, void *va
 			struct fimc_is_device_ischain *device;
 			unsigned long data = (unsigned long)val;
 
-			FIMC_BUG(!vctx);
-			FIMC_BUG(!GET_DEVICE(vctx));
+			BUG_ON(!vctx);
+			BUG_ON(!GET_DEVICE(vctx));
 
 			device = GET_DEVICE(vctx);
 
@@ -1715,7 +1749,7 @@ int fimc_is_hw_query_cap(void *cap_data, int hw_id)
 {
 	int ret = 0;
 
-	FIMC_BUG(!cap_data);
+	BUG_ON(!cap_data);
 
 	switch (hw_id) {
 	case DEV_HW_MCSC0:

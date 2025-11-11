@@ -175,40 +175,40 @@ static const struct ntc_compensation ncpXXwf104[] = {
 };
 
 static const struct ntc_compensation ncpXXxh103[] = {
-	{ .temp_c	= -40, .ohm	= 195652 },
-	{ .temp_c	= -35, .ohm	= 148171 },
-	{ .temp_c	= -30, .ohm	= 113347 },
-	{ .temp_c	= -25, .ohm	= 87559 },
-	{ .temp_c	= -20, .ohm	= 68237 },
-	{ .temp_c	= -15, .ohm	= 53650 },
-	{ .temp_c	= -10, .ohm	= 42506 },
-	{ .temp_c	= -5, .ohm	= 33892 },
-	{ .temp_c	= 0, .ohm	= 27219 },
-	{ .temp_c	= 5, .ohm	= 22021 },
-	{ .temp_c	= 10, .ohm	= 17926 },
-	{ .temp_c	= 15, .ohm	= 14674 },
-	{ .temp_c	= 20, .ohm	= 12081 },
+	{ .temp_c	= -40, .ohm	= 247565 },
+	{ .temp_c	= -35, .ohm	= 181742 },
+	{ .temp_c	= -30, .ohm	= 135128 },
+	{ .temp_c	= -25, .ohm	= 101678 },
+	{ .temp_c	= -20, .ohm	= 77373 },
+	{ .temp_c	= -15, .ohm	= 59504 },
+	{ .temp_c	= -10, .ohm	= 46222 },
+	{ .temp_c	= -5, .ohm	= 36244 },
+	{ .temp_c	= 0, .ohm	= 28674 },
+	{ .temp_c	= 5, .ohm	= 22878 },
+	{ .temp_c	= 10, .ohm	= 18399 },
+	{ .temp_c	= 15, .ohm	= 14910 },
+	{ .temp_c	= 20, .ohm	= 12169 },
 	{ .temp_c	= 25, .ohm	= 10000 },
-	{ .temp_c	= 30, .ohm	= 8315 },
-	{ .temp_c	= 35, .ohm	= 6948 },
-	{ .temp_c	= 40, .ohm	= 5834 },
-	{ .temp_c	= 45, .ohm	= 4917 },
-	{ .temp_c	= 50, .ohm	= 4161 },
-	{ .temp_c	= 55, .ohm	= 3535 },
-	{ .temp_c	= 60, .ohm	= 3014 },
-	{ .temp_c	= 65, .ohm	= 2586 },
-	{ .temp_c	= 70, .ohm	= 2228 },
-	{ .temp_c	= 75, .ohm	= 1925 },
-	{ .temp_c	= 80, .ohm	= 1669 },
-	{ .temp_c	= 85, .ohm	= 1452 },
-	{ .temp_c	= 90, .ohm	= 1268 },
-	{ .temp_c	= 95, .ohm	= 1110 },
-	{ .temp_c	= 100, .ohm	= 974 },
-	{ .temp_c	= 105, .ohm	= 858 },
-	{ .temp_c	= 110, .ohm	= 758 },
-	{ .temp_c	= 115, .ohm	= 672 },
-	{ .temp_c	= 120, .ohm	= 596 },
-	{ .temp_c	= 125, .ohm	= 531 },
+	{ .temp_c	= 30, .ohm	= 8271 },
+	{ .temp_c	= 35, .ohm	= 6883 },
+	{ .temp_c	= 40, .ohm	= 5762 },
+	{ .temp_c	= 45, .ohm	= 4851 },
+	{ .temp_c	= 50, .ohm	= 4105 },
+	{ .temp_c	= 55, .ohm	= 3492 },
+	{ .temp_c	= 60, .ohm	= 2985 },
+	{ .temp_c	= 65, .ohm	= 2563 },
+	{ .temp_c	= 70, .ohm	= 2211 },
+	{ .temp_c	= 75, .ohm	= 1915 },
+	{ .temp_c	= 80, .ohm	= 1666 },
+	{ .temp_c	= 85, .ohm	= 1454 },
+	{ .temp_c	= 90, .ohm	= 1275 },
+	{ .temp_c	= 95, .ohm	= 1121 },
+	{ .temp_c	= 100, .ohm	= 990 },
+	{ .temp_c	= 105, .ohm	= 876 },
+	{ .temp_c	= 110, .ohm	= 779 },
+	{ .temp_c	= 115, .ohm	= 694 },
+	{ .temp_c	= 120, .ohm	= 620 },
+	{ .temp_c	= 125, .ohm	= 556 },
 };
 
 /*
@@ -258,22 +258,7 @@ struct ntc_data {
 	int n_comp;
 };
 
-struct ntc_data *data_ntc = NULL;
-
 #if defined(CONFIG_OF) && IS_ENABLED(CONFIG_IIO)
-static bool battery_therm_data(struct ntc_data *data, struct device *dev)
-{
-	struct device_node *np = dev->of_node;
-
-	if (!np)
-		return false;
-
-	if (memcmp(np->name, "battery_thermistor", 18) == 0) {
-		data_ntc = data;
-	}
-
-	return true;
-}
 static int ntc_adc_iio_read(struct ntc_thermistor_platform_data *pdata)
 {
 	struct iio_channel *channel = pdata->chan;
@@ -285,15 +270,10 @@ static int ntc_adc_iio_read(struct ntc_thermistor_platform_data *pdata)
 		return ret;
 	}
 
-	if (pdata->iio_convert_support) {
-		ret = iio_convert_raw_to_processed(channel, raw, &uv, 1000);
-		if (ret < 0) {
-			/* Assume 12 bit ADC with vref at pullup_uv */
-			uv = (pdata->pullup_uv * (s64)raw) >> 12;
-		}
-	} else {
+	ret = iio_convert_raw_to_processed(channel, raw, &uv, 1000);
+	if (ret < 0) {
 		/* Assume 12 bit ADC with vref at pullup_uv */
-			uv = (pdata->pullup_uv * (s64)raw) >> 12;
+		uv = (pdata->pullup_uv * (s64)raw) >> 12;
 	}
 
 	return uv;
@@ -370,11 +350,6 @@ ntc_thermistor_parse_dt(struct device *dev)
 		pdata->connect = NTC_CONNECTED_POSITIVE;
 	else /* status change should be possible if not always on. */
 		pdata->connect = NTC_CONNECTED_GROUND;
-
-	if (of_find_property(np, "iio-convert-support", NULL))
-		pdata->iio_convert_support = true;
-	else
-		pdata->iio_convert_support = false;
 
 	pdata->chan = chan;
 	pdata->read_uv = ntc_adc_iio_read;
@@ -563,27 +538,6 @@ static ssize_t ntc_show_temp(struct device *dev,
 	return sprintf(buf, "%d\n", get_temp_mc(data, ohm));
 }
 
-int ntc_show_batt_temp()
-{
-	int ohm;
-	int temp;
-
-	if (data_ntc == NULL) {
-		pr_err("%s data is NULL!\n", __func__);
-		return 250;
-	}
-	ohm = ntc_thermistor_get_ohm(data_ntc);
-	if (ohm < 0)
-		return ohm;
-	temp = get_temp_mc(data_ntc, ohm) / 100;
-	if (temp == BATT_NTC100K_ORIGINAL_TEMP) {
-		temp = BATT_NTC100K_NOW_TEMP;
-	}
-
-	return temp;
-}
-EXPORT_SYMBOL_GPL(ntc_show_batt_temp);
-
 static SENSOR_DEVICE_ATTR(temp1_type, S_IRUGO, ntc_show_type, NULL, 0);
 static SENSOR_DEVICE_ATTR(temp1_input, S_IRUGO, ntc_show_temp, NULL, 0);
 
@@ -651,7 +605,6 @@ static int ntc_thermistor_probe(struct platform_device *pdev)
 	pdev_id = of_id ? of_id->data : platform_get_device_id(pdev);
 
 	data->pdata = pdata;
-	battery_therm_data(data, dev);
 
 	switch (pdev_id->driver_data) {
 	case TYPE_NCPXXWB473:
@@ -680,7 +633,7 @@ static int ntc_thermistor_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	hwmon_dev = devm_hwmon_device_register_with_groups(dev, pdev->name,
+	hwmon_dev = devm_hwmon_device_register_with_groups(dev, pdev_id->name,
 							   data, ntc_groups);
 	if (IS_ERR(hwmon_dev)) {
 		dev_err(dev, "unable to register as hwmon device.\n");

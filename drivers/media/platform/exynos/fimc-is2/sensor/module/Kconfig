@@ -187,6 +187,12 @@ config CAMERA_SENSOR_4E6_OBJ
         default n
         help
           Use to build 4E6 camera sensor.
+config CAMERA_SENSOR_4E6_C2_OBJ
+        bool "Use 4E6 camera sensor with preprocessor"
+        depends on CAMERA_MODULE_SELECT
+        default n
+        help
+          Use to build 4E6 camera sensor.
 config CAMERA_SENSOR_3M2_OBJ
         bool "Use 3M2 camera sensor"
         depends on CAMERA_MODULE_SELECT

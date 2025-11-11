@@ -30,11 +30,6 @@ config EXYNOS_BCM_DBG_DUMP
 	help
 	  Enable exynos-bcm_dbg dump support
 
-config EPX
-	bool "Enable Exynos Performance Box"
-	default y
-	depends on ARCH_EXYNOS
-
 config EXYNOS_BCM
 	bool "EXYNOS_BCM driver support"
 	help
@@ -94,9 +89,14 @@ config GNSS_PMUCAL
 
 config SHUB_PMUCAL
 	bool "Exynos PMU(for SHUB) Chip Abstraction Layer"
+	default n
 	depends on CAL_IF
 	help
 	  Support SHUB_PMUCAL for Exynos SoC.
+
+config CMUCAL_DEBUG
+	bool "CMUCAL Debug Interface"
+	depends on CMUCAL
 
 config EXYNOS_PMU
 	bool "Exynos Power Management Unit Driver Support"
@@ -112,10 +112,6 @@ config ECT_DUMP
 	bool "Enable Exynos Characteristic Table File Dump sysfs"
 	default n
 	depends on ECT
-
-config EXYNOS_SLEEP_GPIO
-	bool "Enable GPIO sleep function"
-	default n
 
 config EXYNOS_RGT
 	bool "Exynos Regulator Debug Support"
@@ -184,6 +180,10 @@ config EXYNOS_SDM
 	help
 	  Exynos Security Dump Manager
 
+config USI
+        bool "Enable Universal Serial Interface"
+        default n
+
 config USI_V2
 	bool "Enable Universal Serial Interface version 2"
 	default y
@@ -198,36 +198,6 @@ config DEBUG_SNAPSHOT_LOGGING_SMC
 	depends on DEBUG_SNAPSHOT
 	default y
 
-config MMI_SOC_INFO
-    default n
-    bool "Motorola Mobility SOC Info"
-    help
-      Provide mechanism to export SOC info.
-
-config MMI_RAM_INFO
-    default n
-    bool "Motorola Mobility RAM Info"
-    help
-    Provide mechanism to access RAM size and MR registers values via sysfs.
-
-config MMI_STORAGE_INFO
-    default n
-    bool "Motorola Mobility STORAGE Info"
-    help
-    Provide mechanism to export EMMC/UFS type, size and vendor info.
-
-config MMI_UNIT_INFO
-    default n
-    bool "Motorola Mobility Unit Info"
-    help
-    Provide mechanism to expose unit information to other cpu via smem.
-
-config BOOTINFO
-    bool "Boot Information Feature"
-    default n
-    help
-      This feature provides access to certain boot information
-      from both kernel context (via function call) and user
-      context (via /proc/bootinfo).
+source "drivers/soc/samsung/exynos-hdcp/Kconfig"
 
 endif

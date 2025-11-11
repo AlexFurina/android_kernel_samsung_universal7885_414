@@ -370,7 +370,6 @@ source "drivers/pinctrl/uniphier/Kconfig"
 source "drivers/pinctrl/vt8500/Kconfig"
 source "drivers/pinctrl/mediatek/Kconfig"
 source "drivers/pinctrl/zte/Kconfig"
-source "drivers/pinctrl/cirrus/Kconfig"
 
 config PINCTRL_XWAY
 	bool

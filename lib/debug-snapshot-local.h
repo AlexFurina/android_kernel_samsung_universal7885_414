@@ -23,12 +23,14 @@
 #include <linux/clk-provider.h>
 #endif
 
+extern void (*arm_pm_restart)(char str, const char *cmd);
+
 extern void dbg_snapshot_init_log_idx(void);
 extern void dbg_snapshot_init_utils(void);
 extern void dbg_snapshot_init_helper(void);
 extern void __iomem *dbg_snapshot_get_base_vaddr(void);
 extern void __iomem *dbg_snapshot_get_base_paddr(void);
-
+extern void dbg_snapshot_scratch_reg(unsigned int val);
 extern void dbg_snapshot_print_panic_report(void);
 extern void dbg_snapshot_dump_task_info(void);
 
@@ -63,19 +65,6 @@ struct dbg_snapshot_item {
 	struct vm_struct vm;
 };
 
-struct dbg_snapshot_bl {
-	unsigned int magic1;
-	unsigned int magic2;
-	unsigned int item_count;
-	unsigned int reserved;
-	struct {
-		char name[SZ_16];
-		unsigned int paddr;
-		unsigned int size;
-		unsigned int enabled;
-	} item[SZ_16];
-};
-
 struct dbg_snapshot_sfrdump {
 	char *name;
 	void __iomem *reg;
@@ -107,6 +96,7 @@ struct dbg_snapshot_desc {
 	int allcorelockup_detected;
 	int no_wdt_dev;
 	int debug_level;
+	int sjtag_status;
 };
 
 

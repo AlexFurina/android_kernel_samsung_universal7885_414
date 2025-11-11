@@ -52,16 +52,27 @@ static u32 sensor_2p6_global_size;
 static const u32 **sensor_2p6_setfiles;
 static const u32 *sensor_2p6_setfile_sizes;
 static u32 sensor_2p6_max_setfile_num;
+#ifdef S5K2P6_USE_COMPACT_PLL_INFO
 static const struct sensor_pll_info_compact **sensor_2p6_pllinfos;
+#else
+static const struct sensor_pll_info **sensor_2p6_pllinfos;
+#endif
 
+#ifdef USE_AP_PDAF
 /* variables of pdaf setting */
 static const u32 *sensor_2p6_pdaf_global;
 static u32 sensor_2p6_pdaf_global_size;
 static const u32 **sensor_2p6_pdaf_setfiles;
 static const u32 *sensor_2p6_pdaf_setfile_sizes;
 static u32 sensor_2p6_pdaf_max_setfile_num;
+#ifdef S5K2P6_USE_COMPACT_PLL_INFO
 static const struct sensor_pll_info_compact **sensor_2p6_pdaf_pllinfos;
+#else
+static const struct sensor_pll_info **sensor_2p6_pdaf_pllinfos;
+#endif
+#endif
 
+#ifdef S5K2P6_USE_COMPACT_PLL_INFO
 static void sensor_2p6_cis_data_calculation(const struct sensor_pll_info_compact *pll_info_compact, cis_shared_data *cis_data)
 {
 	u32 vt_pix_clk_hz = 0;
@@ -124,6 +135,86 @@ static void sensor_2p6_cis_data_calculation(const struct sensor_pll_info_compact
 	cis_data->max_fine_integration_time = SENSOR_2P6_FINE_INTEGRATION_TIME_MAX;
 	cis_data->min_coarse_integration_time = SENSOR_2P6_COARSE_INTEGRATION_TIME_MIN;
 }
+#else
+static void sensor_2p6_cis_data_calculation(const struct sensor_pll_info *pll_info, cis_shared_data *cis_data)
+{
+	u32 pll_voc_a = 0, vt_pix_clk_hz = 0;
+	u32 frame_rate = 0, max_fps = 0, frame_valid_us = 0;
+
+	BUG_ON(!pll_info);
+
+	/* 1. mipi data rate calculation (Mbps/Lane) */
+	/* ToDo: using output Pixel Clock Divider Value */
+	/* pll_voc_b = pll_info->ext_clk / pll_info->secnd_pre_pll_clk_div * pll_info->secnd_pll_multiplier * 2;
+	op_sys_clk_hz = pll_voc_b / pll_info->op_sys_clk_div;
+	if(gpsSensorExInfo) {
+		gpsSensorExInfo->uiMIPISpeedBps = op_sys_clk_hz;
+		gpsSensorExInfo->uiMCLK = sensorInfo.ext_clk;
+	} */
+
+	/* 2. pixel rate calculation (Mpps) */
+	pll_voc_a = pll_info->ext_clk / pll_info->pre_pll_clk_div * pll_info->pll_multiplier;
+	vt_pix_clk_hz = (pll_voc_a / pll_info->vt_pix_clk_div) * 4;
+
+	dbg_sensor(1, "ext_clock(%d) / pre_pll_clk_div(%d) * pll_multiplier(%d) = pll_voc_a(%d)\n",
+						pll_info->ext_clk, pll_info->pre_pll_clk_div,
+						pll_info->pll_multiplier, pll_voc_a);
+	dbg_sensor(1, "pll_voc_a(%d) / (vt_sys_clk_div(%d) * vt_pix_clk_div(%d)) = pixel clock (%d hz)\n",
+						pll_voc_a, pll_info->vt_sys_clk_div,
+						pll_info->vt_pix_clk_div, vt_pix_clk_hz);
+
+	/* 3. the time of processing one frame calculation (us) */
+	cis_data->min_frame_us_time = (pll_info->frame_length_lines * pll_info->line_length_pck
+					/ (vt_pix_clk_hz / (1000 * 1000)));
+	cis_data->cur_frame_us_time = cis_data->min_frame_us_time;
+
+	/* 4. FPS calculation */
+	frame_rate = vt_pix_clk_hz / (pll_info->frame_length_lines * pll_info->line_length_pck);
+	dbg_sensor(1, "frame_rate (%d) = vt_pix_clk_hz(%d) / "
+		KERN_CONT "(pll_info->frame_length_lines(%d) * pll_info->line_length_pck(%d))\n",
+		frame_rate, vt_pix_clk_hz, pll_info->frame_length_lines, pll_info->line_length_pck);
+
+	/* calculate max fps */
+	max_fps = (vt_pix_clk_hz * 10) / (pll_info->frame_length_lines * pll_info->line_length_pck);
+	max_fps = (max_fps % 10 >= 5 ? frame_rate + 1 : frame_rate);
+
+	cis_data->pclk = vt_pix_clk_hz;
+	cis_data->max_fps = max_fps;
+	cis_data->frame_length_lines = pll_info->frame_length_lines;
+	cis_data->line_length_pck = pll_info->line_length_pck;
+	cis_data->line_readOut_time = sensor_cis_do_div64((u64)cis_data->line_length_pck * (u64)(1000 * 1000 * 1000), cis_data->pclk);
+	cis_data->rolling_shutter_skew = (cis_data->cur_height - 1) * cis_data->line_readOut_time;
+	cis_data->stream_on = false;
+
+	/* Frame valid time calcuration */
+	frame_valid_us = sensor_cis_do_div64((u64)cis_data->cur_height * (u64)cis_data->line_length_pck * (u64)(1000 * 1000), cis_data->pclk);
+	cis_data->frame_valid_us_time = (int)frame_valid_us;
+
+	dbg_sensor(1, "%s\n", __func__);
+	dbg_sensor(1, "Sensor size(%d x %d) setting: SUCCESS!\n",
+					cis_data->cur_width, cis_data->cur_height);
+	dbg_sensor(1, "Frame Valid(us): %d\n", frame_valid_us);
+	dbg_sensor(1, "rolling_shutter_skew: %lld\n", cis_data->rolling_shutter_skew);
+
+	dbg_sensor(1, "Fps: %d, max fps(%d)\n", frame_rate, cis_data->max_fps);
+	dbg_sensor(1, "min_frame_time(%d us)\n", cis_data->min_frame_us_time);
+	dbg_sensor(1, "Pixel rate(Mbps): %d\n", cis_data->pclk / 1000000);
+	/* dbg_sensor(1, "Mbps/lane : %d Mbps\n", pll_voc_b / pll_info->op_sys_clk_div / 1000 / 1000); */
+
+	/* Frame period calculation */
+	cis_data->frame_time = (cis_data->line_readOut_time * cis_data->cur_height / 1000);
+	cis_data->rolling_shutter_skew = (cis_data->cur_height - 1) * cis_data->line_readOut_time;
+
+	dbg_sensor(1, "[%s] frame_time(%d), rolling_shutter_skew(%lld)\n", __func__,
+		cis_data->frame_time, cis_data->rolling_shutter_skew);
+
+	/* Constant values */
+	cis_data->min_fine_integration_time = SENSOR_2P6_FINE_INTEGRATION_TIME_MIN;
+	cis_data->max_fine_integration_time = SENSOR_2P6_FINE_INTEGRATION_TIME_MAX;
+	cis_data->min_coarse_integration_time = SENSOR_2P6_COARSE_INTEGRATION_TIME_MIN;
+	cis_data->max_margin_coarse_integration_time = SENSOR_2P6_COARSE_INTEGRATION_TIME_MAX_MARGIN;
+}
+#endif
 
 static int sensor_2p6_wait_stream_off_status(cis_shared_data *cis_data)
 {
@@ -157,6 +248,11 @@ int sensor_2p6_cis_init(struct v4l2_subdev *subdev)
 	struct fimc_is_cis *cis;
 	u32 setfile_index = 0;
 	cis_setting_info setinfo;
+#ifdef USE_CAMERA_HW_BIG_DATA
+	struct cam_hw_param *hw_param = NULL;
+	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
+#endif
+
 	setinfo.param = NULL;
 	setinfo.return_value = 0;
 
@@ -175,6 +271,13 @@ int sensor_2p6_cis_init(struct v4l2_subdev *subdev)
 
 	ret = sensor_cis_check_rev(cis);
 	if (ret < 0) {
+#ifdef USE_CAMERA_HW_BIG_DATA
+		sensor_peri = container_of(cis, struct fimc_is_device_sensor_peri, cis);
+		if (sensor_peri)
+			fimc_is_sec_get_hw_param(&hw_param, sensor_peri->module->position);
+		if (hw_param)
+			hw_param->i2c_sensor_err_cnt++;
+#endif
 		warn("sensor_2p6_check_rev is fail when cis init");
 		cis->rev_flag = true;
 		ret = 0;
@@ -185,9 +288,12 @@ int sensor_2p6_cis_init(struct v4l2_subdev *subdev)
 	cis->cis_data->low_expo_start = 33000;
 	cis->need_mode_change = false;
 
+#ifdef USE_AP_PDAF
 	if (cis->use_pdaf == true) {
 		sensor_2p6_cis_data_calculation(sensor_2p6_pdaf_pllinfos[setfile_index], cis->cis_data);
-	} else {
+	} else
+#endif
+	{
 		sensor_2p6_cis_data_calculation(sensor_2p6_pllinfos[setfile_index], cis->cis_data);
 	}
 
@@ -253,9 +359,12 @@ int sensor_2p6_cis_log_status(struct v4l2_subdev *subdev)
 	ret = fimc_is_sensor_read8(client, 0x0100, &data8);
 	if (unlikely(!ret)) printk("[SEN:DUMP] mode_select(%x)\n", data8);
 
+#ifdef USE_AP_PDAF
 	if (cis->use_pdaf == true) {
 		sensor_cis_dump_registers(subdev, sensor_2p6_pdaf_setfiles[0], sensor_2p6_pdaf_setfile_sizes[0]);
-	} else {
+	} else
+#endif
+	{
 		sensor_cis_dump_registers(subdev, sensor_2p6_setfiles[0], sensor_2p6_setfile_sizes[0]);
 	}
 
@@ -342,6 +451,7 @@ int sensor_2p6_cis_set_global_setting(struct v4l2_subdev *subdev)
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	BUG_ON(!cis);
 
+	I2C_MUTEX_LOCK(cis->i2c_lock);
 	/* ARM start */
 	ret = fimc_is_sensor_write16(cis->client, 0xFCFC, 0x4000);
 	ret = fimc_is_sensor_write16(cis->client, 0x6010, 0x0001);
@@ -349,9 +459,12 @@ int sensor_2p6_cis_set_global_setting(struct v4l2_subdev *subdev)
 	usleep_range(3000, 3000);
 
 	/* setfile global setting is at camera entrance */
+#ifdef USE_AP_PDAF
 	if (cis->use_pdaf == true) {
 		ret = sensor_cis_set_registers(subdev, sensor_2p6_pdaf_global, sensor_2p6_pdaf_global_size);
-	} else {
+	} else
+#endif
+	{
 		ret = sensor_cis_set_registers(subdev, sensor_2p6_global, sensor_2p6_global_size);
 	}
 
@@ -363,6 +476,7 @@ int sensor_2p6_cis_set_global_setting(struct v4l2_subdev *subdev)
 	dbg_sensor(1, "[%s] global setting done\n", __func__);
 
 p_err:
+	I2C_MUTEX_UNLOCK(cis->i2c_lock);
 	return ret;
 }
 
@@ -378,9 +492,12 @@ int sensor_2p6_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 	BUG_ON(!cis);
 	BUG_ON(!cis->cis_data);
 
+#ifdef USE_AP_PDAF
 	if (cis->use_pdaf == true) {
 		max_setfile_num = sensor_2p6_pdaf_max_setfile_num;
-	} else {
+	} else
+#endif
+	{
 		max_setfile_num = sensor_2p6_max_setfile_num;
 	}
 
@@ -401,6 +518,7 @@ int sensor_2p6_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 	}
 
 	/* In case of fastAE or high speed fps, forced to set pdaf off */
+#ifdef USE_AP_PDAF
 	if (cis->use_pdaf == true) {
 		if (mode <= SENSOR_2P6_MODE_2304X1120_30) {
 			cis->cis_data->is_data.paf_stat_enable = true;
@@ -410,6 +528,7 @@ int sensor_2p6_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 		dbg_sensor(1, "[%s] mode(%d) paf_stat_enable(%d) \n",
 			__func__, mode, cis->cis_data->is_data.paf_stat_enable);
 	}
+#endif
 
 #if defined(USE_SENSOR_WDR)
 	/* In case of fastAE or high speed fps, forced to set wdr off */
@@ -421,11 +540,14 @@ int sensor_2p6_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 	dbg_sensor(1, "[%s] mode(%d) wdr_enable(%d) \n",
 		__func__, mode, cis->cis_data->is_data.wdr_enable);
 #endif
-
+	I2C_MUTEX_LOCK(cis->i2c_lock);
+#ifdef USE_AP_PDAF
 	if (cis->use_pdaf == true) {
 		sensor_2p6_cis_data_calculation(sensor_2p6_pdaf_pllinfos[mode], cis->cis_data);
 		ret = sensor_cis_set_registers(subdev, sensor_2p6_pdaf_setfiles[mode], sensor_2p6_pdaf_setfile_sizes[mode]);
-	} else {
+	} else
+#endif
+	{
 		sensor_2p6_cis_data_calculation(sensor_2p6_pllinfos[mode], cis->cis_data);
 		ret = sensor_cis_set_registers(subdev, sensor_2p6_setfiles[mode], sensor_2p6_setfile_sizes[mode]);
 	}
@@ -435,6 +557,7 @@ int sensor_2p6_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 		goto p_err;
 	}
 
+#ifdef USE_AP_PDAF
 	if (cis->use_pdaf == true) {
 #if defined(S5K2P6_BPC_DISABLE)
 		/* BPC disable */
@@ -472,7 +595,30 @@ int sensor_2p6_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 				goto p_err;
 			}
 		}
+	} else
+#else /* USE_AP_PDAF */
+	{
+		/* pdaf tail mode off */
+		info("[%s]: Set pdaf tail mode off (paf_stat_enable %d)\n",
+			__func__, cis->cis_data->is_data.paf_stat_enable);
+
+		ret = fimc_is_sensor_write16(cis->client, 0x6028, 0x2000);
+		if (ret < 0) {
+			err("2p6 sensor write fail !!!");
+			goto p_err;
+		}
+		ret = fimc_is_sensor_write16(cis->client, 0x602A, 0x1BB0);
+		if (ret < 0) {
+			err("2p6 sensor write fail !!!");
+			goto p_err;
+		}
+		ret = fimc_is_sensor_write16(cis->client, 0x6F12, 0x0100);
+		if (ret < 0) {
+			err("2p6 sensor write fail !!!");
+			goto p_err;
+		}
 	}
+#endif
 
 #if defined(USE_SENSOR_WDR)
 	if (cis->cis_data->is_data.wdr_enable == false) {
@@ -494,6 +640,7 @@ int sensor_2p6_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 	dbg_sensor(1, "[%s] mode changed(%d)\n", __func__, mode);
 
 p_err:
+	I2C_MUTEX_UNLOCK(cis->i2c_lock);
 	return ret;
 }
 
@@ -557,7 +704,7 @@ int sensor_2p6_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_dat
 		ret = -EINVAL;
 		goto p_err;
 	}
-
+	I2C_MUTEX_LOCK(cis->i2c_lock);
 	/* 1. page_select */
 	ret = fimc_is_sensor_write16(client, 0x6028, 0x2000);
 	if (ret < 0)
@@ -651,6 +798,7 @@ int sensor_2p6_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_dat
 #endif
 
 p_err:
+	I2C_MUTEX_UNLOCK(cis->i2c_lock);
 	return ret;
 }
 
@@ -1759,7 +1907,9 @@ int cis_2p6_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
 	int ret = 0;
+#ifdef USE_AP_PDAF
 	bool use_pdaf = false;
+#endif
 
 	struct fimc_is_core *core = NULL;
 	struct v4l2_subdev *subdev_cis = NULL;
@@ -1783,9 +1933,12 @@ int cis_2p6_probe(struct i2c_client *client,
 	dev = &client->dev;
 	dnode = dev->of_node;
 
+#ifdef USE_AP_PDAF
 	if (of_property_read_bool(dnode, "use_pdaf")) {
 		use_pdaf = true;
+		probe_info("2p6 use to pdaf mode");
 	}
+#endif
 
 	ret = of_property_read_u32(dnode, "id", &sensor_id);
 	if (ret) {
@@ -1850,11 +2003,13 @@ int cis_2p6_probe(struct i2c_client *client,
 	cis->use_dgain = true;
 	cis->hdr_ctrl_by_again = false;
 
+#ifdef USE_AP_PDAF
 	if (use_pdaf == true) {
 		cis->use_pdaf = true;
 	} else {
 		cis->use_pdaf = false;
 	}
+#endif
 
 	ret = of_property_read_string(dnode, "setfile", &setfile);
 	if (ret) {
@@ -1864,28 +2019,38 @@ int cis_2p6_probe(struct i2c_client *client,
 
 	if (strcmp(setfile, "default") == 0 ||
 			strcmp(setfile, "setA") == 0) {
-		probe_info("%s : setfile_A for Non-PDAF\n", __func__);
+		probe_info("%s : setfile_A \n", __func__);
 		sensor_2p6_global = sensor_2p6_setfile_A_Global;
-		sensor_2p6_global_size = ARRAY_SIZE(sensor_2p6_setfile_A_Global);
+		sensor_2p6_global_size = sizeof(sensor_2p6_setfile_A_Global) / sizeof(sensor_2p6_setfile_A_Global[0]);
 		sensor_2p6_setfiles = sensor_2p6_setfiles_A;
 		sensor_2p6_setfile_sizes = sensor_2p6_setfile_A_sizes;
-		sensor_2p6_max_setfile_num = ARRAY_SIZE(sensor_2p6_setfiles_A);
+		sensor_2p6_max_setfile_num = sizeof(sensor_2p6_setfiles_A) / sizeof(sensor_2p6_setfiles_A[0]);
 		sensor_2p6_pllinfos = sensor_2p6_pllinfos_A;
 	} else if (strcmp(setfile, "setB") == 0) {
+#ifdef USE_AP_PDAF
 		probe_info("%s setfile_B for PDAF\n", __func__);
 		sensor_2p6_pdaf_global = sensor_2p6_setfile_B_Global;
-		sensor_2p6_pdaf_global_size = ARRAY_SIZE(sensor_2p6_setfile_B_Global);
+		sensor_2p6_pdaf_global_size = sizeof(sensor_2p6_setfile_B_Global) / sizeof(sensor_2p6_setfile_B_Global[0]);
 		sensor_2p6_pdaf_setfiles = sensor_2p6_setfiles_B;
 		sensor_2p6_pdaf_setfile_sizes = sensor_2p6_setfile_B_sizes;
-		sensor_2p6_pdaf_max_setfile_num = ARRAY_SIZE(sensor_2p6_setfiles_B);
+		sensor_2p6_pdaf_max_setfile_num = sizeof(sensor_2p6_setfiles_B) / sizeof(sensor_2p6_setfiles_B[0]);
 		sensor_2p6_pdaf_pllinfos = sensor_2p6_pllinfos_B;
+#else
+		probe_info("%s setfile_B\n", __func__);
+		sensor_2p6_global = sensor_2p6_setfile_B_Global;
+		sensor_2p6_global_size = sizeof(sensor_2p6_setfile_B_Global) / sizeof(sensor_2p6_setfile_B_Global[0]);
+		sensor_2p6_setfiles = sensor_2p6_setfiles_B;
+		sensor_2p6_setfile_sizes = sensor_2p6_setfile_B_sizes;
+		sensor_2p6_max_setfile_num = sizeof(sensor_2p6_setfiles_B) / sizeof(sensor_2p6_setfiles_B[0]);
+		sensor_2p6_pllinfos = sensor_2p6_pllinfos_B;
+#endif
 	} else {
 		err("%s setfile index out of bound, take default (setfile_A)", __func__);
 		sensor_2p6_global = sensor_2p6_setfile_A_Global;
-		sensor_2p6_global_size = ARRAY_SIZE(sensor_2p6_setfile_A_Global);
+		sensor_2p6_global_size = sizeof(sensor_2p6_setfile_A_Global) / sizeof(sensor_2p6_setfile_A_Global[0]);
 		sensor_2p6_setfiles = sensor_2p6_setfiles_A;
 		sensor_2p6_setfile_sizes = sensor_2p6_setfile_A_sizes;
-		sensor_2p6_max_setfile_num = ARRAY_SIZE(sensor_2p6_setfiles_A);
+		sensor_2p6_max_setfile_num = sizeof(sensor_2p6_setfiles_A) / sizeof(sensor_2p6_setfiles_A[0]);
 		sensor_2p6_pllinfos = sensor_2p6_pllinfos_A;
 	}
 

@@ -37,13 +37,6 @@ config PRINTK_PROCESS
 	  Selecting this option causes process to be
 	  included in printk output. Or add printk.process=1 at boot-time.
 
-config PRINTK_UTC_TIME
-	bool "Show utc information on printks"
-	depends on PRINTK
-	help
-	  Selecting this option causes utc to be
-	  included in printk output.
-
 config MESSAGE_LOGLEVEL_DEFAULT
 	int "Default message log level (1-7)"
 	range 1 7
@@ -291,17 +284,6 @@ config PAGE_OWNER
 	  for user-space helper.
 
 	  If unsure, say N.
-
-config PAGE_OWNER_ENABLE_DEFAULT
-	bool "Enable Track page owner by default"
-	depends on PAGE_OWNER
-	---help---
-	  This keeps track of what call chain is the owner of a page, may
-	  help to find bare alloc_page(s) leaks. If you include this
-	  feature on your build, it is enabled by default. You should pass
-	  "page_owner=off" to boot parameter in order to disable it. Eats
-	  a fair amount of memory if enabled. See tools/vm/page_owner_sort.c
-	  for user-space helper.
 
 config DEBUG_FS
 	bool "Debug Filesystem"
@@ -594,7 +576,7 @@ config DEBUG_KMEMLEAK_EARLY_LOG_SIZE
 	int "Maximum kmemleak early log entries"
 	depends on DEBUG_KMEMLEAK
 	range 200 40000
-	default 400
+	default 16000
 	help
 	  Kmemleak must track all the memory allocations to avoid
 	  reporting false positives. Since memory may be allocated or
@@ -1223,6 +1205,14 @@ config DEBUG_ATOMIC_SLEEP
 	  noisy if they are called inside atomic sections: when a spinlock is
 	  held, inside an rcu read side critical section, inside preempt disabled
 	  sections, inside an interrupt, etc...
+
+config DEBUG_ATOMIC_SLEEP_PANIC
+	bool "Panic (Reboot) On Atomic Sleep"
+	depends on DEBUG_ATOMIC_SLEEP
+	depends on SEC_DEBUG && !SAMSUNG_PRODUCT_SHIP
+	help
+	  Say Y here to enable the kernel to panic on "atomic sleep",
+	  Say N if you want warning messages only.
 
 config DEBUG_LOCKING_API_SELFTESTS
 	bool "Locking API boot-time self-tests"
@@ -1913,6 +1903,7 @@ config TEST_KMOD
 	depends on m
 	depends on BLOCK && (64BIT || LBDAF)	  # for XFS, BTRFS
 	depends on NETDEVICES && NET_CORE && INET # for TUN
+	depends on BLOCK
 	select TEST_LKM
 	select XFS_FS
 	select TUN
@@ -1968,18 +1959,6 @@ config BUG_ON_DATA_CORRUPTION
 
 	  If unsure, say N.
 
-config SOFTLOCKUP_WATCHDOG_TEST
-    bool "To test softlockup watchdog"
-    depends on LOCKUP_DETECTOR && DEBUG_FS
-    default n
-    help
-     This option provides a kernel debugfs item that can be used
-     to test softlockup watchdog reset. This option is not useful
-     for distributions or general kernels, but only for kernel
-     developers working on architecture code for test purpose.
-
-     Say N if you are unsure.
-
 source "samples/Kconfig"
 
 source "lib/Kconfig.kgdb"
@@ -2027,12 +2006,18 @@ config IO_STRICT_DEVMEM
 
 menuconfig DEBUG_SNAPSHOT
 	bool "Debug SnapShot Support"
+	depends on OF_RESERVED_MEM
 	default n
 
 config DEBUG_SNAPSHOT_LINUX_BUILD
 	bool "May be built in LINUX environment"
 	depends on DEBUG_SNAPSHOT
 	default y
+
+config DEBUG_SNAPSHOT_MINIMIZED_MODE
+	bool "Use minimized resource for debugging."
+	depends on DEBUG_SNAPSHOT
+	default n
 
 config DEBUG_SNAPSHOT_USER_MODE
 	bool "Enable User Mode, Most of debug feature are disabled"
@@ -2133,4 +2118,4 @@ config DEBUG_SNAPSHOT_CRASH_KEY
 config DEBUG_SNAPSHOT_MINIMIZED_MODE
 	bool "Support minimized feature configuration"
 	depends on DEBUG_SNAPSHOT_USER_MODE
-	default y
+	default n

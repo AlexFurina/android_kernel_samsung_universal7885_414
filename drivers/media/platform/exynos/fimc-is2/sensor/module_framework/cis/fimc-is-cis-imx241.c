@@ -67,7 +67,7 @@ static void sensor_imx241_cis_data_calculation(const struct sensor_pll_info *pll
 
 	dbg_sensor(1, "[DHL] sensor_imx241_cis_data_calculation.. !!\n");
 
-	FIMC_BUG(!pll_info);
+	BUG_ON(!pll_info);
 
 	/* 1. mipi data rate calculation (Mbps/Lane) */
 	/* ToDo: using output Pixel Clock Divider Value */
@@ -169,7 +169,7 @@ int sensor_imx241_cis_init(struct v4l2_subdev *subdev)
 	setinfo.param = NULL;
 	setinfo.return_value = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -178,7 +178,7 @@ int sensor_imx241_cis_init(struct v4l2_subdev *subdev)
 		goto p_err;
 	}
 
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis->cis_data);
 	memset(cis->cis_data, 0, sizeof(cis_shared_data));
 
 	cis->cis_data->cur_width = SENSOR_IMX241_MAX_WIDTH;
@@ -243,7 +243,7 @@ int sensor_imx241_cis_log_status(struct v4l2_subdev *subdev)
 	u8 data8;
 	u16 data16;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -284,12 +284,12 @@ static int sensor_imx241_cis_group_param_hold_func(struct v4l2_subdev *subdev, u
 	struct fimc_is_cis *cis = NULL;
 	struct i2c_client *client = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -329,12 +329,12 @@ int sensor_imx241_cis_group_param_hold(struct v4l2_subdev *subdev, bool hold)
 	int ret = 0;
 	struct fimc_is_cis *cis = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	ret = sensor_imx241_cis_group_param_hold_func(subdev, hold);
 	if (ret < 0)
@@ -350,11 +350,11 @@ int sensor_imx241_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 	struct fimc_is_cis *cis = NULL;
 	struct i2c_client *client = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	if (mode > sensor_imx241_max_setfile_num) {
 		err("invalid mode(%d)!!", mode);
@@ -407,12 +407,12 @@ int sensor_imx241_cis_stream_on(struct v4l2_subdev *subdev)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -463,7 +463,7 @@ int sensor_imx241_cis_stream_on(struct v4l2_subdev *subdev)
 
 #if 0
 	/* WDR */
-	if (cis_data->companion_data.enable_wdr == true)
+	if (cis_data->is_data.wdr_enable == true)
 		ret = fimc_is_sensor_write8(client, 0x0216, 0x01);
 	else
 		ret = fimc_is_sensor_write8(client, 0x0216, 0x00);
@@ -495,12 +495,12 @@ int sensor_imx241_cis_stream_off(struct v4l2_subdev *subdev)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -552,13 +552,13 @@ int sensor_imx241_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_pa
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!target_exposure);
+	BUG_ON(!subdev);
+	BUG_ON(!target_exposure);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -623,7 +623,7 @@ int sensor_imx241_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_pa
 
 #if 0
 	/* Long exposure */
-	if (cis_data->companion_data.enable_wdr == true) {
+	if (cis_data->is_data.wdr_enable == true) {
 		ret = fimc_is_sensor_write16(client, 0x021E, long_coarse_int);
 		if (ret < 0)
 			goto p_err;
@@ -668,13 +668,13 @@ int sensor_imx241_cis_get_min_exposure_time(struct v4l2_subdev *subdev, u32 *min
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!min_expo);
+	BUG_ON(!subdev);
+	BUG_ON(!min_expo);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -720,13 +720,13 @@ int sensor_imx241_cis_get_max_exposure_time(struct v4l2_subdev *subdev, u32 *max
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!max_expo);
+	BUG_ON(!subdev);
+	BUG_ON(!max_expo);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -781,13 +781,13 @@ int sensor_imx241_cis_adjust_frame_duration(struct v4l2_subdev *subdev,
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!target_duration);
+	BUG_ON(!subdev);
+	BUG_ON(!target_duration);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -830,12 +830,12 @@ int sensor_imx241_cis_set_frame_duration(struct v4l2_subdev *subdev, u32 frame_d
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -902,12 +902,12 @@ int sensor_imx241_cis_set_frame_rate(struct v4l2_subdev *subdev, u32 min_fps)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -961,13 +961,13 @@ int sensor_imx241_cis_adjust_analog_gain(struct v4l2_subdev *subdev, u32 input_a
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!target_permile);
+	BUG_ON(!subdev);
+	BUG_ON(!target_permile);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1007,12 +1007,12 @@ int sensor_imx241_cis_set_analog_gain(struct v4l2_subdev *subdev, struct ae_para
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!again);
+	BUG_ON(!subdev);
+	BUG_ON(!again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1073,12 +1073,12 @@ int sensor_imx241_cis_get_analog_gain(struct v4l2_subdev *subdev, u32 *again)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!again);
+	BUG_ON(!subdev);
+	BUG_ON(!again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1131,13 +1131,13 @@ int sensor_imx241_cis_get_min_analog_gain(struct v4l2_subdev *subdev, u32 *min_a
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!min_again);
+	BUG_ON(!subdev);
+	BUG_ON(!min_again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1188,13 +1188,13 @@ int sensor_imx241_cis_get_max_analog_gain(struct v4l2_subdev *subdev, u32 *max_a
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!max_again);
+	BUG_ON(!subdev);
+	BUG_ON(!max_again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1248,13 +1248,13 @@ int sensor_imx241_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_par
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1326,12 +1326,12 @@ int sensor_imx241_cis_get_digital_gain(struct v4l2_subdev *subdev, u32 *dgain)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1381,13 +1381,13 @@ int sensor_imx241_cis_get_min_digital_gain(struct v4l2_subdev *subdev, u32 *min_
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!min_dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!min_dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1420,13 +1420,13 @@ int sensor_imx241_cis_get_max_digital_gain(struct v4l2_subdev *subdev, u32 *max_
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!max_dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!max_dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1460,9 +1460,9 @@ int sensor_imx241_cis_compensate_gain_for_extremely_br(struct v4l2_subdev *subde
 	u16 coarse_int = 0;
 	u32 compensated_dgain = 0;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!again);
-	FIMC_BUG(!dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!again);
+	BUG_ON(!dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -1533,7 +1533,7 @@ static struct fimc_is_cis_ops cis_ops = {
 	.cis_wait_streamoff = sensor_cis_wait_streamoff,
 };
 
-static int cis_imx241_probe(struct i2c_client *client,
+int cis_imx241_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -1547,8 +1547,8 @@ static int cis_imx241_probe(struct i2c_client *client,
 	struct device *dev;
 	struct device_node *dnode;
 
-	FIMC_BUG(!client);
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!client);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -1571,7 +1571,7 @@ static int cis_imx241_probe(struct i2c_client *client,
 
 	sensor_peri = find_peri_by_cis_id(device, SENSOR_NAME_IMX241);
 	if (!sensor_peri) {
-		probe_info("sensor peri is net yet probed");
+		probe_info("sensor peri is not yet probed");
 		return -EPROBE_DEFER;
 	}
 
@@ -1680,39 +1680,33 @@ p_err:
 	return ret;
 }
 
-static const struct of_device_id sensor_cis_imx241_match[] = {
+static int cis_imx241_remove(struct i2c_client *client)
+{
+	int ret = 0;
+	return ret;
+}
+
+static const struct of_device_id exynos_fimc_is_cis_imx241_match[] = {
 	{
 		.compatible = "samsung,exynos5-fimc-is-cis-imx241",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, sensor_cis_imx241_match);
+MODULE_DEVICE_TABLE(of, exynos_fimc_is_cis_imx241_match);
 
-static const struct i2c_device_id sensor_cis_imx241_idt[] = {
+static const struct i2c_device_id cis_imx241_idt[] = {
 	{ SENSOR_NAME, 0 },
 	{},
 };
 
-static struct i2c_driver sensor_cis_imx241_driver = {
-	.probe	= cis_imx241_probe,
+static struct i2c_driver cis_imx241_driver = {
 	.driver = {
 		.name	= SENSOR_NAME,
 		.owner	= THIS_MODULE,
-		.of_match_table = sensor_cis_imx241_match,
-		.suppress_bind_attrs = true,
+		.of_match_table = exynos_fimc_is_cis_imx241_match
 	},
-	.id_table = sensor_cis_imx241_idt
+	.probe	= cis_imx241_probe,
+	.remove	= cis_imx241_remove,
+	.id_table = cis_imx241_idt
 };
-
-static int __init sensor_cis_imx241_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&sensor_cis_imx241_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_cis_imx241_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(sensor_cis_imx241_init);
+module_i2c_driver(cis_imx241_driver);

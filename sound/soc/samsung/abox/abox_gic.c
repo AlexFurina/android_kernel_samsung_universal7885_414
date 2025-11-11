@@ -1,6 +1,6 @@
 /* sound/soc/samsung/abox/abox_gic.c
  *
- * ALSA SoC Audio Layer - Samsung ABOX GIC driver
+ * ALSA SoC - Samsung ABOX driver
  *
  * Copyright (c) 2016 Samsung Electronics Co. Ltd.
  *
@@ -48,7 +48,7 @@ int abox_gic_register_irq_handler(struct device *dev, unsigned int irq,
 {
 	struct abox_gic_data *data = dev_get_drvdata(dev);
 
-	dev_info(dev, "%s(%u, %p, %p)\n", __func__, irq, handler, dev_id);
+	dev_info(dev, "%s(%u, %pf)\n", __func__, irq, handler);
 
 	if (irq >= ARRAY_SIZE(data->handler)) {
 		dev_err(dev, "invalid irq: %d\n", irq);
@@ -124,31 +124,6 @@ static irqreturn_t abox_gic_irq_handler(int irq, void *dev_id)
 	return ret;
 }
 
-static void abox_gicd_enable(struct device *dev, bool en)
-{
-	struct abox_gic_data *data = dev_get_drvdata(dev);
-	void __iomem *gicd_base = data->gicd_base;
-
-	if (en) {
-		writel(0x1, gicd_base + GIC_DIST_CTRL);
-		writel(0x0, gicd_base + GIC_DIST_IGROUP + 0x0);
-		writel(0x0, gicd_base + GIC_DIST_IGROUP + 0x4);
-		writel(0x0, gicd_base + GIC_DIST_IGROUP + 0x8);
-		writel(0x0, gicd_base + GIC_DIST_IGROUP + 0xC);
-		/* Todo: check whether it is really needed
-		 * writel(0xc, gicd_base + GIC_DIST_ENABLE_SET + 0x4);
-		 */
-		dev_dbg(dev, "[WRITE]GICD_ISENABLE:en	: 0x%x\n",
-				readl(gicd_base + GIC_DIST_ENABLE_SET + 0x4));
-	} else {
-		writel(0x0, gicd_base + GIC_DIST_CTRL);
-		/* Todo: check whether it is really needed
-		 * writel(0xc, gicd_base + GIC_DIST_ENABLE_CLEAR + 0x4);
-		 */
-		dev_dbg(dev, "[WRITE]GICD_ISENABLE:dis	: 0x%x\n",
-				readl(gicd_base + GIC_DIST_ENABLE_SET + 0x4));
-	}
-}
 
 void abox_gic_init_gic(struct device *dev)
 {
@@ -161,6 +136,10 @@ void abox_gic_init_gic(struct device *dev)
 #ifdef GIC_IS_SECURE_FREE
 	writel(0x000000FF, data->gicc_base + GIC_CPU_PRIMASK);
 	writel(0x3, data->gicd_base + GIC_DIST_CTRL);
+
+	for (i = 0; i < 40; i++) {
+		writel(0x10101010, data->gicd_base + GIC_DIST_PRI + (i * 4));
+	}
 #else
 	arg = SMC_REG_ID_SFR_W(data->gicc_base_phys + GIC_CPU_PRIMASK);
 	ret = exynos_smc(SMC_CMD_REG, arg, 0x000000FF, 0);
@@ -189,6 +168,24 @@ void abox_gic_init_gic(struct device *dev)
 }
 EXPORT_SYMBOL(abox_gic_init_gic);
 
+void abox_gicd_enable(struct device *dev, bool en)
+{
+	struct abox_gic_data *data = dev_get_drvdata(dev);
+
+	if (en) {
+		writel(0x1, data->gicd_base + 0x0);
+		writel(0x0, data->gicd_base + 0x80);
+		writel(0x0, data->gicd_base + 0x84);
+		writel(0x0, data->gicd_base + 0x88);
+		writel(0x0, data->gicd_base + 0x8c);
+		writel(0xc, data->gicd_base + 104);
+	} else {
+		writel(0x0, data->gicd_base + 0x0);
+		writel(0xc, data->gicd_base + 184);
+	}
+}
+EXPORT_SYMBOL(abox_gicd_enable);
+
 int abox_gic_enable_irq(struct device *dev)
 {
 	struct abox_gic_data *data = dev_get_drvdata(dev);
@@ -198,7 +195,6 @@ int abox_gic_enable_irq(struct device *dev)
 
 		data->disabled = false;
 		enable_irq(data->irq);
-		abox_gicd_enable(dev, true);
 	}
 	return 0;
 }

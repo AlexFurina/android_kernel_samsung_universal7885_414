@@ -95,6 +95,9 @@ struct decon_lcd {
 	unsigned int width;
 	unsigned int height;
 
+	unsigned int update_min_w;
+	unsigned int update_min_h;
+
 	unsigned int hs_clk;
 	struct stdphy_pms dphy_pms;
 	unsigned int esc_clk;
@@ -141,32 +144,5 @@ struct decon_dsc {
 		unsigned int width_per_enc;
 		unsigned char *dec_pps_t;
 };
-
-#if defined(CONFIG_EXYNOS_PANEL_CABC)
-/*
- * cabc_mode[1:0] must be re-mapped according to DDI command
- * 3FA0 is OLED, so CABC command is not supported.
- * Following values represent for ACL2 control of 3FA0.
- * - [2'b00] ACL off
- * - [2'b01] ACL low
- * - [2'b10] ACL mid
- * - [2'b11] ACL high
- */
-enum cabc_mode {
-	CABC_OFF = 0,
-	CABC_USER_IMAGE,
-	CABC_STILL_PICTURE,
-	CABC_MOVING_IMAGE,
-	CABC_READ_MODE = 0x80,
-};
-
-enum power_mode {
-	POWER_SAVE_OFF = 0,
-	POWER_SAVE_LOW = 1,
-	POWER_SAVE_MEDIUM = 2,
-	POWER_SAVE_HIGH = 3,
-	POWER_SAVE_MAX = 4,
-};
-#endif
 
 #endif

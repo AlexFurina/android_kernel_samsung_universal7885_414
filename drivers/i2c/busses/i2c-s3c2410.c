@@ -34,6 +34,7 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/pinctrl/consumer.h>
+#include "../../pinctrl/core.h"
 
 #include <asm/irq.h>
 
@@ -127,6 +128,7 @@ struct s3c24xx_i2c {
 	unsigned int		tx_setup;
 	unsigned int		irq;
 
+
 	enum s3c24xx_i2c_state	state;
 	unsigned long		clkrate;
 
@@ -140,6 +142,9 @@ struct s3c24xx_i2c {
 	int			gpios[2];
 	struct pinctrl          *pctrl;
 	int			idle_ip_index;
+	int			reset_before_trans;
+	int			fix_doxfer_return;
+	int			filter_on;
 };
 
 static const struct platform_device_id s3c24xx_driver_ids[] = {
@@ -165,6 +170,7 @@ static int i2c_s3c_irq_nextbyte(struct s3c24xx_i2c *i2c, unsigned long iicstat);
 static const struct of_device_id s3c24xx_i2c_match[] = {
 	{ .compatible = "samsung,s3c2410-i2c", .data = (void *)0 },
 	{ .compatible = "samsung,s3c2440-i2c", .data = (void *)QUIRK_S3C2440 },
+	{ .compatible = "samsung,s3c2440-i2c-polling", .data = (void *)(QUIRK_S3C2440 | QUIRK_POLL) },
 	{ .compatible = "samsung,s3c2440-hdmiphy-i2c",
 	  .data = (void *)(QUIRK_S3C2440 | QUIRK_HDMIPHY | QUIRK_NO_GPIO) },
 	{ .compatible = "samsung,exynos5430-fimc-i2c",
@@ -177,6 +183,92 @@ static const struct of_device_id s3c24xx_i2c_match[] = {
 };
 MODULE_DEVICE_TABLE(of, s3c24xx_i2c_match);
 #endif
+
+static void recover_i2c_gpio(struct s3c24xx_i2c *i2c)
+{
+	int gpio_sda, gpio_scl;
+	int sda_val, scl_val, clk_cnt;
+	unsigned long timeout;
+	struct device_node *np = i2c->dev->of_node;
+	struct pinctrl_state *default_i2c_pins;
+	struct pinctrl *default_i2c_pinctrl;
+	int status = 0;
+
+	dev_err(i2c->dev, "Recover GPIO pins\n");
+
+	gpio_sda = of_get_named_gpio(np, "gpio_sda", 0);
+	if (!gpio_is_valid(gpio_sda)) {
+		dev_err(i2c->dev, "Can't get gpio_sda!!!\n");
+		return ;
+	}
+	gpio_scl = of_get_named_gpio(np, "gpio_scl", 0);
+	if (!gpio_is_valid(gpio_scl)) {
+		dev_err(i2c->dev, "Can't get gpio_scl!!!\n");
+		return ;
+	}
+
+	sda_val = gpio_get_value(gpio_sda);
+	scl_val = gpio_get_value(gpio_scl);
+
+	dev_err(i2c->dev, "SDA line : %s, SCL line : %s\n",
+			sda_val ? "HIGH" : "LOW", scl_val ? "HIGH" : "LOW");
+
+	if (sda_val == 1)
+		return ;
+
+	/* Wait for SCL as high for 500msec */
+	if (scl_val == 0) {
+		timeout = jiffies + msecs_to_jiffies(500);
+		while (time_before(jiffies, timeout)) {
+			if (gpio_get_value(gpio_scl) != 0) {
+				timeout = 0;
+				break;
+			}
+			msleep(10);
+		}
+		if (timeout)
+			dev_err(i2c->dev, "SCL line is still LOW!!!\n");
+	}
+
+	sda_val = gpio_get_value(gpio_sda);
+
+	if (sda_val == 0) {
+		gpio_direction_output(gpio_scl, 1);
+		gpio_direction_input(gpio_sda);
+
+		for (clk_cnt = 0; clk_cnt < 100; clk_cnt++) {
+			/* Make clock for slave */
+			gpio_set_value(gpio_scl, 0);
+			udelay(5);
+			gpio_set_value(gpio_scl, 1);
+			udelay(5);
+			if (gpio_get_value(gpio_sda) == 1) {
+				dev_err(i2c->dev, "SDA line is recovered.\n");
+				break;
+			}
+		}
+		if (clk_cnt == 100)
+			dev_err(i2c->dev, "SDA line is not recovered!!!\n");
+	}
+
+	default_i2c_pinctrl = devm_pinctrl_get(i2c->dev);
+	if (IS_ERR(default_i2c_pinctrl)) {
+		dev_err(i2c->dev, "Can't get i2c pinctrl!!!\n");
+		return ;
+	}
+
+	default_i2c_pins = pinctrl_lookup_state(default_i2c_pinctrl,
+				"default");
+	if (!IS_ERR(default_i2c_pins)) {
+		default_i2c_pinctrl->state = NULL;
+		status = pinctrl_select_state(default_i2c_pinctrl, default_i2c_pins);
+		if (status)
+			dev_err(i2c->dev, "Can't set default i2c pins!!!\n");
+	} else {
+		dev_err(i2c->dev, "Can't get default pinstate!!!\n");
+	}
+
+}
 
 static int s3c24xx_i2c_clockrate(struct s3c24xx_i2c *i2c, unsigned int *got);
 
@@ -271,16 +363,20 @@ static bool is_ack(struct s3c24xx_i2c *i2c)
 {
 	int tries;
 
-	for (tries = 50; tries; --tries) {
+	for (tries = 5000; tries; --tries) {
 		if (readl(i2c->regs + S3C2410_IICCON)
 			& S3C2410_IICCON_IRQPEND) {
+
+			if (i2c->state == STATE_READ)
+				return true;
+
 			if (!(readl(i2c->regs + S3C2410_IICSTAT)
 				& S3C2410_IICSTAT_LASTBIT))
 				return true;
 		}
-		usleep_range(1000, 2000);
+		udelay(10);
 	}
-	dev_err(i2c->dev, "ack was not received\n");
+	dev_err(i2c->dev, "ack was not received in is_ack\n");
 	return false;
 }
 
@@ -328,6 +424,8 @@ static void s3c24xx_i2c_message_start(struct s3c24xx_i2c *i2c,
 	writel(stat, i2c->regs + S3C2410_IICSTAT);
 
 	if (i2c->quirks & QUIRK_POLL) {
+		if (i2c->state != STATE_START)
+			return;
 		while ((i2c->msg_num != 0) && is_ack(i2c)) {
 			i2c_s3c_irq_nextbyte(i2c, stat);
 			stat = readl(i2c->regs + S3C2410_IICSTAT);
@@ -463,7 +561,7 @@ static int i2c_s3c_irq_nextbyte(struct s3c24xx_i2c *i2c, unsigned long iicstat)
 		    !(i2c->msg->flags & I2C_M_IGNORE_NAK)) {
 			/* ack was not received... */
 
-			dev_err(i2c->dev, "ack was not received\n");
+			dev_err(i2c->dev, "ack was not received irq_nextbyte\n");
 			s3c24xx_i2c_stop(i2c, -ENXIO);
 			goto out_ack;
 		}
@@ -628,6 +726,10 @@ static irqreturn_t s3c24xx_i2c_irq(int irqno, void *dev_id)
 	if (status & S3C2410_IICSTAT_ARBITR) {
 		/* deal with arbitration loss */
 		dev_err(i2c->dev, "deal with arbitration loss\n");
+		if (i2c->fix_doxfer_return) {
+			i2c->msg_idx = -ECONNREFUSED;
+			goto out;
+		}
 	}
 
 	if (i2c->state == STATE_IDLE) {
@@ -813,16 +915,15 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 		goto out;
 	}
 
-	timeout = wait_event_timeout(i2c->wait, i2c->msg_num == 0, HZ * 5);
+	timeout = wait_event_timeout(i2c->wait, i2c->msg_num == 0, HZ * 1);
 
 	ret = i2c->msg_idx;
 
 	/* having these next two as dev_err() makes life very
 	 * noisy when doing an i2cdetect */
 
-	if (timeout == 0)
+	if (timeout == 0) {
 		dev_err(i2c->dev, "timeout\n");
-	else if (ret != num)
 		dev_err(i2c->dev, "incomplete xfer (%d)\n"
 				"I2C Stat Reg dump:\n"
 				"IIC STAT = 0x%08x\n"
@@ -830,6 +931,26 @@ static int s3c24xx_i2c_doxfer(struct s3c24xx_i2c *i2c,
 				, ret
 				, readl(i2c->regs + S3C2410_IICSTAT)
 				, readl(i2c->regs + S3C2410_IICCON));
+		if (i2c->fix_doxfer_return && (ret >= 0)) {
+			ret = -ETIMEDOUT;
+		}
+		recover_i2c_gpio(i2c);
+	}
+	else if (ret != num) {
+		dev_err(i2c->dev, "sent lengh(%d) don't match requested length(%d)\n", ret, num);
+		dev_err(i2c->dev, "incomplete xfer (%d)\n"
+				"I2C Stat Reg dump:\n"
+				"IIC STAT = 0x%08x\n"
+				"IIC CON = 0x%08x\n"
+				, ret
+				, readl(i2c->regs + S3C2410_IICSTAT)
+				, readl(i2c->regs + S3C2410_IICCON));
+		if (i2c->fix_doxfer_return) {
+			recover_i2c_gpio(i2c);
+			if (ret >= 0)
+				ret = -EIO;
+		}
+	}
 
 	/* For QUIRK_HDMIPHY, bus is already disabled */
 	if (i2c->quirks & QUIRK_HDMIPHY)
@@ -866,6 +987,8 @@ static int s3c24xx_i2c_xfer(struct i2c_adapter *adap,
 	if (ret)
 		return ret;
 
+	if (i2c->reset_before_trans)
+		i2c->need_hw_init = S3C2410_NEED_FULL_INIT;
 
 	for (retry = 0; retry < adap->retries; retry++) {
 
@@ -997,9 +1120,6 @@ static int s3c24xx_i2c_clockrate(struct s3c24xx_i2c *i2c, unsigned int *got)
 	if (div1 == 512)
 		iiccon |= S3C2410_IICCON_TXDIV_512;
 
-	if (i2c->quirks & QUIRK_POLL)
-		iiccon |= S3C2410_IICCON_SCALE(2);
-
 	writel(iiccon, i2c->regs + S3C2410_IICCON);
 
 	if (i2c->quirks & QUIRK_S3C2440) {
@@ -1014,6 +1134,9 @@ static int s3c24xx_i2c_clockrate(struct s3c24xx_i2c *i2c, unsigned int *got)
 			sda_delay |= S3C2410_IICLC_FILTER_ON;
 		} else
 			sda_delay = 0;
+
+		if (i2c->filter_on)
+			sda_delay |= S3C2410_IICLC_FILTER_ON;
 
 		dev_dbg(i2c->dev, "IICLC=%08lx\n", sda_delay);
 		writel(sda_delay, i2c->regs + S3C2440_IICLC);
@@ -1202,6 +1325,21 @@ static int s3c24xx_i2c_probe(struct platform_device *pdev)
 	else
 		s3c24xx_i2c_parse_dt(pdev->dev.of_node, i2c);
 
+	if (of_get_property(pdev->dev.of_node, "samsung,reset-before-trans", NULL))
+		i2c->reset_before_trans = 1;
+	else
+		i2c->reset_before_trans = 0;
+
+	if (of_get_property(pdev->dev.of_node, "samsung,fix-doxfer-return", NULL))
+		i2c->fix_doxfer_return = 1;
+	else
+		i2c->fix_doxfer_return = 0;
+
+	if (of_get_property(pdev->dev.of_node, "samsung,glitch-filter", NULL))
+		i2c->filter_on = 1;
+	else
+		i2c->filter_on = 0;
+
 	strlcpy(i2c->adap.name, "s3c2410-i2c", sizeof(i2c->adap.name));
 	i2c->adap.owner = THIS_MODULE;
 	i2c->adap.algo = &s3c24xx_i2c_algorithm;
@@ -1344,6 +1482,8 @@ static int s3c24xx_i2c_suspend_noirq(struct device *dev)
 {
 	struct s3c24xx_i2c *i2c = dev_get_drvdata(dev);
 
+	dev_err(i2c->dev, "Device %s\n", __func__);
+
 	i2c->suspended = 1;
 
 	return 0;
@@ -1367,12 +1507,87 @@ static int s3c24xx_i2c_runtime_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct s3c24xx_i2c *i2c = platform_get_drvdata(pdev);
 
+	dev_err(i2c->dev, "Device %s\n", __func__);
+
 	if (i2c->quirks & QUIRK_FIMC_I2C)
 		i2c->need_hw_init = S3C2410_NEED_REG_INIT;
 
 	return 0;
 }
 #endif
+
+#ifdef CONFIG_SAMSUNG_TUI
+#ifdef CONFIG_PM_RUNTIME
+static int stui_pm_ret;
+#endif /* CONFIG_PM_RUNTIME */
+int stui_i2c_lock(struct i2c_adapter *adap)
+{
+	int ret = 0;
+	static struct s3c24xx_i2c *stui_i2c;
+
+	if (!adap) {
+		pr_err("cannot get adapter\n");
+		return -1;
+	}
+
+	i2c_lock_adapter(adap);
+	stui_i2c = (struct s3c24xx_i2c *)adap->algo_data;
+
+#ifdef CONFIG_PM_RUNTIME
+	stui_pm_ret = pm_runtime_get_sync(stui_i2c->dev);
+	if (stui_pm_ret < 0) {
+		ret = clk_enable(stui_i2c->clk);
+		if (ret)
+			goto out_err;
+	}
+#else /* CONFIG_PM_RUNTIME */
+	ret = clk_enable(stui_i2c->clk);
+	if (ret)
+		goto out_err;
+#endif /* CONFIG_PM_RUNTIME */
+
+#ifdef CONFIG_ARCH_EXYNOS_PM
+	exynos_update_ip_idle_status(stui_i2c->idle_ip_index, 0);
+#endif
+
+	return 0;
+
+out_err:
+	i2c_unlock_adapter(adap);
+	return ret;
+}
+
+int stui_i2c_unlock(struct i2c_adapter *adap)
+{
+	static struct s3c24xx_i2c *stui_i2c;
+
+	if (!adap) {
+		pr_err("cannot get adapter\n");
+		return -1;
+	}
+
+	stui_i2c = (struct s3c24xx_i2c *)adap->algo_data;
+
+#ifdef CONFIG_PM_RUNTIME
+	if (stui_pm_ret < 0) {
+		clk_disable(stui_i2c->clk);
+	} else {
+		pm_runtime_mark_last_busy(stui_i2c->dev);
+		pm_runtime_put_autosuspend(stui_i2c->dev);
+	}
+#else /* CONFIG_PM_RUNTIME */
+	clk_disable(stui_i2c->clk);
+#endif /* CONFIG_PM_RUNTIME */
+
+#ifdef CONFIG_ARCH_EXYNOS_PM
+	exynos_update_ip_idle_status(stui_i2c->idle_ip_index, 1);
+#endif
+
+	i2c_unlock_adapter(adap);
+
+	return 0;
+}
+#endif /* CONFIG_SAMSUNG_TUI */
 
 #ifdef CONFIG_PM
 static const struct dev_pm_ops s3c24xx_i2c_dev_pm_ops = {

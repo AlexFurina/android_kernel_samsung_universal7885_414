@@ -19,10 +19,21 @@
 #include <linux/of_platform.h>
 #include <linux/dma-mapping.h>
 #include <linux/delay.h>
-#include <linux/bitops.h>
+#include <soc/samsung/exynos-pmu.h>
 
 #include "regs-mcu_ipc.h"
 #include "mcu_ipc.h"
+
+#ifdef CONFIG_SOC_EXYNOS7885
+#define CP_STAT				0x38
+#define EXT_REGULATOR_SHARED_STATUS	0x3644
+#define EXT_REGULATOR_SHARED_OPTION	0x3648
+static spinlock_t shared_reg_lock;
+static bool shared_reg_ready = false;
+static signed int shared_reg_usage_cnt = 0;
+int exynos_pmu_shared_reg_enable(void);
+void exynos_pmu_shared_reg_disable(void);
+#endif
 
 void mcu_ipc_reg_dump(enum mcu_ipc_region id)
 {
@@ -235,9 +246,18 @@ EXPORT_SYMBOL(mcu_ipc_unregister_handler);
 
 void mbox_set_interrupt(enum mcu_ipc_region id, u32 int_num)
 {
+	int need_delay = 0;
 	/* generate interrupt */
-	if (int_num < 16)
+	if (int_num < 16) {
+		if (id == MCU_CP)
+			need_delay = exynos_pmu_shared_reg_enable();
 		mcu_ipc_writel(id, 0x1 << int_num, EXYNOS_MCU_IPC_INTGR1);
+		if (id == MCU_CP) {
+			if (need_delay)
+				udelay(3000);
+			exynos_pmu_shared_reg_disable();
+		}
+	}
 }
 EXPORT_SYMBOL(mbox_set_interrupt);
 
@@ -315,7 +335,6 @@ void mcu_ipc_clear_all_interrupt(enum mcu_ipc_region id)
 {
 	mcu_ipc_writel(id, 0xFFFF, EXYNOS_MCU_IPC_INTCR1);
 }
-EXPORT_SYMBOL(mcu_ipc_clear_all_interrupt);
 
 #ifdef CONFIG_ARGOS
 static int mcu_ipc_set_affinity(enum mcu_ipc_region id, struct device *dev, int irq)
@@ -348,18 +367,10 @@ static int mcu_ipc_set_affinity(enum mcu_ipc_region id, struct device *dev, int 
 			mcu_dat[id].dmask);
 }
 #else
-int mcu_ipc_set_affinity(enum mcu_ipc_region id, int affinity)
+static int mcu_ipc_set_affinity(enum mcu_ipc_region id, struct device *dev, int irq)
 {
-	if (id >= MCU_MAX) {
-		pr_err("mcu_ipc_set_affinity err. id=%d\n", id);
-		return -1;
-	}
-
-	irq_set_affinity(mcu_dat[id].irq, cpumask_of(affinity));
-
 	return 0;
 }
-EXPORT_SYMBOL(mcu_ipc_set_affinity);
 #endif
 
 #ifdef CONFIG_MCU_IPC_TEST
@@ -387,6 +398,73 @@ static void test_without_dev(enum mcu_ipc_region id)
 				region, id, i, mbox_get_value(i));
 	}
 }
+#endif
+
+#ifdef CONFIG_SOC_EXYNOS7885
+static int get_cp_stat(void)
+{
+	u32 val;
+	exynos_pmu_read(CP_STAT, &val);
+	return val;
+}
+
+static int get_ext_regulator_shared_status(void)
+{
+	u32 val;
+	exynos_pmu_read(EXT_REGULATOR_SHARED_STATUS, &val);
+	return val;
+}
+
+int exynos_pmu_shared_reg_enable(void)
+{
+	int need_delay = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&shared_reg_lock, flags);
+
+	if (shared_reg_usage_cnt == 0) {
+		mbox_update_value(MCU_CP, 2, 1, 0x1, 0x0);
+		exynos_pmu_update(EXT_REGULATOR_SHARED_OPTION, 0x4, 0x4);
+		if (mbox_extract_value(MCU_CP, 3, 0xf, 0x1) == 0) {
+			need_delay = 1;
+		}
+	}
+
+	shared_reg_usage_cnt++;
+
+	if (get_ext_regulator_shared_status() != 0x20001 || get_cp_stat() != 0x10)
+		pr_info("%s) need_delay = %d, usage_cnt = %d, CP_WAKEUP = %d, CP_STAT = 0x%02x, EXT_REGULATOR_SHARED_STATUS: 0x%08x, CALLER = %pf\n", __func__,
+			need_delay, shared_reg_usage_cnt, mbox_extract_value(MCU_CP, 2, 0x1, 0x0),
+			get_cp_stat(), get_ext_regulator_shared_status(), __builtin_return_address(0));
+
+	spin_unlock_irqrestore(&shared_reg_lock, flags);
+	return need_delay;
+}
+
+void exynos_pmu_shared_reg_disable(void)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&shared_reg_lock, flags);
+
+	if (shared_reg_usage_cnt == 1) {
+		exynos_pmu_update(EXT_REGULATOR_SHARED_OPTION, 0x4, 0x0);
+		mbox_update_value(MCU_CP, 2, 0, 0x1, 0x0);
+	}
+
+	shared_reg_usage_cnt--;
+
+	//pr_info("%s) usage_cnt = %d, ret = %d(%pf)\n", __func__, shared_reg_usage_cnt, ret, __builtin_return_address(0));
+
+	WARN(shared_reg_usage_cnt < 0, "%s) usage_cnt = %d(%pf), CP_STAT = 0x%02x, EXT_REGULATOR_SHARED_STATUS: 0x%08x, CALLER = %pf\n", __func__,
+			shared_reg_usage_cnt, __builtin_return_address(0), get_cp_stat(), get_ext_regulator_shared_status(),
+			__builtin_return_address(0));
+
+	spin_unlock_irqrestore(&shared_reg_lock, flags);
+}
+
+EXPORT_SYMBOL(exynos_pmu_shared_reg_enable);
+EXPORT_SYMBOL(exynos_pmu_shared_reg_disable);
 #endif
 
 static int mcu_ipc_probe(struct platform_device *pdev)
@@ -442,9 +520,13 @@ static int mcu_ipc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Can't request MCU_IPC IRQ\n");
 		return err;
 	}
-	mcu_dat[id].irq = mcu_ipc_irq;
 
 	mcu_ipc_clear_all_interrupt(id);
+
+	/* set argos irq affinity */
+	err = mcu_ipc_set_affinity(id, dev, mcu_ipc_irq);
+	if (err)
+		dev_err(dev, "Can't set IRQ affinity with(%d)\n", err);
 
 #ifdef CONFIG_MCU_IPC_TEST
 	test_without_dev(id);
@@ -452,6 +534,11 @@ static int mcu_ipc_probe(struct platform_device *pdev)
 
 	spin_lock_init(&mcu_dat[id].lock);
 	spin_lock_init(&mcu_dat[id].reg_lock);
+
+#ifdef CONFIG_SOC_EXYNOS7885
+	spin_lock_init(&shared_reg_lock);
+	shared_reg_ready = true;
+#endif
 
 	dev_err(&pdev->dev, "%s: mcu_ipc probe done.\n", __func__);
 

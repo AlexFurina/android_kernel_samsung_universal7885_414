@@ -65,6 +65,10 @@ config ION_HPA_HEAP
 	  by the High-order Pages Allocator (HPA). If your system needs HPA for
 	  some reason, you should say Y here.
 
+config HPA_EXTRA
+	bool "add HPA extra heap"
+	default n
+
 config ION_DEBUG_EVENT_RECORD
 	bool "Ion event debug support"
 	default y

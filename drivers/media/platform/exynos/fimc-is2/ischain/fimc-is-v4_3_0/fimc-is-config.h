@@ -77,8 +77,6 @@
  * =================================================================================================
  */
 
-#define FIMC_IS_MAX_TASK		(20)
-
 #if defined(CONFIG_ARM_EXYNOS8890_BUS_DEVFREQ)
 #define CONFIG_FIMC_IS_BUS_DEVFREQ
 #endif
@@ -102,7 +100,5 @@
 
 #define MULTI_SHOT_KTHREAD
 /* #define ENABLE_EARLY_SHOT */
-
-#define CHAIN_USE_VC_TASKLET	1
 
 #endif

@@ -131,8 +131,8 @@ static void monitor_report(void *group_data,
 	bool valid = true;
 	u32 f_dqq;
 
-	FIMC_BUG_VOID(!group_data);
-	FIMC_BUG_VOID(!frame_data);
+	BUG_ON(!group_data);
+	BUG_ON(!frame_data);
 
 	group = group_data;
 	device = group->device;
@@ -288,7 +288,7 @@ void monitor_point(void *group_data,
 {
 	struct fimc_is_group *group;
 
-	FIMC_BUG_VOID(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	group->pcount = mpoint;
@@ -302,7 +302,7 @@ void monitor_time_shot(void *group_data,
 	struct fimc_is_frame *frame;
 	struct fimc_is_monitor *point;
 
-	FIMC_BUG_VOID(!frame_data);
+	BUG_ON(!frame_data);
 
 	frame = frame_data;
 	point = &frame->mpoint[mpoint];

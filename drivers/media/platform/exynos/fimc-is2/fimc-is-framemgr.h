@@ -29,8 +29,6 @@
 #define FRAMEMGR_ID_3XS		0x00000200
 #define FRAMEMGR_ID_3XC		0x00000400
 #define FRAMEMGR_ID_3XP		0x00000800
-#define FRAMEMGR_ID_3XF		0x00000801
-#define FRAMEMGR_ID_3XG		0x00000802
 #define FRAMEMGR_ID_IXS		0x00001000
 #define FRAMEMGR_ID_IXC		0x00002000
 #define FRAMEMGR_ID_IXP		0x00004000
@@ -44,14 +42,11 @@
 #define FRAMEMGR_ID_M4P		0x00400000
 #define FRAMEMGR_ID_M5P		0x00800000
 #define FRAMEMGR_ID_VRA		0x01000000
-#if defined(SOC_DCP)
 #define FRAMEMGR_ID_DCP0S	0x02000000
 #define FRAMEMGR_ID_DCP1S	0x04000000
 #define FRAMEMGR_ID_DCP0C	0x08000000
 #define FRAMEMGR_ID_DCP1C	0x10000000
-#define FRAMEMGR_ID_DCP2C	0x20000000
-#define FRAMEMGR_ID_MEXC	0x40000000	/* for ME */
-#define FRAMEMGR_ID_HW		0x80000000
+#define FRAMEMGR_ID_HW		0x20000000
 #define FRAMEMGR_ID_SHOT	(FRAMEMGR_ID_SSX | FRAMEMGR_ID_3XS | \
 				 FRAMEMGR_ID_IXS | FRAMEMGR_ID_DXS | \
 				 FRAMEMGR_ID_MXS | FRAMEMGR_ID_VRA | \
@@ -62,25 +57,9 @@
 				 FRAMEMGR_ID_M2P | FRAMEMGR_ID_M3P | \
 				 FRAMEMGR_ID_M4P | FRAMEMGR_ID_M5P | \
 				 FRAMEMGR_ID_DCP1S | FRAMEMGR_ID_DCP0C | \
-				 FRAMEMGR_ID_DCP1C | FRAMEMGR_ID_DCP2C | \
-				 FRAMEMGR_ID_SSXVC0 | FRAMEMGR_ID_SSXVC1 | \
-				 FRAMEMGR_ID_SSXVC2 | FRAMEMGR_ID_SSXVC3)
-#else
-#define FRAMEMGR_ID_MEXC	0x02000000	/* for ME */
-#define FRAMEMGR_ID_PAFXS	0x04000000	/* for PAF_RDMA */
-#define FRAMEMGR_ID_HW		0x08000000
-#define FRAMEMGR_ID_SHOT	(FRAMEMGR_ID_SSX | FRAMEMGR_ID_3XS | \
-				 FRAMEMGR_ID_IXS | FRAMEMGR_ID_DXS | \
-				 FRAMEMGR_ID_MXS | FRAMEMGR_ID_VRA | \
-				 FRAMEMGR_ID_PAFXS)
-#define FRAMEMGR_ID_STREAM	(FRAMEMGR_ID_3XC | FRAMEMGR_ID_3XP | \
-				 FRAMEMGR_ID_DXS | FRAMEMGR_ID_DXC | \
-				 FRAMEMGR_ID_M0P | FRAMEMGR_ID_M1P | \
-				 FRAMEMGR_ID_M2P | FRAMEMGR_ID_M3P | \
-				 FRAMEMGR_ID_M4P | FRAMEMGR_ID_M5P | \
-				 FRAMEMGR_ID_SSXVC0 | FRAMEMGR_ID_SSXVC1 | \
-				 FRAMEMGR_ID_SSXVC2 | FRAMEMGR_ID_SSXVC3)
-#endif
+				 FRAMEMGR_ID_DCP1C | FRAMEMGR_ID_SSXVC0 | \
+				 FRAMEMGR_ID_SSXVC1 | FRAMEMGR_ID_SSXVC2 | \
+				 FRAMEMGR_ID_SSXVC3)
 /* #define TRACE_FRAME */
 #define TRACE_ID		(FRAMEMGR_ID_SHOT | FRAMEMGR_ID_STREAM | FRAMEMGR_ID_HW)
 
@@ -156,11 +135,11 @@ enum fimc_is_frame_state {
 	FS_INVALID
 };
 
-#define FS_HW_FREE	FS_FREE
-#define FS_HW_REQUEST	FS_REQUEST
-#define FS_HW_CONFIGURE	FS_PROCESS
-#define FS_HW_WAIT_DONE	FS_COMPLETE
-#define FS_HW_INVALID	FS_INVALID
+#define FS_HW_FREE      FS_FREE
+#define FS_HW_REQUEST   FS_REQUEST
+#define FS_HW_CONFIGURE FS_PROCESS
+#define FS_HW_WAIT_DONE FS_COMPLETE
+#define FS_HW_INVALID   FS_INVALID
 
 #define NR_FRAME_STATE FS_INVALID
 
@@ -194,8 +173,11 @@ struct fimc_is_frame {
 	void			*subdev; /* fimc_is_subdev */
 
 	/* group leader use */
-	struct camera2_shot_ext	*shot_ext;
 	struct camera2_shot	*shot;
+	struct camera2_shot_ext	*shot_ext;
+	ulong			kvaddr_shot;
+	u32			dvaddr_shot;
+	ulong			cookie_shot;
 	size_t			shot_size;
 
 	/* stream use */
@@ -203,8 +185,8 @@ struct fimc_is_frame {
 
 	/* common use */
 	u32			planes; /* total planes include multi-buffers */
-	dma_addr_t		dvaddr_buffer[FIMC_IS_MAX_PLANES];
-	ulong			kvaddr_buffer[FIMC_IS_MAX_PLANES];
+	u32			dvaddr_buffer[FIMC_IS_MAX_PLANES];
+	ulong 		kvaddr_buffer[FIMC_IS_MAX_PLANES];
 
 	/*
 	 * target address for capture node
@@ -251,15 +233,11 @@ struct fimc_is_frame {
 	u32			type;
 	unsigned long		core_flag;
 	atomic_t		shot_done_flag;
-#else
-	/* group leader use */
-	dma_addr_t		dvaddr_shot;
 #endif
 
 #ifdef ENABLE_SYNC_REPROCESSING
 	struct list_head	sync_list;
 #endif
-	struct list_head	votf_list;
 
 	/* for NI(noise index from DDK) use */
 	u32			noise_idx; /* Noise index */
@@ -304,7 +282,7 @@ static const char * const frame_state_name[NR_FRAME_STATE] = {
 	"Complete"
 };
 
-ulong frame_fcount(struct fimc_is_frame *frame, void *data);
+int frame_fcount(struct fimc_is_frame *frame, void *data);
 int put_frame(struct fimc_is_framemgr *this, struct fimc_is_frame *frame,
 			enum fimc_is_frame_state state);
 struct fimc_is_frame *get_frame(struct fimc_is_framemgr *this,
@@ -317,7 +295,7 @@ struct fimc_is_frame *peek_frame_tail(struct fimc_is_framemgr *this,
 			enum fimc_is_frame_state state);
 struct fimc_is_frame *find_frame(struct fimc_is_framemgr *this,
 			enum fimc_is_frame_state state,
-			ulong (*fn)(struct fimc_is_frame *, void *), void *data);
+			int (*fn)(struct fimc_is_frame *, void *), void *data);
 void print_frame_queue(struct fimc_is_framemgr *this,
 			enum fimc_is_frame_state state);
 

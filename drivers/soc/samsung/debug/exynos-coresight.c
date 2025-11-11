@@ -16,6 +16,7 @@
 #include <linux/kallsyms.h>
 #include <linux/of.h>
 #include <linux/io.h>
+#include <linux/debug-snapshot.h>
 
 #include <asm/core_regs.h>
 #include <asm/cputype.h>
@@ -62,6 +63,16 @@ bool FLAG_T32_EN = false;
 static struct cs_dbg dbg;
 extern struct atomic_notifier_head hardlockup_notifier_list;
 
+static inline bool is_power_up(int cpu)
+{
+	return __raw_readl(dbg.cpu[cpu].base + DBGPRSR) & POWER_UP;
+}
+
+static inline bool is_reset_state(int cpu)
+{
+	return __raw_readl(dbg.cpu[cpu].base + DBGPRSR) & RESET_STATE;
+}
+
 static inline void get_arm_arch_version(int cpu)
 {
 	dbg.arch = CS_READ(dbg.cpu[0].base, MIDR);
@@ -99,15 +110,6 @@ struct exynos_cs_pcsr {
 	int el;
 };
 static struct exynos_cs_pcsr exynos_cs_pc[CORE_CNT][ITERATION];
-
-static inline u32 linear_phycpu(unsigned int cpu)
-{
-	u32 mpidr = cpu_logical_map(cpu);
-	unsigned int lvl = (mpidr & MPIDR_MT_BITMASK) ? 1 : 0;
-
-	return ((MPIDR_AFFINITY_LEVEL(mpidr, (1 + lvl)) << 2)
-			| MPIDR_AFFINITY_LEVEL(mpidr, lvl));
-}
 
 static inline int exynos_cs_get_cpu_part_num(int cpu)
 {
@@ -157,6 +159,16 @@ static int exynos_cs_get_pc(int cpu, int iter)
 
 	if (!base)
 		return -ENOMEM;
+
+	if (!is_power_up(cpu)) {
+		pr_err("Coresight: Power down!\n");
+		return -EACCES;
+	}
+
+	if (is_reset_state(cpu)) {
+		pr_err("Coresight: Power on but reset state!\n");
+		return -EACCES;
+	}
 
 	switch (exynos_cs_get_cpu_part_num(cpu)) {
 	case ARM_CPU_PART_MEERKAT:
@@ -584,7 +596,7 @@ static int exynos_cs_init_dt(void)
 {
 	struct device_node *np = NULL;
 	unsigned int offset, sj_offset, val, cs_reg_base;
-	int ret = 0, i = 0, cpu;
+	int ret = 0, cpu = 0;
 	void __iomem *sj_base;
 
 	np = of_find_matching_node(NULL, of_exynos_cs_matches);
@@ -607,18 +619,22 @@ static int exynos_cs_init_dt(void)
 	if (val & SJTAG_SOFT_LOCK)
 		return -EIO;
 
+	if (dbg_snapshot_get_sjtag_status() == true)
+		return -EIO;
+
 	while ((np = of_find_node_by_type(np, "cs"))) {
 		ret = of_property_read_u32(np, "dbg-offset", &offset);
 		if (ret)
 			return -EINVAL;
-		cpu = linear_phycpu(i);
 		dbg.cpu[cpu].base = ioremap(cs_reg_base + offset, SZ_256K);
 		if (!dbg.cpu[cpu].base) {
-			pr_err("%s: Failed ioremap (%d).\n", __func__, i);
+			pr_err("%s: Failed ioremap (%d).\n", __func__, cpu);
 			return -ENOMEM;
 		}
-
-		i++;
+		pr_info("cpu%d: paddr: 0x%x, vaddr: 0x%lx\n",
+				cpu, cs_reg_base + offset,
+				(unsigned long)dbg.cpu[cpu].base);
+		cpu++;
 	}
 	return 0;
 }
@@ -657,14 +673,14 @@ static struct bus_type ecs_subsys = {
 	.dev_name = "exynos-cs",
 };
 
-static ssize_t ecs_enable_show(struct device *dev,
-			         struct device_attribute *attr, char *buf)
+static ssize_t ecs_enable_show(struct kobject *kobj,
+			         struct kobj_attribute *attr, char *buf)
 {
 	return scnprintf(buf, 10, "%sable\n", FLAG_T32_EN ? "en" : "dis");
 }
 
-static ssize_t ecs_enable_store(struct device *dev,
-				struct device_attribute *attr,
+static ssize_t ecs_enable_store(struct kobject *kobj,
+				struct kobj_attribute *attr,
 				const char *buf, size_t count)
 {
 	int en;
@@ -680,7 +696,7 @@ static ssize_t ecs_enable_store(struct device *dev,
 	return count;
 }
 
-static struct device_attribute ecs_enable_attr =
+static struct kobj_attribute ecs_enable_attr =
         __ATTR(enabled, 0644, ecs_enable_show, ecs_enable_store);
 
 static struct attribute *ecs_sysfs_attrs[] = {

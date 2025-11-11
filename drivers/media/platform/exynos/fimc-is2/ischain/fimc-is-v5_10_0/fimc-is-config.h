@@ -86,6 +86,4 @@
 
 #define ENABLE_HOTPLUG_REQUEST
 
-#define CHAIN_USE_VC_TASKLET	1
-
 #endif

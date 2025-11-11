@@ -286,13 +286,13 @@ int decon_create_fence(struct decon_device *decon, struct sync_file **sync_file)
 
 void decon_wait_fence(struct dma_fence *fence)
 {
-	int err = 0;
+	int err = 1;
 
 	snprintf(acq_fence_log, ACQ_FENCE_LEN, "%p:%s",
 			fence, fence->ops->get_driver_name(fence));
 
-	err = dma_fence_wait_timeout(fence, false, 900);
-	if (err < 0)
+	err = dma_fence_wait_timeout(fence, false, msecs_to_jiffies(600));
+	if (err <= 0)
 		decon_warn("%s: error waiting on acquire fence: %d\n", acq_fence_log, err);
 }
 

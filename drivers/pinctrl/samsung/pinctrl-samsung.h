@@ -273,7 +273,7 @@ struct samsung_pinctrl_drv_data {
 	struct pinctrl_desc		pctl;
 	struct pinctrl_dev		*pctl_dev;
 
-	struct samsung_pin_group	*pin_groups;
+	const struct samsung_pin_group	*pin_groups;
 	unsigned int			nr_groups;
 	const struct samsung_pmx_func	*pmx_functions;
 	unsigned int			nr_functions;
@@ -305,15 +305,12 @@ struct samsung_pinctrl_of_match_data {
  * @pins: the pins included in this group.
  * @num_pins: number of pins included in this group.
  * @func: the function number to be programmed when selected.
- * @state: current pin group state.
  */
 struct samsung_pin_group {
 	const char		*name;
 	const unsigned int	*pins;
 	u8			num_pins;
 	u8			func;
-	unsigned int		state[PINCFG_TYPE_NUM];
-	unsigned int		state_num;
 };
 
 /**
@@ -339,6 +336,7 @@ extern const struct samsung_pinctrl_of_match_data exynos5410_of_data;
 extern const struct samsung_pinctrl_of_match_data exynos5420_of_data;
 extern const struct samsung_pinctrl_of_match_data exynos5433_of_data;
 extern const struct samsung_pinctrl_of_match_data exynos7_of_data;
+extern const struct samsung_pinctrl_of_match_data exynos7885_of_data;
 extern const struct samsung_pinctrl_of_match_data s3c64xx_of_data;
 extern const struct samsung_pinctrl_of_match_data s3c2412_of_data;
 extern const struct samsung_pinctrl_of_match_data s3c2416_of_data;

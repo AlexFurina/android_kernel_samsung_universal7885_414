@@ -127,12 +127,13 @@ struct gnss_data {
 	struct gnss_io_t *iodev;
 
 	/* SHDMEM ADDR */
-	struct shmem_link_device *shmd;
 	u32 shmem_base;
 	u32 shmem_size;
 	u32 ipcmem_offset;
 	u32 ipc_size;
 	u32 ipc_reg_cnt;
+
+	u32 boot_without_mbox;
 
 	u8 __iomem *gnss_base;
 	u8 __iomem *ipc_base;

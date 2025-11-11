@@ -31,7 +31,7 @@ int fimc_is_ois_fw_open(struct fimc_is_ois *ois, char *name)
 	mm_segment_t old_fs;
 	int fw_requested = 1;
 
-	FIMC_BUG(!ois);
+	BUG_ON(!ois);
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
@@ -60,11 +60,13 @@ int fimc_is_ois_fw_open(struct fimc_is_ois *ois, char *name)
 		goto p_err;
 	}
 
+	memcpy((void *)buf, fw_blob->data, size);
+
 	/* Firmware version save */
 	ret = fimc_is_ois_fw_ver_copy(ois, buf, fsize);
 	if (ret < 0) {
 		err("OIS fw version copy fail\n");
-		goto p_err;
+		return ret;
 	}
 
 request_fw:
@@ -102,7 +104,7 @@ request_fw:
 		if (!buf) {
 			err("failed to allocate memory");
 			ret = -ENOMEM;
-			goto p_err;
+			return ret;
 		}
 
 		memcpy((void *)buf, fw_blob->data, size);
@@ -111,25 +113,23 @@ request_fw:
 		ret = fimc_is_ois_fw_ver_copy(ois, buf, fsize);
 		if (ret < 0) {
 			err("OIS fw version copy fail\n");
-			goto p_err;
+			return ret;
 		}
 	}
 
 p_err:
-
-	if (buf)
-		vfree(buf);
-
 	if (!fw_requested) {
 		if (!IS_ERR_OR_NULL(fp)) {
 			filp_close(fp, current->files);
 		}
-		set_fs(old_fs);
 	} else {
 		if (!IS_ERR_OR_NULL(fw_blob)) {
 			release_firmware(fw_blob);
 		}
 	}
+
+	vfree(buf);
+	set_fs(old_fs);
 
 	if (ret < 0)
 		err("OIS firmware loading is fail\n");

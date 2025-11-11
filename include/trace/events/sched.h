@@ -169,9 +169,14 @@ TRACE_EVENT(sched_switch,
 
 		(__entry->prev_state & (TASK_REPORT_MAX - 1)) ?
 		  __print_flags(__entry->prev_state & (TASK_REPORT_MAX - 1), "|",
-				{ 0x01, "S" }, { 0x02, "D" }, { 0x04, "T" },
-				{ 0x08, "t" }, { 0x10, "X" }, { 0x20, "Z" },
-				{ 0x40, "P" }, { 0x80, "I" }) :
+				{ TASK_INTERRUPTIBLE, "S" },
+				{ TASK_UNINTERRUPTIBLE, "D" },
+				{ __TASK_STOPPED, "T" },
+				{ __TASK_TRACED, "t" },
+				{ EXIT_DEAD, "X" },
+				{ EXIT_ZOMBIE, "Z" },
+				{ TASK_PARKED, "P" },
+				{ TASK_DEAD, "I" }) :
 		  "R",
 
 		__entry->prev_state & TASK_REPORT_MAX ? "+" : "",
@@ -676,7 +681,7 @@ TRACE_EVENT(sched_fluid_activated_cpus,
 		__field(	int,		cpu		)
 		__field(	int,		util_sum	)
 		__field(	int,		busy_thr	)
-		__field(	unsigned long,	prefer_mask	)
+		__field(	unsigned int,	prefer_mask	)
 	),
 
 	TP_fast_assign(
@@ -865,7 +870,8 @@ TRACE_EVENT(sched_load_se,
 		__entry->cpu = __trace_sched_cpu(gcfs_rq, se);
 		__trace_sched_path(gcfs_rq, __get_dynamic_array(path),
 				   __get_dynamic_array_len(path));
-		memcpy(__entry->comm, p ? p->comm : "(null)", TASK_COMM_LEN);
+		memcpy(__entry->comm, p ? p->comm : "(null)",
+				      p ? TASK_COMM_LEN : sizeof("(null)"));
 		__entry->pid = p ? p->pid : -1;
 		__entry->load = se->avg.load_avg;
 		__entry->util = se->avg.util_avg;
@@ -1102,27 +1108,22 @@ TRACE_EVENT(sched_boost_task,
 /*
  * Tracepoint for system overutilized flag
  */
-struct sched_domain;
-TRACE_EVENT_CONDITION(sched_overutilized,
+TRACE_EVENT(sched_overutilized,
 
-	TP_PROTO(struct sched_domain *sd, bool was_overutilized, bool overutilized),
+	TP_PROTO(int overutilized),
 
-	TP_ARGS(sd, was_overutilized, overutilized),
-
-	TP_CONDITION(overutilized != was_overutilized),
+	TP_ARGS(overutilized),
 
 	TP_STRUCT__entry(
-		__field( bool,	overutilized	  )
-		__array( char,  cpulist , 32      )
+		__field( int,  overutilized    )
 	),
 
 	TP_fast_assign(
-		__entry->overutilized	= overutilized;
-		scnprintf(__entry->cpulist, sizeof(__entry->cpulist), "%*pbl", cpumask_pr_args(sched_domain_span(sd)));
+		__entry->overutilized   = overutilized;
 	),
 
-	TP_printk("overutilized=%d sd_span=%s",
-		__entry->overutilized ? 1 : 0, __entry->cpulist)
+	TP_printk("overutilized=%d",
+		__entry->overutilized)
 );
 
 /*

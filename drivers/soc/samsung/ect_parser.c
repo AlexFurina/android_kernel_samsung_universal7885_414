@@ -23,7 +23,9 @@ static struct ect_info ect_list[];
 
 static char ect_signature[] = "PARA";
 
+#if defined(CONFIG_ECT_DUMP)
 static struct class *ect_class;
+#endif
 
 static phys_addr_t ect_address;
 static phys_addr_t ect_size;
@@ -1067,7 +1069,7 @@ err_size_list_allocation:
 	return ret;
 }
 
-static int ect_parse_pidtm_block(int parser_version, void *address, struct ect_pidtm_block *block)
+/*static int ect_parse_pidtm_block(int parser_version, void *address, struct ect_pidtm_block *block)
 {
 	int ret = 0;
 	int i, length;
@@ -1100,8 +1102,8 @@ err_parse_param_name:
 err_param_name_list_allocation:
 	return ret;
 }
-
-static int ect_parse_pidtm_header(void *address, struct ect_info *info)
+*/
+/*static int ect_parse_pidtm_header(void *address, struct ect_info *info)
 {
 	int ret = 0;
 	int i;
@@ -1165,7 +1167,7 @@ err_block_list_allocation:
 	kfree(ect_pidtm_header);
 	return ret;
 }
-
+*/
 static void ect_present_test_data(char *version)
 {
 	if (version[1] == '.')
@@ -1198,7 +1200,7 @@ static int ect_dump_minlock(struct seq_file *s, void *data);
 static int ect_dump_gen_parameter(struct seq_file *s, void *data);
 static int ect_dump_binary(struct seq_file *s, void *data);
 static int ect_dump_new_timing_parameter(struct seq_file *s, void *data);
-static int ect_dump_pidtm(struct seq_file *s, void *data);
+//static int ect_dump_pidtm(struct seq_file *s, void *data);
 
 static int dump_open(struct inode *inode, struct file *file);
 
@@ -1406,7 +1408,7 @@ static struct ect_info ect_list[] = {
 		.dump_node_name = SYSFS_NODE_NEW_TIMING_PARAM,
 		.block_handle = NULL,
 		.block_precedence = -1,
-	}, {
+	}/*, {
 		.block_name = BLOCK_PIDTM,
 		.block_name_length = sizeof(BLOCK_PIDTM) - 1,
 		.parser = ect_parse_pidtm_header,
@@ -1420,7 +1422,7 @@ static struct ect_info ect_list[] = {
 		.dump_node_name = SYSFS_NODE_PIDTM,
 		.block_handle = NULL,
 		.block_precedence = -1,
-	}
+	}*/
 };
 
 #if defined(CONFIG_ECT_DUMP)
@@ -2023,7 +2025,7 @@ static int ect_dump_new_timing_parameter(struct seq_file *s, void *data)
 
 	return 0;
 }
-
+/*
 static int ect_dump_pidtm(struct seq_file *s, void *data)
 {
 	int i, j;
@@ -2063,7 +2065,7 @@ static int ect_dump_pidtm(struct seq_file *s, void *data)
 
 	return 0;
 }
-
+*/
 static int dump_open(struct inode *inode, struct file *file)
 {
 	struct ect_info *info = (struct ect_info *)inode->i_private;

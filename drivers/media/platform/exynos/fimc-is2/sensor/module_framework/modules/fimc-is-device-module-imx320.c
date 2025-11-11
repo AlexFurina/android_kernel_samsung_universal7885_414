@@ -53,34 +53,39 @@ static struct fimc_is_sensor_cfg config_module_imx320[] = {
 	/* 652X488@112fps */
 	FIMC_IS_SENSOR_CFG(652, 488, 112, 22, 1, CSI_DATA_LANES_2),
 #else /* hack */
-			/* width, height, fps, settle, mode, lane, speed, interleave, pd_mode */
-	FIMC_IS_SENSOR_CFG(3280, 2464, 30, 0, 0, CSI_DATA_LANES_2, 1358, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 3280, 2464), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_EMBEDDED_8BIT, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(3280, 1232, 60, 0, 1, CSI_DATA_LANES_2, 1358, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 3280, 1232), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_EMBEDDED_8BIT, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(1640, 1232, 30, 0, 2, CSI_DATA_LANES_2, 718, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 1640, 1232), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_EMBEDDED_8BIT, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(1640, 1232, 60, 0, 3, CSI_DATA_LANES_2, 718, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 1640, 1232), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_EMBEDDED_8BIT, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(820, 616, 120, 138, 4, CSI_DATA_LANES_2, 718, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 820, 616), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_EMBEDDED_8BIT, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
+	/* 3280X2464@30fps */
+	FIMC_IS_SENSOR_CFG(3280, 2464, 30, 14, 0, CSI_DATA_LANES_2),
+	/* 3280X1232@60fps */
+	FIMC_IS_SENSOR_CFG(3280, 1232, 60, 14, 1, CSI_DATA_LANES_2),
+	/* 1640X1232@30fps */
+	FIMC_IS_SENSOR_CFG(1640, 1232, 30, 7, 2, CSI_DATA_LANES_2),
+	/* 1640X1232@60fps */
+	FIMC_IS_SENSOR_CFG(1640, 1232, 60, 7, 3, CSI_DATA_LANES_2),
+	/* 820X616@120fps */
+	FIMC_IS_SENSOR_CFG(820, 616, 120, 138, 4, CSI_DATA_LANES_2),
 #endif
+};
 
+static struct fimc_is_vci vci_module_imx320[] = {
+	{
+		.pixelformat = V4L2_PIX_FMT_SBGGR10,
+		.config = {{0, HW_FORMAT_RAW10, VCI_DMA_NORMAL},
+			   {1, 0, VCI_DMA_NORMAL},
+			   {0, HW_FORMAT_EMBEDDED_8BIT, VCI_DMA_INTERNAL},
+			   {3, 0, VCI_DMA_NORMAL}}
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR12,
+		.config = {{0, HW_FORMAT_RAW10, VCI_DMA_NORMAL},
+			   {1, 0, VCI_DMA_NORMAL},
+			   {0, HW_FORMAT_EMBEDDED_8BIT, VCI_DMA_INTERNAL},
+			   {3, 0, VCI_DMA_NORMAL}}
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR16,
+		.config = {{0, HW_FORMAT_RAW10, VCI_DMA_NORMAL},
+			   {1, 0, VCI_DMA_NORMAL},
+			   {0, HW_FORMAT_EMBEDDED_8BIT, VCI_DMA_INTERNAL},
+			   {3, 0, VCI_DMA_NORMAL}}
+	}
 };
 
 static const struct v4l2_subdev_core_ops core_ops = {
@@ -94,7 +99,6 @@ static const struct v4l2_subdev_core_ops core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_routing = sensor_module_s_routing,
 	.s_stream = sensor_module_s_stream,
 	.s_parm = sensor_module_s_param
 };
@@ -116,7 +120,7 @@ static int sensor_module_imx320_power_setpin(struct platform_device *pdev,
 	struct device_node *dnode;
 	int gpio_none = 0, gpio_reset = 0, gpio_standby = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -191,7 +195,7 @@ static int sensor_module_imx320_power_setpin(struct platform_device *pdev,
 	return 0;
 }
 
-static int __init sensor_module_imx320_probe(struct platform_device *pdev)
+int sensor_module_imx320_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -202,7 +206,7 @@ static int __init sensor_module_imx320_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -234,8 +238,8 @@ static int __init sensor_module_imx320_probe(struct platform_device *pdev)
 	module->subdev = subdev_module;
 	module->device = pdata->id;
 	module->client = NULL;
-	module->active_width = 3264;
-	module->active_height = 2448;
+	module->active_width = 3280;
+	module->active_height = 2464;
 	module->margin_left = 0;
 	module->margin_right = 0;
 	module->margin_top = 0;
@@ -244,7 +248,11 @@ static int __init sensor_module_imx320_probe(struct platform_device *pdev)
 	module->pixel_height = module->active_height;
 	module->max_framerate = 120;
 	module->position = pdata->position;
+	module->mode = CSI_MODE_DT_ONLY;
+	module->lanes = CSI_DATA_LANES_2;
 	module->bitwidth = 10;
+	module->vcis = ARRAY_SIZE(vci_module_imx320);
+	module->vci = vci_module_imx320;
 	module->sensor_maker = "SLSI";
 	module->sensor_name = "IMX320";
 	module->setfile_name = "setfile_imx320.bin";
@@ -262,6 +270,7 @@ static int __init sensor_module_imx320_probe(struct platform_device *pdev)
 	PERI_SET_MODULE(module);
 
 	ext = &module->ext;
+	ext->mipi_lane_num = module->lanes;
 
 	ext->sensor_con.product_name = module->sensor_id;
 	ext->sensor_con.peri_type = SE_I2C;
@@ -326,6 +335,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_imx320_remove(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	info("%s\n", __func__);
+
+	return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_imx320_match[] = {
 	{
 		.compatible = "samsung,sensor-module-imx320",
@@ -335,6 +353,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_imx320_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_imx320_match);
 
 static struct platform_driver sensor_module_imx320_driver = {
+	.probe  = sensor_module_imx320_probe,
+	.remove = sensor_module_imx320_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-IMX320",
 		.owner  = THIS_MODULE,
@@ -342,16 +362,5 @@ static struct platform_driver sensor_module_imx320_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_imx320_init(void)
-{
-	int ret;
+module_platform_driver(sensor_module_imx320_driver);
 
-	ret = platform_driver_probe(&sensor_module_imx320_driver,
-				sensor_module_imx320_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_imx320_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_imx320_init);

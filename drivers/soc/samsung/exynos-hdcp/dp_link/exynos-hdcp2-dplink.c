@@ -13,7 +13,6 @@
 #include <linux/uaccess.h>
 #include <linux/smc.h>
 #include <asm/cacheflush.h>
-#include <linux/exynos_ion.h>
 #include <linux/smc.h>
 #include <linux/types.h>
 #include <linux/delay.h>
@@ -34,6 +33,15 @@ int dplink_emul_handler(int cmd)
 {
 	/* todo: support hdcp22 emulator */
 	return 0;
+}
+#endif
+
+#if defined(CONFIG_EXYNOS_DISPLAYPORT)
+extern void reset_dp_hdcp_module(void);
+#else
+void reset_dp_hdcp_module(void)
+{
+	return;
 }
 #endif
 

@@ -312,7 +312,7 @@ static int dpp_check_format(struct dpp_device *dpp, struct dpp_params_info *p)
 	}
 
 	if (!test_bit(DPP_ATTR_HDR, &dpp->attr) && (p->hdr > DPP_HDR_OFF)) {
-		dpp_err("Not support hdr in DPP%d - VGRF only!\n",
+		dpp_err("Not support hdr in DPP%d - VG) only!\n",
 				dpp->id);
 		return -EINVAL;
 	}

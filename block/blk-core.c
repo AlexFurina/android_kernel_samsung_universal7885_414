@@ -339,7 +339,6 @@ void blk_sync_queue(struct request_queue *q)
 		struct blk_mq_hw_ctx *hctx;
 		int i;
 
-		cancel_delayed_work_sync(&q->requeue_work);
 		queue_for_each_hw_ctx(q, hctx, i)
 			cancel_delayed_work_sync(&hctx->run_work);
 	} else {
@@ -852,6 +851,8 @@ struct request_queue *blk_alloc_queue_node(gfp_t gfp_mask, int node_id)
 		goto fail_stats;
 
 	q->backing_dev_info->ra_pages =
+			(VM_MAX_READAHEAD * 1024) / PAGE_SIZE;
+	q->backing_dev_info->io_pages =
 			(VM_MAX_READAHEAD * 1024) / PAGE_SIZE;
 	q->backing_dev_info->capabilities = BDI_CAP_CGROUP_WRITEBACK;
 	q->backing_dev_info->name = "block";
@@ -1801,7 +1802,7 @@ void blk_init_request_from_bio(struct request *req, struct bio *bio)
 	else
 		req->ioprio = IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, 0);
 	req->write_hint = bio->bi_write_hint;
-#ifdef CONFIG_CRYPTO_DISKCIPHER_DUN
+#ifdef CONFIG_CRYPTO_DISKCIPHER
 	req->__dun = bio->bi_iter.bi_dun;
 #endif
 	blk_rq_bio_prep(req->q, req, bio);
@@ -2450,6 +2451,8 @@ void blk_account_io_completion(struct request *req, unsigned int bytes)
 		cpu = part_stat_lock();
 		part = req->part;
 		part_stat_add(cpu, part, sectors[rw], bytes >> 9);
+		if (req_op(req) == REQ_OP_DISCARD)
+			part_stat_add(cpu, part, discard_sectors, bytes >> 9);
 		part_stat_unlock();
 	}
 }
@@ -2474,10 +2477,17 @@ void blk_account_io_done(struct request *req)
 		part_stat_add(cpu, part, ticks[rw], duration);
 		part_round_stats(req->q, cpu, part);
 		part_dec_in_flight(req->q, part, rw);
+		if (req_op(req) == REQ_OP_DISCARD)
+			part_stat_inc(cpu, part, discard_ios);
+		if (!(req->rq_flags & RQF_STARTED))
+			part_stat_inc(cpu, part, flush_ios);
 
 		hd_struct_put(part);
 		part_stat_unlock();
 	}
+
+	if (req->rq_flags & RQF_FLUSH_SEQ)
+		req->q->flush_ios++;
 }
 
 #ifdef CONFIG_PM
@@ -2659,6 +2669,8 @@ static void blk_dequeue_request(struct request *rq)
 	 * the driver side.
 	 */
 	if (blk_account_rq(rq)) {
+		if (!queue_in_flight(q))
+			q->in_flight_stamp = ktime_get();
 		q->in_flight[rq_is_sync(rq)]++;
 		set_io_start_time_ns(rq);
 	}
@@ -2791,7 +2803,7 @@ bool blk_update_request(struct request *req, blk_status_t error,
 	/* update sector only for requests with clear definition of sector */
 	if (!blk_rq_is_passthrough(req)) {
 		req->__sector += total_bytes >> 9;
-#ifdef CONFIG_CRYPTO_DISKCIPHER_DUN
+#ifdef CONFIG_CRYPTO_DISKCIPHER
 		if (req->__dun)
 			req->__dun += total_bytes >> 12;
 #endif
@@ -3159,7 +3171,7 @@ static void __blk_rq_prep_clone(struct request *dst, struct request *src)
 	dst->cpu = src->cpu;
 	dst->__sector = blk_rq_pos(src);
 	dst->__data_len = blk_rq_bytes(src);
-#ifdef CONFIG_CRYPTO_DISKCIPHER_DUN
+#ifdef CONFIG_CRYPTO_DISKCIPHER
 	dst->__dun = blk_rq_dun(src);
 #endif
 	if (src->rq_flags & RQF_SPECIAL_PAYLOAD) {

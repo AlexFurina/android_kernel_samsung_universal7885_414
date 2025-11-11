@@ -39,6 +39,7 @@
 #include <linux/of_platform.h>
 #include <linux/of_reserved_mem.h>
 #endif
+#include <linux/of_reserved_mem.h>
 
 #include <linux/mcu_ipc.h>
 
@@ -69,7 +70,8 @@ static struct gnss_ctl *create_ctl_device(struct platform_device *pdev)
 	if (!IS_ERR(qch_clk)) {
 		gif_err("Found Qch clk!\n");
 		gnssctl->ccore_qch_lh_gnss = qch_clk;
-	} else {
+	}
+	else {
 		gnssctl->ccore_qch_lh_gnss = NULL;
 	}
 
@@ -152,7 +154,7 @@ static const struct reserved_mem_ops gnss_dma_ops = {
 
 static int __init gnss_if_reserved_mem_setup(struct reserved_mem *remem)
 {
-	gif_info("%s: memory reserved: paddr=%#lx, t_size=%zd\n",
+	pr_debug("%s: memory reserved: paddr=%#lx, t_size=%zd\n",
 		__func__, (unsigned long)remem->base, (size_t)remem->size);
 	remem->ops = &gnss_dma_ops;
 
@@ -170,6 +172,7 @@ static int parse_dt_common_pdata(struct device_node *np,
 	gif_dt_read_u32(np, "shmem,ipc_offset", pdata->ipcmem_offset);
 	gif_dt_read_u32(np, "shmem,ipc_size", pdata->ipc_size);
 	gif_dt_read_u32(np, "shmem,ipc_reg_cnt", pdata->ipc_reg_cnt);
+	gif_dt_read_u32(np, "shmem,boot_without_mbox", pdata->boot_without_mbox);
 
 	return 0;
 }
@@ -229,7 +232,8 @@ static int alloc_gnss_reg(struct device *dev, struct gnss_shared_reg **areg,
 			ret->value.index = reg_value;
 			*areg = ret;
 		}
-	} else {
+	}
+	else {
 		gif_err("Register %s is already allocated!\n", reg_name);
 	}
 	return (*areg == NULL);
@@ -285,7 +289,8 @@ static int parse_dt_fault_pdata(struct device *dev, struct gnss_data *pdata)
 		(pdata)->fault_info.device = tmp[0];
 		(pdata)->fault_info.value.index = tmp[1];
 		(pdata)->fault_info.size = tmp[2];
-	} else {
+	}
+	else {
 		return -EINVAL;
 	}
 	return 0;
@@ -432,7 +437,7 @@ static int gnss_probe(struct platform_device *pdev)
 	}
 
 	/* attach device */
-	gif_info("set %s->%s\n", iod->name, ld->name);
+	gif_debug("set %s->%s\n", iod->name, ld->name);
 	set_current_link(iod, iod->ld);
 
 	platform_set_drvdata(pdev, ctl);

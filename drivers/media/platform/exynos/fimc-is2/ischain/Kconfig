@@ -19,7 +19,6 @@ source "drivers/media/platform/exynos/fimc-is2/ischain/fimc-is-v3_11_0/Kconfig"
 source "drivers/media/platform/exynos/fimc-is2/ischain/fimc-is-v3_20_0/Kconfig"
 source "drivers/media/platform/exynos/fimc-is2/ischain/fimc-is-v5_10_0/Kconfig"
 source "drivers/media/platform/exynos/fimc-is2/ischain/fimc-is-v5_15_0/Kconfig"
-source "drivers/media/platform/exynos/fimc-is2/ischain/fimc-is-v6_0_0/Kconfig"
-source "drivers/media/platform/exynos/fimc-is2/ischain/fimc-is-v6_10_0/Kconfig"
+source "drivers/media/platform/exynos/fimc-is2/ischain/fimc-is-v6_20_0/Kconfig"
 
 endchoice

@@ -1,13 +1,12 @@
 /*
  * s2mu004-irq.c - Interrupt controller support for s2mu004
  *
- * Copyright (C) 2015 Samsung Electronics Co.Ltd
+ * Copyright (C) 2016 Samsung Electronics Co.Ltd
  *
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -16,9 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
- * This driver is based on s2mu004-irq.c
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 #include <linux/err.h>
@@ -29,11 +26,10 @@
 #include <linux/mfd/samsung/s2mu004-private.h>
 
 static const u8 s2mu004_mask_reg[] = {
+	/* TODO: Need to check other INTMASK */
 	[CHG_INT1] = S2MU004_REG_SC_INT1_MASK,
 	[CHG_INT2] = S2MU004_REG_SC_INT2_MASK,
-#if defined(CONFIG_MUIC_S2MU004_HV)
 	[AFC_INT] = S2MU004_REG_AFC_INT_MASK,
-#endif
 	[MUIC_INT1] = S2MU004_REG_MUIC_INT1_MASK,
 	[MUIC_INT2] = S2MU004_REG_MUIC_INT2_MASK,
 };
@@ -50,7 +46,7 @@ static const struct s2mu004_irq_data s2mu004_irqs[] = {
 	DECLARE_IRQ(S2MU004_CHG1_IRQ_SYS,	CHG_INT1,	1 << 0),
 	DECLARE_IRQ(S2MU004_CHG1_IRQ_Poor_CHG,	CHG_INT1,	1 << 1),
 	DECLARE_IRQ(S2MU004_CHG1_IRQ_CHG_Fault,	CHG_INT1,	1 << 2),
-	DECLARE_IRQ(S2MU004_CHG1_IRQ_CHG_RSTART, CHG_INT1,	1 << 3),
+	DECLARE_IRQ(S2MU004_CHG1_IRQ_CHG_RSTART,CHG_INT1,	1 << 3),
 	DECLARE_IRQ(S2MU004_CHG1_IRQ_DONE,	CHG_INT1,	1 << 4),
 	DECLARE_IRQ(S2MU004_CHG1_IRQ_TOP_OFF,	CHG_INT1,	1 << 5),
 	DECLARE_IRQ(S2MU004_CHG1_IRQ_WCIN,	CHG_INT1,	1 << 6),
@@ -64,7 +60,6 @@ static const struct s2mu004_irq_data s2mu004_irqs[] = {
 	DECLARE_IRQ(S2MU004_CHG2_IRQ_DET_BAT,	CHG_INT2,	1 << 5),
 	DECLARE_IRQ(S2MU004_CHG2_IRQ_BAT,	CHG_INT2,	1 << 6),
 
-#if defined(CONFIG_HV_MUIC_S2MU004_AFC)
 	DECLARE_IRQ(S2MU004_AFC_IRQ_VbADC,	AFC_INT,	1 << 0),
 	DECLARE_IRQ(S2MU004_AFC_IRQ_VDNMon,	AFC_INT,	1 << 1),
 	DECLARE_IRQ(S2MU004_AFC_IRQ_DNRes,	AFC_INT,	1 << 2),
@@ -72,7 +67,7 @@ static const struct s2mu004_irq_data s2mu004_irqs[] = {
 	DECLARE_IRQ(S2MU004_AFC_IRQ_MRxTrf,	AFC_INT,	1 << 5),
 	DECLARE_IRQ(S2MU004_AFC_IRQ_MRxPerr,	AFC_INT,	1 << 6),
 	DECLARE_IRQ(S2MU004_AFC_IRQ_MRxRdy,	AFC_INT,	1 << 7),
-#endif
+
 	DECLARE_IRQ(S2MU004_MUIC_IRQ1_ATTATCH,	MUIC_INT1,	1 << 0),
 	DECLARE_IRQ(S2MU004_MUIC_IRQ1_DETACH,	MUIC_INT1,	1 << 1),
 	DECLARE_IRQ(S2MU004_MUIC_IRQ1_KP,	MUIC_INT1,	1 << 2),
@@ -161,60 +156,50 @@ static irqreturn_t s2mu004_irq_thread(int irq, void *data)
 	struct s2mu004_dev *s2mu004 = data;
 	u8 irq_reg[S2MU004_IRQ_GROUP_NR] = {0};
 	int i, ret;
-	u8 temp, temp_2;
-#if defined(CONFIG_MUIC_S2MU004_HV)
-	u8 temp_vdadc;
-#endif
 
+	u8 temp_vdadc;
+	u8 chg_status;
 	pr_debug("%s: irq gpio pre-state(0x%02x)\n", __func__,
-			gpio_get_value(s2mu004->irq_gpio));
+				gpio_get_value(s2mu004->irq_gpio));
 
 	/* CHG_INT1 ~ INT2 */
 	ret = s2mu004_read_reg(s2mu004->i2c, S2MU004_REG_SC_INT1,
 				&irq_reg[CHG_INT1]);
-	if (irq_reg[CHG_INT1])
-		pr_info("%s: charger interrupt(0x%02x)\n",
-				__func__, irq_reg[CHG_INT1]);
+	pr_info("%s: charger interrupt1(0x%02x)\n",
+			__func__, irq_reg[CHG_INT1]);
 
 	ret = s2mu004_read_reg(s2mu004->i2c, S2MU004_REG_SC_INT2,
 				&irq_reg[CHG_INT2]);
-	if (irq_reg[CHG_INT2])
-		pr_info("%s: charger interrupt(0x%02x)\n",
-				__func__, irq_reg[CHG_INT2]);
+	pr_info("%s: charger interrupt2(0x%02x)\n",
+			__func__, irq_reg[CHG_INT2]);
 
-#if defined(CONFIG_MUIC_S2MU004_HV)
 	/* AFC_INT */
 	ret = s2mu004_read_reg(s2mu004->i2c, S2MU004_REG_AFC_INT,
 				&irq_reg[AFC_INT]);
-	if (irq_reg[AFC_INT]) {
-		pr_info("%s: AFC interrupt(0x%02x)\n",
-				__func__, irq_reg[AFC_INT]);
+	pr_info("%s: AFC interrupt(0x%02x)\n",
+			__func__, irq_reg[AFC_INT]);
 
-		ret = s2mu004_read_reg(s2mu004->i2c, 0x48,
+	ret = s2mu004_read_reg(s2mu004->i2c, 0x48,
 				&temp_vdadc);
-		pr_info("%s: 0x48 (0x%02x)\n",
-				__func__, temp_vdadc);
-	}
-#endif
+	pr_info("%s: 0x48 (0x%02x)\n",
+			__func__, temp_vdadc);
 
 	/* MUIC INT1 ~ INT2 */
 	ret = s2mu004_bulk_read(s2mu004->i2c, S2MU004_REG_MUIC_INT1,
 				S2MU004_NUM_IRQ_MUIC_REGS, &irq_reg[MUIC_INT1]);
-	if (irq_reg[MUIC_INT1] || irq_reg[MUIC_INT2])
-		pr_info("%s: muic interrupt(0x%02x, 0x%02x)\n", __func__,
-				irq_reg[MUIC_INT1], irq_reg[MUIC_INT2]);
 
-	if (s2mu004->pmic_rev == 0) {
-		s2mu004_read_reg(s2mu004->i2c, S2MU004_REG_MUIC_ADC, &temp);
-		temp &= 0x1F;
-		/* checking VBUS_WAKEUP bit of R(0x61) */
-		s2mu004_read_reg(s2mu004->i2c, 0x69, &temp_2);
-		if ((temp_2 & 0x02) && (temp != 0x18)
-			&& (temp != 0x19) && (temp != 0x1C) && (temp != 0x1D))
-			s2mu004_update_reg(s2mu004->i2c, 0x89, 0x01, 0x03);
-		if (irq_reg[MUIC_INT2] & 0x80)
-			s2mu004_update_reg(s2mu004->i2c, 0x89, 0x03, 0x03);
-	}
+	/*
+	* in case of skipping the muic vbus off interrupt,
+	* set the chg_int UVLO to MUIC VBUS off int.
+	*/
+	ret = s2mu004_read_reg(s2mu004->i2c, S2MU004_REG_SC_STATUS0,
+				&chg_status);
+
+	if (!(chg_status & 0xE0) && (irq_reg[CHG_INT1] & 0x80))
+		irq_reg[MUIC_INT2] |= 0x80;
+
+	pr_info("%s: muic interrupt(0x%02x, 0x%02x)\n", __func__,
+			irq_reg[MUIC_INT1], irq_reg[MUIC_INT2]);
 
 	/* Apply masking */
 	for (i = 0; i < S2MU004_IRQ_GROUP_NR; i++)
@@ -290,13 +275,11 @@ int s2mu004_irq_init(struct s2mu004_dev *s2mu004)
 #endif
 	}
 
-	if (irq_is_enable) {
-		ret = request_threaded_irq(s2mu004->irq, NULL,
-				s2mu004_irq_thread,
-				IRQF_TRIGGER_LOW | IRQF_ONESHOT,
-				"s2mu004-irq", s2mu004);
+	if(irq_is_enable){
+	ret = request_threaded_irq(s2mu004->irq, NULL, s2mu004_irq_thread,
+				   IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+				   "s2mu004-irq", s2mu004);
 	}
-
 	if (ret) {
 		dev_err(s2mu004->dev, "Failed to request IRQ %d: %d\n",
 			s2mu004->irq, ret);

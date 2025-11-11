@@ -28,6 +28,7 @@
 #include <asm/cpu.h>
 #include <asm/cputype.h>
 #include <asm/topology.h>
+#include <asm/smp_plat.h>
 
 struct cpu_energy_level {
 	int core;
@@ -244,11 +245,17 @@ const struct cpumask *cpu_cluster_mask(int cpu)
 static void update_siblings_masks(unsigned int cpuid)
 {
 	struct cpu_topology *cpu_topo, *cpuid_topo = &cpu_topology[cpuid];
+	unsigned int mpidr = cpu_logical_map(cpuid);
+	unsigned int cluster_id = MPIDR_AFFINITY_LEVEL(mpidr, 1);
 	int cpu;
 
 	/* update core and thread sibling masks */
 	for_each_possible_cpu(cpu) {
 		cpu_topo = &cpu_topology[cpu];
+
+		mpidr = cpu_logical_map(cpu);
+		if (cluster_id == MPIDR_AFFINITY_LEVEL(mpidr, 1))
+			cpumask_set_cpu(cpuid, &cpu_topo->idle_sibling);
 
 		if (cpuid_topo->cluster_id != cpu_topo->cluster_id)
 			continue;
@@ -456,6 +463,8 @@ static void __init reset_cpu_topology(void)
 		cpumask_set_cpu(cpu, &cpu_topo->core_sibling);
 		cpumask_clear(&cpu_topo->thread_sibling);
 		cpumask_set_cpu(cpu, &cpu_topo->thread_sibling);
+		cpumask_clear(&cpu_topo->idle_sibling);
+		cpumask_set_cpu(cpu, &cpu_topo->idle_sibling);
 
 		cpu_elvl->core = -1;
 		cpu_elvl->coregroup = -1;

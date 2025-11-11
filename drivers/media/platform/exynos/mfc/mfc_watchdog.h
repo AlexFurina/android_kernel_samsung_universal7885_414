@@ -15,6 +15,13 @@
 
 #include "mfc_common.h"
 
-void mfc_watchdog_worker(struct work_struct *work);
+struct p2v_map {
+	phys_addr_t pa;
+	void __iomem *va;
+};
 
+extern struct p2v_map pmucal_p2v_list[];
+
+void mfc_watchdog_worker(struct work_struct *work);
+void mfc_dump_power_clk_status(void);
 #endif /* __MFC_WATCHDOG_H */

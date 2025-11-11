@@ -18,6 +18,8 @@
 #define RINGING_CONTROL			0x2F /* 11ms */
 #define PRESCALER				0x01 /* Tvib x 1 */
 
+#define PWR_ON_DELAY	100 /* DW9807 need delay for 100 usec after power-on */
+
 struct fimc_is_caldata_list_dw9807 {
 	u32 af_position_type;
 	u32 af_position_worst;

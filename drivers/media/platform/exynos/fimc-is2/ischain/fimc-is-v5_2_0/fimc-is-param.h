@@ -159,8 +159,7 @@ enum dma_inut_format {
 	DMA_INPUT_FORMAT_YUV420 		= 3,
 	DMA_INPUT_FORMAT_RGB			= 4,
 	DMA_INPUT_FORMAT_BAYER_PACKED	 	= 5,
-	DMA_INPUT_FORMAT_YUV422_CHUNKER		= 6,
-	DMA_INPUT_FORMAT_Y			= 7,
+	DMA_INPUT_FORMAT_YUV422_CHUNKER 	= 6
 };
 
 enum dma_input_bitwidth {
@@ -174,7 +173,6 @@ enum dma_input_bitwidth {
 };
 
 enum dma_input_plane {
-	DMA_INPUT_PLANE_4	= 4,
 	DMA_INPUT_PLANE_3	= 3,
 	DMA_INPUT_PLANE_2	= 2,
 	DMA_INPUT_PLANE_1	= 1
@@ -266,12 +264,10 @@ enum dma_output_format {
 	DMA_OUTPUT_FORMAT_BAYER_PACKED		= 5,
 	DMA_OUTPUT_FORMAT_YUV422_CHUNKER	= 6,
 	DMA_OUTPUT_FORMAT_YUV444_TRUNCATED	= 7,
-	DMA_OUTPUT_FORMAT_YUV422_TRUNCATED	= 8,
-	DMA_OUTPUT_FORMAT_Y			= 9
+	DMA_OUTPUT_FORMAT_YUV422_TRUNCATED	= 8
 };
 
 enum dma_output_bitwidth {
-	DMA_OUTPUT_BIT_WIDTH_32BIT	= 32,
 	DMA_OUTPUT_BIT_WIDTH_16BIT	= 16,
 	DMA_OUTPUT_BIT_WIDTH_14BIT	= 14,
 	DMA_OUTPUT_BIT_WIDTH_12BIT	= 12,
@@ -282,7 +278,6 @@ enum dma_output_bitwidth {
 };
 
 enum dma_output_plane {
-	DMA_OUTPUT_PLANE_4		= 4,
 	DMA_OUTPUT_PLANE_3		= 3,
 	DMA_OUTPUT_PLANE_2		= 2,
 	DMA_OUTPUT_PLANE_1		= 1
@@ -319,16 +314,8 @@ enum dma_output_order {
 	/* (only valid at DMA_OUTPUT_FORMAT_YUV444 & DMA_OUPUT_PLANE_1) */
 	DMA_OUTPUT_ORDER_BGR		= 14,
 	/* (only valid at DMA_OUTPUT_FORMAT_RGB) */
-	DMA_OUTPUT_ORDER_GB_BG		= 15,
+	DMA_OUTPUT_ORDER_GB_BG		= 15
 	/* (only valid at DMA_OUTPUT_FORMAT_BAYER) */
-	DMA_OUTPUT_ORDER_ARGB		= 16,
-	/* (only valid at DMA_OUTPUT_FORMAT_RGB) */
-	DMA_OUTPUT_ORDER_BGRA		= 17,
-	/* (only valid at DMA_OUTPUT_FORMAT_RGB) */
-	DMA_OUTPUT_ORDER_RGBA		= 18,
-	/* (only valid at DMA_OUTPUT_FORMAT_RGB) */
-	DMA_OUTPUT_ORDER_ABGR		= 19
-	/* (only valid at DMA_OUTPUT_FORMAT_RGB) */
 };
 
 enum dma_output_notify_dma_done {
@@ -641,10 +628,8 @@ enum mcsc_output_index {
 	MCSC_OUTPUT2				= 2,
 	MCSC_OUTPUT3				= 3,
 	MCSC_OUTPUT4				= 4,
-	MCSC_OUTPUT5				= 5,
 	MCSC_OUTPUT_MAX
 };
-#define MCSC_OUTPUT_DS		MCSC_OUTPUT5
 
 /* --------------------------  3DNR  ----------------------------------- */
 enum tdnr_1st_frame_command {

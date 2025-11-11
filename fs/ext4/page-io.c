@@ -352,14 +352,10 @@ void ext4_io_submit(struct ext4_io_submit *io)
 		int io_op_flags = io->io_wbc->sync_mode == WB_SYNC_ALL ?
 				  REQ_SYNC : 0;
 		io->io_bio->bi_write_hint = io->io_end->inode->i_write_hint;
-		if (io->io_flags & EXT4_IO_ENCRYPTED)
-			io_op_flags |= REQ_NOENCRYPT;
 		bio_set_op_attrs(io->io_bio, REQ_OP_WRITE, io_op_flags);
 		if (ext4_encrypted_inode(io->io_end->inode) &&
-				S_ISREG(io->io_end->inode->i_mode)) {
+				S_ISREG(io->io_end->inode->i_mode))
 			fscrypt_set_bio(io->io_end->inode, io->io_bio, 0);
-			crypto_diskcipher_debug(FS_PAGEIO, io->io_bio->bi_opf);
-		}
 		submit_bio(io->io_bio);
 	}
 	io->io_bio = NULL;
@@ -368,7 +364,6 @@ void ext4_io_submit(struct ext4_io_submit *io)
 void ext4_io_submit_init(struct ext4_io_submit *io,
 			 struct writeback_control *wbc)
 {
-	io->io_flags = 0;
 	io->io_wbc = wbc;
 	io->io_bio = NULL;
 	io->io_end = NULL;
@@ -489,17 +484,26 @@ int ext4_bio_write_page(struct ext4_io_submit *io,
 	    nr_to_submit && !fscrypt_disk_encrypted(inode)) {
 		gfp_t gfp_flags = GFP_NOFS;
 
+		/*
+		 * Since bounce page allocation uses a mempool, we can only use
+		 * a waiting mask (i.e. request guaranteed allocation) on the
+		 * first page of the bio.  Otherwise it can deadlock.
+		 */
+		if (io->io_bio)
+			gfp_flags = GFP_NOWAIT | __GFP_NOWARN;
 	retry_encrypt:
 		data_page = fscrypt_encrypt_page(inode, page, PAGE_SIZE, 0,
 						page->index, gfp_flags);
 		if (IS_ERR(data_page)) {
 			ret = PTR_ERR(data_page);
-			if (ret == -ENOMEM && wbc->sync_mode == WB_SYNC_ALL) {
-				if (io->io_bio) {
+			if (ret == -ENOMEM &&
+			    (io->io_bio || wbc->sync_mode == WB_SYNC_ALL)) {
+				gfp_flags = GFP_NOFS;
+				if (io->io_bio)
 					ext4_io_submit(io);
-					congestion_wait(BLK_RW_ASYNC, HZ/50);
-				}
-				gfp_flags |= __GFP_NOFAIL;
+				else
+					gfp_flags |= __GFP_NOFAIL;
+				congestion_wait(BLK_RW_ASYNC, HZ/50);
 				goto retry_encrypt;
 			}
 			data_page = NULL;
@@ -511,8 +515,6 @@ int ext4_bio_write_page(struct ext4_io_submit *io,
 	do {
 		if (!buffer_async_write(bh))
 			continue;
-		if (data_page)
-			io->io_flags |= EXT4_IO_ENCRYPTED;
 		ret = io_submit_add_bh(io, inode,
 				       data_page ? data_page : page, bh);
 		if (ret) {

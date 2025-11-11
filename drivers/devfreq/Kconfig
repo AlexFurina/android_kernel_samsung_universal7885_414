@@ -118,6 +118,14 @@ config ARM_EXYNOS_BUS_DEVFREQ
 	  and adjusts the operating frequencies and voltages with OPP support.
 	  This does not yet operate with optimal voltages.
 
+config ARM_EXYNOS7885_BUS_DEVFREQ
+        bool "ARM Exynos7885 Memory Bus DEVFREQ Driver"
+        default y
+        depends on ARM_EXYNOS_DEVFREQ
+        select DEVFREQ_GOV_SIMPLE_INTERACTIVE
+        help
+          This adds the DEVFREQ driver for Exynos7885 memory and int.
+
 config ARM_TEGRA_DEVFREQ
 	tristate "Tegra DEVFREQ Driver"
 	depends on ARCH_TEGRA_124_SOC
@@ -130,7 +138,8 @@ config ARM_TEGRA_DEVFREQ
 
 config ARM_RK3399_DMC_DEVFREQ
 	tristate "ARM RK3399 DMC DEVFREQ Driver"
-	depends on ARCH_ROCKCHIP
+	depends on (ARCH_ROCKCHIP && HAVE_ARM_SMCCC) || \
+		(COMPILE_TEST && HAVE_ARM_SMCCC)
 	select DEVFREQ_EVENT_ROCKCHIP_DFI
 	select DEVFREQ_GOV_SIMPLE_ONDEMAND
 	select PM_DEVFREQ_EVENT

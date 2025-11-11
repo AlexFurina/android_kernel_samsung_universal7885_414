@@ -82,9 +82,8 @@ void g2d_hw_timeout_handler(unsigned long arg)
 
 	g2d_stamp_task(task, G2D_STAMP_STATE_TIMEOUT_HW, job_state);
 
-	dev_err(g2d_dev->dev, "%s: Time is up: %d msec for job %u %lu %u\n",
-		__func__, G2D_HW_TIMEOUT_MSEC,
-		task->sec.job_id, task->state, job_state);
+	perrfndev(g2d_dev, "Time is up: %d msec for job %u %lu %u",
+		  G2D_HW_TIMEOUT_MSEC, task->sec.job_id, task->state, job_state);
 
 	if (!is_task_state_active(task))
 		/*
@@ -100,23 +99,32 @@ void g2d_hw_timeout_handler(unsigned long arg)
 		 */
 		goto out;
 
-	if (is_task_state_killed(task)) {
-		/* The killed task is not died in the time out priod. */
-		g2d_hw_global_reset(g2d_dev);
+	if (is_task_state_killed(task) || g2d_hw_stuck_state(g2d_dev)) {
+		bool ret;
 
 		g2d_flush_all_tasks(g2d_dev);
 
-		dev_err(g2d_dev->dev,
-			"GLOBAL RESET: killed task not dead in %d msec.\n",
-			G2D_HW_TIMEOUT_MSEC);
-		goto out;
+		ret = g2d_hw_global_reset(g2d_dev);
+		if (!ret)
+			g2d_dump_info(g2d_dev, NULL);
+
+		perrdev(g2d_dev,
+			"GLOBAL RESET: Fetal error, %s (ret %d)",
+			is_task_state_killed(task) ?
+			"killed task not dead" :
+			"no running task on queued tasks", ret);
+
+		spin_unlock_irqrestore(&g2d_dev->lock_task, flags);
+
+		wake_up(&g2d_dev->freeze_wait);
+
+		return;
 	}
 
 	mod_timer(&task->hw_timer,
 	  jiffies + msecs_to_jiffies(G2D_HW_TIMEOUT_MSEC));
 
-	if (!g2d_hw_stuck_state(g2d_dev) &&
-		(job_state != G2D_JOB_STATE_RUNNING))
+	if (job_state != G2D_JOB_STATE_RUNNING)
 		/* G2D_JOB_STATE_QUEUEING or G2D_JOB_STATE_SUSPENDING */
 		/* Time out is not caused by this task */
 		goto out;
@@ -179,15 +187,16 @@ static irqreturn_t g2d_irq_handler(int irq, void *priv)
 				g2d_get_active_task_from_id(g2d_dev, job_id);
 
 		if (job_id < 0)
-			dev_err(g2d_dev->dev, "No task is running in HW\n");
+			perrdev(g2d_dev, "No task is running in HW");
 		else if (task == NULL)
-			dev_err(g2d_dev->dev,
-				"%s: Current job %d in HW is not active\n",
-				__func__, job_id);
+			perrfndev(g2d_dev, "Current job %d in HW is not active",
+				  job_id);
 		else
-			dev_err(g2d_dev->dev,
-				"%s: Error occurred during running job %d\n",
-				__func__, job_id);
+			perrfndev(g2d_dev,
+				  "Error occurred during running job %d",
+				  job_id);
+
+		g2d_hw_clear_int(g2d_dev, errstatus);
 
 		g2d_stamp_task(task, G2D_STAMP_STATE_ERR_INT, errstatus);
 
@@ -195,9 +204,9 @@ static irqreturn_t g2d_irq_handler(int irq, void *priv)
 
 		g2d_flush_all_tasks(g2d_dev);
 
-		g2d_hw_global_reset(g2d_dev);
-
-		g2d_hw_clear_int(g2d_dev, errstatus);
+		perrdev(g2d_dev,
+			"GLOBAL RESET: error interrupt (ret %d)",
+			g2d_hw_global_reset(g2d_dev));
 	}
 
 	spin_unlock(&g2d_dev->lock_task);
@@ -235,13 +244,13 @@ static __u32 get_hw_version(struct g2d_device *g2d_dev, __u32 *version)
 
 	ret = pm_runtime_get_sync(g2d_dev->dev);
 	if (ret < 0) {
-		dev_err(g2d_dev->dev, "Failed to enable power (%d)\n", ret);
+		perrdev(g2d_dev, "Failed to enable power (%d)", ret);
 		return ret;
 	}
 
 	ret = clk_prepare_enable(g2d_dev->clock);
 	if (ret < 0) {
-		dev_err(g2d_dev->dev, "Failed to enable clock (%d)\n", ret);
+		perrdev(g2d_dev, "Failed to enable clock (%d)", ret);
 	} else {
 		*version = readl_relaxed(g2d_dev->reg + G2D_VERSION_INFO_REG);
 		clk_disable(g2d_dev->clock);
@@ -313,7 +322,6 @@ static int g2d_release(struct inode *inode, struct file *filp)
 	}
 
 	g2d_put_performance(g2d_ctx, true);
-	flush_delayed_work(&g2d_ctx->dwork);
 
 	spin_lock(&g2d_dev->lock_ctx_list);
 	list_del(&g2d_ctx->node);
@@ -354,17 +362,15 @@ static long g2d_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 		if (ret) {
 			if (ctx->authority == G2D_AUTHORITY_HIGHUSER)
-				dev_err(g2d_dev->dev,
-					"%s: prio %d/%d found higher than %d\n",
-					__func__, i,
-					atomic_read(&g2d_dev->prior_stats[i]),
-					ctx->priority);
+				perrfndev(g2d_dev,
+					  "prio %d/%d found higher than %d", i,
+					  atomic_read(&g2d_dev->prior_stats[i]),
+					  ctx->priority);
 			break;
 		}
 
 		if (copy_from_user(&data, uptr, sizeof(data))) {
-			dev_err(g2d_dev->dev,
-				"%s: Failed to read g2d_task_data\n", __func__);
+			perrfndev(g2d_dev, "Failed to read g2d_task_data");
 			ret = -EFAULT;
 			break;
 		}
@@ -391,9 +397,7 @@ static long g2d_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				 MAX_SHARED_BUF_NUM)) {
 				kfree(ctx->hwfc_info);
 				ctx->hwfc_info = NULL;
-				dev_err(g2d_dev->dev,
-					"%s: Failed to read hwfc info\n",
-					__func__);
+				perrfndev(g2d_dev, "Failed to read hwfc info");
 				break;
 			}
 		}
@@ -435,15 +439,13 @@ static long g2d_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 
 		if (copy_from_user(&data, (void __user *)arg, sizeof(data))) {
-			dev_err(g2d_dev->dev,
-				"%s: Failed to get priority\n", __func__);
+			perrfndev(g2d_dev, "Failed to get priority");
 			ret = -EFAULT;
 			break;
 		}
 
 		if ((data < G2D_LOW_PRIORITY) || (data >= G2D_PRIORITY_END)) {
-			dev_err(g2d_dev->dev,
-				"%s: Wrong priority %u\n", __func__, data);
+			perrfndev(g2d_dev, "Wrong priority %u", data);
 			ret = -EINVAL;
 			break;
 		}
@@ -462,8 +464,7 @@ static long g2d_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 
 		if (copy_from_user(&data, (void __user *)arg, sizeof(data))) {
-			dev_err(g2d_dev->dev,
-				"%s: Failed to read perf data\n", __func__);
+			perrfndev(g2d_dev, "Failed to read perf data");
 			ret = -EFAULT;
 			break;
 		}
@@ -518,9 +519,8 @@ struct compat_g2d_task_data {
 
 #define COMPAT_G2D_IOC_PROCESS	_IOWR('M', 4, struct compat_g2d_task_data)
 
-static int g2d_compat_get_layerdata(struct device *dev,
-				struct g2d_layer_data __user *img,
-				struct compat_g2d_layer_data __user *cimg)
+static int g2d_compat_get_layerdata(struct g2d_layer_data __user *img,
+				    struct compat_g2d_layer_data __user *cimg)
 {
 	__u32 uw, num_buffers, buftype;
 	__s32 sw;
@@ -558,7 +558,6 @@ static long g2d_compat_ioctl(struct file *filp,
 			     unsigned int cmd, unsigned long arg)
 {
 	struct g2d_context *ctx = filp->private_data;
-	struct device *dev = ctx->g2d_dev->dev;
 	struct g2d_task_data __user *data;
 	struct g2d_layer_data __user *src;
 	struct g2d_commands __user *command;
@@ -585,7 +584,7 @@ static long g2d_compat_ioctl(struct file *filp,
 		return filp->f_op->unlocked_ioctl(filp, cmd,
 						(unsigned long)compat_ptr(arg));
 	default:
-		dev_err(dev, "%s: unknown ioctl command %#x\n", __func__, cmd);
+		perrfndev(ctx->g2d_dev, "unknown ioctl command %#x", cmd);
 		return -EINVAL;
 	}
 
@@ -608,15 +607,13 @@ static long g2d_compat_ioctl(struct file *filp,
 	fences = compat_alloc_user_space(alloc_size);
 	ret |= put_user(fences, &data->release_fences);
 	if (ret) {
-		dev_err(dev, "%s: failed to read task data\n", __func__);
+		perrfndev(ctx->g2d_dev, "failed to read task data");
 		return -EFAULT;
 	}
 
-	ret = g2d_compat_get_layerdata(
-			dev, &data->target, &cdata->target);
+	ret = g2d_compat_get_layerdata(&data->target, &cdata->target);
 	if (ret) {
-		dev_err(dev, "%s: failed to read the target data\n",
-			__func__);
+		perrfndev(ctx->g2d_dev, "failed to read the target data");
 		return ret;
 	}
 
@@ -625,11 +622,10 @@ static long g2d_compat_ioctl(struct file *filp,
 	alloc_size += sizeof(*src) * num_source;
 	src = compat_alloc_user_space(alloc_size);
 	for (w = 0; w < num_source; w++)
-		ret |= g2d_compat_get_layerdata(dev, &src[w], &csc[w]);
+		ret |= g2d_compat_get_layerdata(&src[w], &csc[w]);
 	ret |= put_user(src, &data->source);
 	if (ret) {
-		dev_err(dev,
-		"%s: failed to read source layer data\n", __func__);
+		perrfndev(ctx->g2d_dev, "failed to read source layer data");
 		return ret;
 	}
 
@@ -638,8 +634,7 @@ static long g2d_compat_ioctl(struct file *filp,
 	ret = copy_in_user(&command->target, &ccmd->target,
 			sizeof(__u32) * G2DSFR_DST_FIELD_COUNT);
 	if (ret) {
-		dev_err(dev,
-			"%s: failed to read target command data\n", __func__);
+		perrfndev(ctx->g2d_dev, "failed to read target command data");
 		return ret;
 	}
 
@@ -651,9 +646,8 @@ static long g2d_compat_ioctl(struct file *filp,
 				sizeof(__u32) * G2DSFR_SRC_FIELD_COUNT);
 		ret |= put_user(ptr, &command->source[w]);
 		if (ret) {
-			dev_err(dev,
-				"%s: failed to read source %u command data\n",
-					__func__, w);
+			perrfndev(ctx->g2d_dev,
+				  "failed to read source %u command data", w);
 			return ret;
 		}
 	}
@@ -669,8 +663,7 @@ static long g2d_compat_ioctl(struct file *filp,
 				sizeof(*extra) * w);
 	ret |= put_user(extra, &command->extra);
 	if (ret) {
-		dev_err(dev,
-			"%s: failed to read extra command data\n", __func__);
+		perrfndev(ctx->g2d_dev, "failed to read extra command data");
 		return ret;
 	}
 
@@ -685,7 +678,7 @@ static long g2d_compat_ioctl(struct file *filp,
 	ret |= copy_in_user(compat_ptr(cptr), fences,
 					sizeof(__s32) * num_release_fences);
 	if (ret)
-		dev_err(dev, "%s: failed to write userdata\n", __func__);
+		perrfndev(ctx->g2d_dev, "failed to write userdata");
 
 	return ret;
 }
@@ -749,7 +742,7 @@ static int g2d_parse_dt(struct g2d_device *g2d_dev)
 	if (of_property_read_u32_array(dev->of_node, "hw_ppc",
 			(u32 *)g2d_dev->hw_ppc,
 			(size_t)(ARRAY_SIZE(g2d_dev->hw_ppc)))) {
-		dev_err(dev, "Failed to parse device tree for hw ppc");
+		perrdev(g2d_dev, "Failed to parse device tree for hw ppc");
 
 		memcpy(g2d_dev->hw_ppc, g2d_default_ppc,
 			sizeof(g2d_default_ppc[0]) * PPC_END);
@@ -779,6 +772,85 @@ static int g2d_parse_dt(struct g2d_device *g2d_dev)
 
 	return 0;
 }
+
+#ifdef CONFIG_EXYNOS_ITMON
+
+#define MAX_ITMON_STRATTR 4
+
+bool g2d_itmon_check(struct g2d_device *g2d_dev, char *str_itmon, char *str_attr)
+{
+	const char *name[MAX_ITMON_STRATTR];
+	int size, i;
+
+	if (!str_itmon)
+		return false;
+
+	size = of_property_count_strings(g2d_dev->dev->of_node, str_attr);
+	if (size < 0 || size > MAX_ITMON_STRATTR)
+		return false;
+
+	of_property_read_string_array(g2d_dev->dev->of_node,
+				      str_attr, name, size);
+	for (i = 0; i < size; i++) {
+		if (strncmp(str_itmon, name[i], strlen(name[i])) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+int g2d_itmon_notifier(struct notifier_block *nb,
+		unsigned long action, void *nb_data)
+{
+	struct g2d_device *g2d_dev = container_of(nb, struct g2d_device, itmon_nb);
+	struct itmon_notifier *itmon_info = nb_data;
+	struct g2d_task *task;
+	static int called_count;
+	bool is_power_on = false, is_g2d_itmon = true;
+
+	if (g2d_itmon_check(g2d_dev, itmon_info->port, "itmon,port"))
+		is_power_on = true;
+	else if (g2d_itmon_check(g2d_dev, itmon_info->dest, "itmon,dest"))
+		is_power_on = (itmon_info->onoff) ? true : false;
+	else
+		is_g2d_itmon = false;
+
+	if (is_g2d_itmon) {
+		unsigned long flags;
+		int job_id;
+
+		if (called_count++ != 0) {
+			perrfndev(g2d_dev,
+				  "called %d times, ignore it.", called_count);
+			return NOTIFY_DONE;
+		}
+
+		for (task = g2d_dev->tasks; task; task = task->next) {
+			perrfndev(g2d_dev, "TASK[%d]: state %#lx flags %#x",
+				  task->sec.job_id, task->state, task->flags);
+			perrfndev(g2d_dev, "prio %d begin@%llu end@%llu nr_src %d",
+				  task->sec.priority, ktime_to_us(task->ktime_begin),
+				  ktime_to_us(task->ktime_end), task->num_source);
+		}
+
+		if (!is_power_on)
+			return NOTIFY_DONE;
+
+		job_id = g2d_hw_get_current_task(g2d_dev);
+
+		spin_lock_irqsave(&g2d_dev->lock_task, flags);
+
+		task = g2d_get_active_task_from_id(g2d_dev, job_id);
+
+		spin_unlock_irqrestore(&g2d_dev->lock_task, flags);
+
+		g2d_dump_info(g2d_dev, task);
+		exynos_sysmmu_show_status(g2d_dev->dev);
+	}
+
+	return NOTIFY_DONE;
+}
+#endif
 
 struct g2d_device_data {
 	unsigned long caps;
@@ -834,14 +906,14 @@ static int g2d_probe(struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (!res) {
-		dev_err(&pdev->dev, "Failed to get IRQ resource");
+		perrdev(g2d_dev, "Failed to get IRQ resource");
 		return -ENOENT;
 	}
 
 	ret = devm_request_irq(&pdev->dev, res->start,
 			       g2d_irq_handler, 0, pdev->name, g2d_dev);
 	if (ret) {
-		dev_err(&pdev->dev, "Failed to install IRQ handler");
+		perrdev(g2d_dev, "Failed to install IRQ handler");
 		return ret;
 	}
 
@@ -849,9 +921,9 @@ static int g2d_probe(struct platform_device *pdev)
 
 	g2d_dev->clock = devm_clk_get(&pdev->dev, "gate");
 	if (IS_ERR(g2d_dev->clock)) {
-		dev_err(&pdev->dev, "Failed to get clock (%ld)\n",
-					PTR_ERR(g2d_dev->clock));
-		return PTR_ERR(g2d_dev->clock);
+		ret = PTR_ERR(g2d_dev->clock);
+		perrdev(g2d_dev, "Failed to get clock (%d)", ret);
+		return ret;
 	}
 
 	iovmm_set_fault_handler(&pdev->dev, g2d_iommu_fault_handler, g2d_dev);
@@ -870,7 +942,7 @@ static int g2d_probe(struct platform_device *pdev)
 
 	ret = iovmm_activate(&pdev->dev);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "Failed to activate iommu\n");
+		perrdev(g2d_dev, "Failed to activate iommu");
 		return ret;
 	}
 
@@ -888,7 +960,7 @@ static int g2d_probe(struct platform_device *pdev)
 	/* misc register */
 	ret = misc_register(&g2d_dev->misc[0]);
 	if (ret) {
-		dev_err(&pdev->dev, "Failed to register misc device for 0");
+		perrdev(g2d_dev, "Failed to register misc device for 0");
 		goto err;
 	}
 
@@ -898,7 +970,7 @@ static int g2d_probe(struct platform_device *pdev)
 
 	ret = misc_register(&g2d_dev->misc[1]);
 	if (ret) {
-		dev_err(&pdev->dev, "Failed to register misc device for 1");
+		perrdev(g2d_dev, "Failed to register misc device for 1");
 		goto err_misc;
 	}
 
@@ -916,7 +988,7 @@ static int g2d_probe(struct platform_device *pdev)
 
 	ret = g2d_create_tasks(g2d_dev);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "Failed to create tasks");
+		perrdev(g2d_dev, "Failed to create tasks");
 		goto err_task;
 	}
 
@@ -931,7 +1003,11 @@ static int g2d_probe(struct platform_device *pdev)
 	spin_lock_init(&g2d_dev->fence_lock);
 	g2d_dev->fence_context = dma_fence_context_alloc(1);
 
-	dev_info(&pdev->dev, "Probed FIMG2D version %#010x\n", version);
+#ifdef CONFIG_EXYNOS_ITMON
+	g2d_dev->itmon_nb.notifier_call = g2d_itmon_notifier;
+	itmon_notifier_chain_register(&g2d_dev->itmon_nb);
+#endif
+	dev_info(&pdev->dev, "Probed FIMG2D version %#010x", version);
 
 	g2d_init_debug(g2d_dev);
 
@@ -946,7 +1022,7 @@ err:
 	pm_runtime_disable(&pdev->dev);
 	iovmm_deactivate(g2d_dev->dev);
 
-	dev_err(&pdev->dev, "Failed to probe FIMG2D\n");
+	perrdev(g2d_dev, "Failed to probe FIMG2D");
 
 	return ret;
 }

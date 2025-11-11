@@ -17,20 +17,21 @@
 
 #include "abox.h"
 
-static unsigned int VSS_MAGIC_OFFSET = 0x500000;
+#define VSS_MAGIC_OFFSET (0x600000)
 
 static int samsung_abox_vss_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct device_node *np = dev->of_node;
-	void __iomem *magic_addr;
 
-	dev_dbg(dev, "%s\n", __func__);
+	if (IS_ENABLED(CONFIG_SHM_IPC)) {
+		void __iomem *magic_addr = phys_to_virt(shm_get_phys_base() +
+				shm_get_cp_size() + VSS_MAGIC_OFFSET);
 
-	of_property_read_u32(np, "magic_offset", &VSS_MAGIC_OFFSET);
-	dev_info(dev, "magic_offset = 0x%08X\n", VSS_MAGIC_OFFSET);
-	magic_addr = phys_to_virt(shm_get_vss_base() + VSS_MAGIC_OFFSET);
-	writel(0, magic_addr);
+		dev_dbg(dev, "%s\n", __func__);
+		writel(0, magic_addr);
+	} else
+		dev_info(dev, "%s(shm is disabled)\n", __func__);
+
 	return 0;
 }
 

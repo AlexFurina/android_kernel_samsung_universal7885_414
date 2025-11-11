@@ -22,7 +22,6 @@
 /* Return values for wm_adsp_compr_handle_irq */
 #define WM_ADSP_COMPR_OK                 0
 #define WM_ADSP_COMPR_VOICE_TRIGGER      1
-#define WM_ADSP_MAX_CHANNEL_PER_DSP      2
 
 #define WM_ADSP2_REGION_0 BIT(0)
 #define WM_ADSP2_REGION_1 BIT(1)
@@ -56,29 +55,6 @@ struct wm_adsp_alg_region {
 struct wm_adsp_compr;
 struct wm_adsp_compr_buf;
 
-struct wm_adsp_buffer_region_def {
-	unsigned int mem_type;
-	unsigned int base_offset;
-	unsigned int size_offset;
-};
-
-struct wm_adsp_fw_caps {
-	u32 id;
-	struct snd_codec_desc desc;
-	int num_regions;
-	struct wm_adsp_buffer_region_def *region_defs;
-};
-
-struct wm_adsp_fw_defs {
-	const char *file;
-	const char *binfile;
-	bool fullname;
-	int compr_direction;
-	int num_caps;
-	struct wm_adsp_fw_caps *caps;
-	bool voice_trigger;
-};
-
 struct wm_adsp {
 	const char *part;
 	int rev;
@@ -90,11 +66,11 @@ struct wm_adsp {
 	struct regmap *regmap;
 	struct snd_soc_codec *codec;
 
-	int base;
-	int base_sysinfo;
-	int sysclk_reg;
-	int sysclk_mask;
-	int sysclk_shift;
+	unsigned int base;
+	unsigned int base_sysinfo;
+	unsigned int sysclk_reg;
+	unsigned int sysclk_mask;
+	unsigned int sysclk_shift;
 
 	struct list_head alg_regions;
 
@@ -112,23 +88,16 @@ struct wm_adsp {
 	bool booted;
 	bool running;
 
-	int num_firmwares;
-	struct wm_adsp_fw_defs *firmwares;
-	struct snd_kcontrol_new fw_ctrl;
-	struct soc_enum fw_enum;
-
 	struct list_head ctl_list;
 
 	struct work_struct boot_work;
 
-	int buf_num;
-	struct wm_adsp_compr *compr[WM_ADSP_MAX_CHANNEL_PER_DSP];
-	struct wm_adsp_compr_buf *buffer[WM_ADSP_MAX_CHANNEL_PER_DSP];
+	struct wm_adsp_compr *compr;
+	struct wm_adsp_compr_buf *buffer;
 
 	struct mutex pwr_lock;
 
 	unsigned int lock_regions;
-	bool unlock_all;
 
 	unsigned int n_rx_channels;
 	unsigned int n_tx_channels;
@@ -142,22 +111,6 @@ struct wm_adsp {
 	char *wmfw_file_name;
 	char *bin_file_name;
 #endif
-
-	void (*fwevent_cb)(struct wm_adsp *dsp, int eventid);
-};
-
-struct wm_adsp_compr {
-	struct wm_adsp *dsp;
-	struct wm_adsp_compr_buf *buf;
-
-	struct snd_compr_stream *stream;
-	struct snd_compressed_buffer size;
-
-	u32 *raw_buf;
-	unsigned int copied_total;
-
-	unsigned int sample_rate;
-	bool freed;
 };
 
 #define WM_ADSP1(wname, num) \
@@ -220,21 +173,17 @@ int wm_adsp2_preloader_get(struct snd_kcontrol *kcontrol,
 int wm_adsp2_preloader_put(struct snd_kcontrol *kcontrol,
 			   struct snd_ctl_elem_value *ucontrol);
 
-int wm_adsp_compr_open(struct wm_adsp *dsp,
-			      struct snd_compr_stream *stream,
-			      int channel);
+int wm_adsp_compr_open(struct wm_adsp *dsp, struct snd_compr_stream *stream);
 int wm_adsp_compr_free(struct snd_compr_stream *stream);
 int wm_adsp_compr_set_params(struct snd_compr_stream *stream,
 			     struct snd_compr_params *params);
 int wm_adsp_compr_get_caps(struct snd_compr_stream *stream,
 			   struct snd_compr_caps *caps);
 int wm_adsp_compr_trigger(struct snd_compr_stream *stream, int cmd);
-int wm_adsp_compr_handle_irq(struct wm_adsp *dsp, int channel);
+int wm_adsp_compr_handle_irq(struct wm_adsp *dsp);
 int wm_adsp_compr_pointer(struct snd_compr_stream *stream,
 			  struct snd_compr_tstamp *tstamp);
 int wm_adsp_compr_copy(struct snd_compr_stream *stream,
 		       char __user *buf, size_t count);
-
-extern int wm_adsp_handle_fw_event(struct wm_adsp *dsp);
 
 #endif

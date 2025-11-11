@@ -176,6 +176,8 @@ source "drivers/irqchip/Kconfig"
 
 source "drivers/ipack/Kconfig"
 
+source "drivers/battery_v2/Kconfig"
+
 source "drivers/reset/Kconfig"
 
 source "drivers/fmc/Kconfig"
@@ -216,10 +218,20 @@ source "drivers/bts/Kconfig"
 
 source "drivers/gud/Kconfig"
 
-source "drivers/ccic/Kconfig"
+source "drivers/switch/Kconfig"
 
 source "drivers/vision/Kconfig"
 
+source "drivers/samsung/Kconfig"
+
+source "drivers/security/samsung/five_tee_driver/Kconfig"
+
+source "drivers/security/samsung/icdrv/Kconfig"
+
+source "drivers/security/samsung/tzic/Kconfig"
+
 source "drivers/sensors/Kconfig"
+
+source "drivers/vibrator/Kconfig"
 
 endmenu

@@ -16,6 +16,14 @@
 #define CAMERA2_UCTL(type)	(uctl->type##Ud)
 #define CAMERA2_UDM(type)	(udm->type)
 
+#define CPY_SHOT_CTL_DM(type, item)								\
+	do {											\
+		memset(&(CAMERA2_DM(type).item), 0x00, sizeof(typeof(CAMERA2_DM(type).item)));	\
+		memcpy((void *)&(CAMERA2_DM(type).item),					\
+				(void *)&(CAMERA2_CTL(type).item),				\
+				sizeof(typeof(CAMERA2_DM(type).item)));				\
+	} while (0)
+
 #define DUP_SHOT_UCTL_UDM(type)									\
 	do {											\
 		memset(&CAMERA2_UDM(type), 0x00, sizeof(typeof(CAMERA2_UDM(type))));		\
@@ -34,6 +42,12 @@
 				sizeof(typeof(CAMERA2_UDM(type).item)));				\
 	} while (0)
 
+#define CPY_LENS_DM(item)	CPY_SHOT_CTL_DM(lens, item)
+static inline void copy_lens_dm(camera2_ctl_t *ctl, camera2_dm_t *dm)
+{
+	CPY_LENS_DM(opticalStabilizationMode);
+}
+
 static inline void copy_aa_udm(camera2_uctl_t *uctl, camera2_udm_t *udm)
 {
 	DUP_SHOT_UCTL_UDM(aa);
@@ -43,6 +57,9 @@ static inline void copy_lens_udm(camera2_uctl_t *uctl, camera2_udm_t *udm)
 {
 	if (uctl->lensUd.posSize != 0)
 		DUP_SHOT_UCTL_UDM(lens);
+	else
+		memset(&udm->lens, 0x00, sizeof(camera2_lens_udm_t));
+
 }
 
 #define CPY_MODE_UDM(item)	CPY_SHOT_UCTL_UDM(isMode, item)
@@ -55,12 +72,12 @@ static inline void copy_mode_udm(camera2_uctl_t *uctl,
 
 int copy_ctrl_to_dm(struct camera2_shot *shot)
 {
+	/* dm */
+	/* lens */
+	copy_lens_dm(&shot->ctl, &shot->dm);
+
 	/* udm */
 	/* aa */
-	/*
-	 * both af_data, gyroInfo are meaningful
-	 * only for a sensor with AF actuator.
-	 */
 	copy_aa_udm(&shot->uctl, &shot->udm);
 	/* lens */
 	copy_lens_udm(&shot->uctl, &shot->udm);

@@ -56,7 +56,7 @@ static struct fimc_is_sensor_cfg config_imx333[] = {
 	/* 3024x3024@30fps */
 	FIMC_IS_SENSOR_CFG_EXT(3024, 3024,  30, 14, 2, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 3024, 19), 0),
 	/* 4032x2268@60fps */
-	FIMC_IS_SENSOR_CFG_EXT(4032, 2268,  60, 21, 3, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 4032, 4), 0),
+	FIMC_IS_SENSOR_CFG_EXT(4032, 2268,  60, 21, 3, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 4032, 14), 0),
 	/* 2016x1134@120fps */
 	FIMC_IS_SENSOR_CFG_EXT(2016, 1134, 120, 21, 4, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 2016, 8), 0),
 	/* 2016x1134@240fps */
@@ -106,7 +106,6 @@ static const struct v4l2_subdev_core_ops core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_routing = sensor_module_s_routing,
 	.s_stream = sensor_module_s_stream,
 	//.s_mbus_fmt = sensor_module_s_format,
 };
@@ -138,7 +137,7 @@ static int sensor_imx333_power_setpin(struct platform_device *pdev,
 	u32 power_seq_id = 0;
 	int ret;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -418,7 +417,7 @@ static int sensor_imx333_power_setpin(struct platform_device *pdev,
 }
 #endif /* CONFIG_OF */
 
-static int __init sensor_module_imx333_probe(struct platform_device *pdev)
+int sensor_module_imx333_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -431,7 +430,7 @@ static int __init sensor_module_imx333_probe(struct platform_device *pdev)
 	int ch, vc_idx;
 	struct pinctrl_state *s;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -487,7 +486,7 @@ static int __init sensor_module_imx333_probe(struct platform_device *pdev)
 	module->ops = NULL;
 
 	for (ch = 1; ch < CSI_VIRTUAL_CH_MAX; ch++)
-		module->vc_buffer_offset[ch] = pdata->vc_buffer_offset[ch];
+		module->internal_vc[ch] = pdata->internal_vc[ch];
 
 	for (vc_idx = 0; vc_idx < 2; vc_idx++) {
 		switch (vc_idx) {
@@ -597,6 +596,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_imx333_remove(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	info("%s\n", __func__);
+
+	return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_imx333_match[] = {
 	{
 		.compatible = "samsung,sensor-module-imx333",
@@ -606,6 +614,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_imx333_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_imx333_match);
 
 static struct platform_driver sensor_module_imx333_driver = {
+	.probe  = sensor_module_imx333_probe,
+	.remove = sensor_module_imx333_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-IMX333",
 		.owner  = THIS_MODULE,
@@ -613,16 +623,5 @@ static struct platform_driver sensor_module_imx333_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_imx333_init(void)
-{
-	int ret;
+module_platform_driver(sensor_module_imx333_driver);
 
-	ret = platform_driver_probe(&sensor_module_imx333_driver,
-				sensor_module_imx333_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_imx333_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_imx333_init);

@@ -65,8 +65,8 @@ int sensor_cis_set_registers(struct v4l2_subdev *subdev, const u32 *regs, const 
 	int burst_num = 1;
 	u16 *addr_str = NULL;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!regs);
+	BUG_ON(!subdev);
+	BUG_ON(!regs);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -145,8 +145,8 @@ int sensor_cis_set_registers_addr8(struct v4l2_subdev *subdev, const u32 *regs, 
 	int burst_num = 1;
 	u16 *addr_str = NULL;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!regs);
+	BUG_ON(!subdev);
+	BUG_ON(!regs);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -220,8 +220,8 @@ int sensor_cis_check_rev(struct fimc_is_cis *cis)
 	u8 rev = 0;
 	struct i2c_client *client;
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -279,11 +279,10 @@ int sensor_cis_compensate_gain_for_extremely_br(struct v4l2_subdev *subdev, u32 
 	u32 min_fine_int = 0;
 	u16 coarse_int = 0;
 	u32 compensated_again = 0;
-	u32 coarse_int_standard;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!again);
-	FIMC_BUG(!dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!again);
+	BUG_ON(!dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -309,14 +308,7 @@ int sensor_cis_compensate_gain_for_extremely_br(struct v4l2_subdev *subdev, u32 
 		coarse_int = cis_data->min_coarse_integration_time;
 	}
 
-	coarse_int_standard = 15;
-#ifdef CONFIG_CAMERA_CIS_2X5SP_OBJ
-	/* if cis is 2x5sp, coarse_integration is not applyed */
-	if (cis->id == SENSOR_NAME_S5K2X5SP)
-		coarse_int_standard = 2;
-	dbg_sensor(1, "[MOD:D:%d] %s, coarse_int_standard(%d)\n", cis->id, __func__, coarse_int_standard);
-#endif
-	if (coarse_int <= coarse_int_standard) {
+	if (coarse_int <= 15) {
 		compensated_again = (*again * ((expo * vt_pic_clk_freq_mhz) - min_fine_int)) / (line_length_pck * coarse_int);
 
 		if (compensated_again < cis_data->min_analog_gain[1]) {
@@ -342,10 +334,9 @@ int sensor_cis_dump_registers(struct v4l2_subdev *subdev, const u32 *regs, const
 	struct fimc_is_cis *cis;
 	struct i2c_client *client;
 	u8 data8 = 0;
-	u16 data16 = 0;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!regs);
+	BUG_ON(!subdev);
+	BUG_ON(!regs);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -362,25 +353,12 @@ int sensor_cis_dump_registers(struct v4l2_subdev *subdev, const u32 *regs, const
 	}
 
 	for (i = 0; i < size; i += I2C_NEXT) {
-		if (regs[i + I2C_BYTE] == 0x2 && regs[i + I2C_ADDR] == 0x6028) {
-			ret = fimc_is_sensor_write16(client, regs[i + I2C_ADDR], regs[i + I2C_DATA]);
+		ret = fimc_is_sensor_read8(client, regs[i + I2C_ADDR], &data8);
+		if (ret < 0) {
+			err("fimc_is_sensor_write8 fail, ret(%d), addr(%#x)",
+					ret, regs[i + I2C_ADDR]);
 		}
-
-		if (regs[i + I2C_BYTE] == 0x1) {
-			ret = fimc_is_sensor_read8(client, regs[i + I2C_ADDR], &data8);
-			if (ret < 0) {
-				err("fimc_is_sensor_read8 fail, ret(%d), addr(%#x)",
-						ret, regs[i + I2C_ADDR]);
-			}
-			pr_err("[SEN:DUMP] [0x%04X, 0x%04X\n", regs[i + I2C_ADDR], data8);
-		} else {
-			ret = fimc_is_sensor_read16(client, regs[i + I2C_ADDR], &data16);
-			if (ret < 0) {
-				err("fimc_is_sensor_read6 fail, ret(%d), addr(%#x)",
-						ret, regs[i + I2C_ADDR]);
-			}
-			pr_err("[SEN:DUMP] [0x%04X, 0x%04X\n", regs[i + I2C_ADDR], data16);
-		}
+		pr_err("[SEN:DUMP] [%#x] : %x\n", regs[i + I2C_ADDR], data8);
 	}
 
 p_err:
@@ -396,7 +374,7 @@ int sensor_cis_wait_streamoff(struct v4l2_subdev *subdev)
 	u32 wait_cnt = 0, time_out_cnt = 250;
 	u8 sensor_fcount = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!cis)) {
@@ -421,8 +399,6 @@ int sensor_cis_wait_streamoff(struct v4l2_subdev *subdev)
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
 	ret = fimc_is_sensor_read8(client, 0x0005, &sensor_fcount);
-	I2C_MUTEX_UNLOCK(cis->i2c_lock);
-
 	if (ret < 0)
 		err("i2c transfer fail addr(%x), val(%x), ret = %d\n", 0x0005, sensor_fcount, ret);
 
@@ -431,9 +407,7 @@ int sensor_cis_wait_streamoff(struct v4l2_subdev *subdev)
 	 * stream on (0x00 ~ 0xFE), stream off (0xFF)
 	 */
 	while (sensor_fcount != 0xFF) {
-		I2C_MUTEX_LOCK(cis->i2c_lock);
 		ret = fimc_is_sensor_read8(client, 0x0005, &sensor_fcount);
-		I2C_MUTEX_UNLOCK(cis->i2c_lock);
 		if (ret < 0)
 			err("i2c transfer fail addr(%x), val(%x), ret = %d\n", 0x0005, sensor_fcount, ret);
 
@@ -453,9 +427,10 @@ int sensor_cis_wait_streamoff(struct v4l2_subdev *subdev)
 
 #ifdef CONFIG_SENSOR_RETENTION_USE
 	/* retention mode CRC wait calculation */
-	usleep_range(5000, 5000);
+	usleep_range(1000, 1000);
 #endif
 p_err:
+	I2C_MUTEX_UNLOCK(cis->i2c_lock);
 	return ret;
 }
 
@@ -465,10 +440,10 @@ int sensor_cis_wait_streamon(struct v4l2_subdev *subdev)
 	struct fimc_is_cis *cis;
 	struct i2c_client *client;
 	cis_shared_data *cis_data;
-	u32 wait_cnt = 0, time_out_cnt = 2500;
+	u32 wait_cnt = 0, time_out_cnt = 250;
 	u8 sensor_fcount = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!cis)) {
@@ -539,191 +514,11 @@ int sensor_cis_set_initial_exposure(struct v4l2_subdev *subdev)
 	if (cis->use_initial_ae) {
 		cis->init_ae_setting = cis->last_ae_setting;
 
-		dbg_sensor(1, "[MOD:D:%d] %s short(exp:%d/again:%d/dgain:%d), long(exp:%d/again:%d/dgain:%d)\n",
+		dbg_sensor(1, "[MOD:D:%d] %s short(exp:%llu/again:%d/dgain:%d), long(exp:%llu/again:%d/dgain:%d)\n",
 			cis->id, __func__, cis->init_ae_setting.exposure, cis->init_ae_setting.analog_gain,
 			cis->init_ae_setting.digital_gain, cis->init_ae_setting.long_exposure,
 			cis->init_ae_setting.long_analog_gain, cis->init_ae_setting.long_digital_gain);
 	}
-
-	return 0;
-}
-
-int sensor_cis_factory_test(struct v4l2_subdev *subdev)
-{
-	int ret = 0;
-	struct fimc_is_cis *cis;
-
-	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
-	if (unlikely(!cis)) {
-		err("cis is NULL");
-		return -EINVAL;
-	}
-
-	/* sensor mode setting */
-	ret = CALL_CISOPS(cis, cis_set_global_setting, subdev);
-	if (ret < 0) {
-		err("[%s] cis global setting fail\n", __func__);
-		return ret;
-	}
-
-	ret = CALL_CISOPS(cis, cis_mode_change, subdev, 0);
-	if (ret < 0) {
-		err("[%s] cis mode setting(0) fail\n", __func__);
-		return ret;
-	}
-
-	/* sensor stream on */
-	ret = CALL_CISOPS(cis, cis_stream_on, subdev);
-	if (ret < 0) {
-		err("[%s] stream on fail\n", __func__);
-		return ret;
-	}
-
-	ret = CALL_CISOPS(cis, cis_wait_streamon, subdev);
-	if (ret < 0) {
-		err("[%s] sensor wait stream on fail\n", __func__);
-		return ret;
-	}
-
-	msleep(100);
-
-	/* Sensor stream off */
-	ret = CALL_CISOPS(cis, cis_stream_off, subdev);
-	if (ret < 0) {
-		err("[%s] stream off fail\n", __func__);
-		return ret;
-	}
-
-	ret = CALL_CISOPS(cis, cis_wait_streamoff, subdev);
-	if (ret < 0) {
-		err("[%s] stream off fail\n", __func__);
-		return ret;
-	}
-
-	info("[MOD:D:%d] %s: %d\n", cis->id, __func__, ret);
-
-	return ret;
-}
-
-void sensor_cis_otp_data_set(char *data, char *name, u32 size, u32 value)
-{
-	int i;
-
-	/* value setting to (name) cal data section */
-	for (i = 0; i < size; i++)
-		data[i] = value;
-
-	info("%s() Done: %s calibration data is %d set\n", __func__, name, value);
-}
-
-u16 sensor_cis_otp_get_crc16(char *data, int count)
-{
-	char *tmp = data;
-	u32 crc[16];
-	int i, j;
-	u16 crc16 = 0;
-
-	memset(crc, 0, sizeof(crc));
-	for (i = 0; i < count; i++) {
-		for (j = 7; j >= 0; j--) {
-			/* isolate the bit in the byte */
-			u32 doInvert = *tmp & (1 << j);
-
-			/* shift the bit to LSB in the byte */
-			doInvert = doInvert >> j;
-
-			/* XOR required? */
-			doInvert = doInvert ^ crc[15];
-
-			crc[15] = crc[14] ^ doInvert;
-			crc[14] = crc[13];
-			crc[13] = crc[12];
-			crc[12] = crc[11];
-			crc[11] = crc[10];
-			crc[10] = crc[9];
-			crc[9] = crc[8];
-			crc[8] = crc[7];
-			crc[7] = crc[6];
-			crc[6] = crc[5];
-			crc[5] = crc[4];
-			crc[4] = crc[3];
-			crc[3] = crc[2];
-			crc[2] = crc[1] ^ doInvert;
-			crc[1] = crc[0];
-			crc[0] = doInvert;
-		}
-		tmp++;
-	}
-
-	/* convert bits to CRC word */
-	for (i = 0; i < 16; i++)
-		crc16 = crc16 + (crc[i] << i);
-
-	return crc16;
-}
-
-int sensor_cis_otp_read_file(const char *file_name, const void *data, unsigned long size)
-{
-	int ret = 0;
-	long nread;
-	struct file *fp = NULL;
-	mm_segment_t old_fs;
-
-	old_fs = get_fs();
-	set_fs(KERNEL_DS);
-
-	fp = filp_open(file_name, O_RDONLY, 0);
-	if (IS_ERR(fp)) {
-		ret = PTR_ERR(fp);
-		pr_err("%s(): open file error(%d)\n", __func__, ret);
-		goto exit;
-	}
-
-	nread = vfs_read(fp, (char __user *)data, size, &fp->f_pos);
-	if (nread != size) {
-		err("failed to read otp file, (%ld) Bytes", nread);
-		ret = -EIO;
-	}
-
-exit:
-	if (!IS_ERR(fp))
-		filp_close(fp, NULL);
-
-	set_fs(old_fs);
-
-	return ret;
-}
-
-int sensor_cis_otp_write_file(const char *file_name, const void *data, unsigned long size)
-{
-	int ret = 0;
-	struct file *fp = NULL;
-	mm_segment_t old_fs;
-
-	old_fs = get_fs();
-	set_fs(KERNEL_DS);
-
-	pr_info("%s(), open file %s\n", __func__, file_name);
-
-	fp = filp_open(file_name, O_WRONLY | O_CREAT | O_TRUNC | O_SYNC, 0644);
-	if (IS_ERR(fp)) {
-		ret = PTR_ERR(fp);
-		pr_err("%s(): open file error(%d)\n", __func__, ret);
-		goto exit;
-	}
-
-	pr_info("%s(), write to %s\n", __func__, file_name);
-
-	ret = vfs_write(fp, (const char *)data,
-			size, &fp->f_pos);
-	if (ret < 0)
-		pr_err("%s:write file %s error(%d)\n", __func__, file_name, ret);
-
-exit:
-	if (!IS_ERR(fp))
-		filp_close(fp, NULL);
-
-	set_fs(old_fs);
 
 	return 0;
 }

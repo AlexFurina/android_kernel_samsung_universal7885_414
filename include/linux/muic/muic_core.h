@@ -268,6 +268,12 @@ struct muic_platform_data {
 	int (*set_gpio_uart_sel)(int uart_path);
 	int (*set_safeout)(int safeout_path);
 
+	/* muic AFC voltage switching function */
+	int (*muic_afc_set_voltage_cb)(int voltage);
+
+	/* muic hv charger disable function */
+	int (*muic_hv_charger_disable_cb)(bool en);
+
 	/* muic path switch function for rustproof */
 	void (*set_path_switch_suspend)(struct device *dev);
 	void (*set_path_switch_resume)(struct device *dev);
@@ -340,14 +346,14 @@ struct muic_platform_data {
 	}	\
 }
 
-#define MUIC_SEND_NOTI_TO_CCIC_ATTACH(dev) \
+#define MUIC_SEND_NOTI_TO_PDIC_ATTACH(dev) \
 {	\
 	int ret;	\
 	struct ifconn_notifier_template template;	\
 	template.cable_type = dev;	\
 	ret = ifconn_notifier_notify( \
 					IFCONN_NOTIFY_MUIC,	\
-					IFCONN_NOTIFY_CCIC,	\
+					IFCONN_NOTIFY_PDIC,	\
 					IFCONN_NOTIFY_ID_ATTACH,	\
 					IFCONN_NOTIFY_EVENT_ATTACH,	\
 					IFCONN_NOTIFY_PARAM_DATA,	\
@@ -358,14 +364,14 @@ struct muic_platform_data {
 	}	\
 }
 
-#define MUIC_SEND_NOTI_TO_CCIC_DETACH(dev) \
+#define MUIC_SEND_NOTI_TO_PDIC_DETACH(dev) \
 {	\
 	int ret;	\
 	struct ifconn_notifier_template template;	\
 	template.cable_type = dev;	\
 	ret = ifconn_notifier_notify( \
 					IFCONN_NOTIFY_MUIC,	\
-					IFCONN_NOTIFY_CCIC,	\
+					IFCONN_NOTIFY_PDIC,	\
 					IFCONN_NOTIFY_ID_DETACH,	\
 					IFCONN_NOTIFY_EVENT_DETACH,	\
 					IFCONN_NOTIFY_PARAM_DATA,	\
@@ -398,9 +404,9 @@ struct muic_platform_data {
 		muic_notifier_attach_attached_dev(dev)
 #define MUIC_SEND_NOTI_DETACH(dev) \
 		muic_notifier_detach_attached_dev(dev)
-#define MUIC_SEND_NOTI_TO_CCIC_ATTACH(dev) \
+#define MUIC_SEND_NOTI_TO_PDIC_ATTACH(dev) \
 		muic_pdic_notifier_attach_attached_dev(dev)
-#define MUIC_SEND_NOTI_TO_CCIC_DETACH(dev) \
+#define MUIC_SEND_NOTI_TO_PDIC_DETACH(dev) \
 		muic_pdic_notifier_detach_attached_dev(dev)
 #endif
 
@@ -410,7 +416,7 @@ void muic_set_hmt_status(int status);
 int muic_core_handle_attach(struct muic_platform_data *muic_pdata,
 			muic_attached_dev_t new_dev, int adc, u8 vbvolt);
 int muic_core_handle_detach(struct muic_platform_data *muic_pdata);
-bool muic_core_get_ccic_cable_state(struct muic_platform_data *muic_pdata);
+bool muic_core_get_pdic_cable_state(struct muic_platform_data *muic_pdata);
 struct muic_platform_data *muic_core_init(void *drv_data);
 void muic_core_exit(struct muic_platform_data *muic_pdata);
 extern void muic_disable_otg_detect(void);

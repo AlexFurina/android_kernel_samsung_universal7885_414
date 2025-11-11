@@ -28,7 +28,7 @@
 #include <linux/muic/s2mu106-muic.h>
 #include <linux/muic/s2mu106-muic-hv.h>
 #include <linux/mfd/samsung/s2mu106.h>
-#include <linux/sec_sysfs.h>
+#include <linux/sec_class.h>
 
 static ssize_t s2mu106_muic_show_uart_en(struct device *dev,
 	struct device_attribute *attr, char *buf)
@@ -157,14 +157,14 @@ static ssize_t s2mu106_muic_show_adc(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct s2mu106_muic_data *muic_data = dev_get_drvdata(dev);
-#if IS_ENABLED(CONFIG_CCIC_S2MU106)
+#if IS_ENABLED(CONFIG_PDIC_S2MU106)
 	struct muic_platform_data *muic_pdata = muic_data->pdata;
 #endif
 	int ret;
 
 	mutex_lock(&muic_data->muic_mutex);
 
-#if IS_ENABLED(CONFIG_CCIC_S2MU106)
+#if IS_ENABLED(CONFIG_PDIC_S2MU106)
 	/* TODO: NOTE: There are abnormal operations of rising volatage AFC 9V
 	 * by RID enable/disable in the s2mu106_muic_refresh_adc functions in the
 	 * factory bianary. This is to minimize unnecessary interrupt by RID
@@ -631,7 +631,7 @@ static DEVICE_ATTR(mansw, 0664, s2mu106_muic_show_mansw, NULL);
 static DEVICE_ATTR(dump_registers, 0664, s2mu106_muic_show_registers, NULL);
 static DEVICE_ATTR(int_status, 0664, s2mu106_muic_show_interrupt_status, NULL);
 #endif
-static DEVICE_ATTR(usb_state, 0664, s2mu106_muic_show_usb_state, NULL);
+static DEVICE_ATTR(usb_state, 0444, s2mu106_muic_show_usb_state, NULL);
 #if IS_ENABLED(CONFIG_USB_HOST_NOTIFY)
 #ifdef TODO
 static DEVICE_ATTR(otg_test, 0664,

@@ -84,7 +84,7 @@ static int fimc_is_hw_scp_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (test_bit(HW_OPEN, &hw_ip->state))
 		return 0;
@@ -119,7 +119,7 @@ static int fimc_is_hw_scp_init(struct fimc_is_hw_ip *hw_ip, u32 instance,
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	set_bit(HW_INIT, &hw_ip->state);
 	return ret;
@@ -129,7 +129,7 @@ static int fimc_is_hw_scp_close(struct fimc_is_hw_ip *hw_ip, u32 instance)
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit(HW_OPEN, &hw_ip->state))
 		return 0;
@@ -137,6 +137,7 @@ static int fimc_is_hw_scp_close(struct fimc_is_hw_ip *hw_ip, u32 instance)
 	vfree(hw_ip->priv_info);
 
 	clear_bit(HW_OPEN, &hw_ip->state);
+	msinfo_hw("close (%d)\n", instance, hw_ip, atomic_read(&hw_ip->rsccount));
 
 	return ret;
 }
@@ -145,7 +146,7 @@ static int fimc_is_hw_scp_enable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulon
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit(hw_ip->id, &hw_map))
 		return 0;
@@ -164,7 +165,7 @@ static int fimc_is_hw_scp_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulo
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit(hw_ip->id, &hw_map))
 		return 0;
@@ -202,8 +203,8 @@ static int fimc_is_hw_scp_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame
 	struct scp_param *param;
 	u32 target_addr[4] = {0};
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!frame);
+	BUG_ON(!hw_ip);
+	BUG_ON(!frame);
 
 	msdbgs_hw(2, "[F:%d] shot\n", frame->instance, hw_ip, frame->fcount);
 
@@ -273,8 +274,8 @@ static int fimc_is_hw_scp_set_param(struct fimc_is_hw_ip *hw_ip, struct is_regio
 	struct fimc_is_hw_scp *hw_scp;
 	struct scp_param *param;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!region);
+	BUG_ON(!hw_ip);
+	BUG_ON(!region);
 
 	if (!test_bit(hw_ip->id, &hw_map))
 		return 0;
@@ -332,7 +333,7 @@ int fimc_is_hw_scp_reset(struct fimc_is_hw_ip *hw_ip)
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	ret = fimc_is_scp_sw_reset(hw_ip->regs);
 	if (ret != 0) {
@@ -356,7 +357,7 @@ static int fimc_is_hw_scp_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance
 	enum exynos_sensor_position sensor_position;
 	u32 index;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit(hw_ip->id, &hw_map))
 		return 0;
@@ -446,7 +447,7 @@ static int fimc_is_hw_scp_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 instan
 {
 	struct fimc_is_hw_scp *hw_scp = NULL;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit(hw_ip->id, &hw_map))
 		return 0;
@@ -472,14 +473,14 @@ static int fimc_is_hw_scp_frame_ndone(struct fimc_is_hw_ip *hw_ip, struct fimc_i
 	wq_id     = WORK_SCP_FDONE;
 	output_id = ENTRY_SCP;
 	if (test_bit(output_id, &frame->out_flag))
-		ret = fimc_is_hardware_frame_done(hw_ip, frame, wq_id, output_id,
-				false);
+		ret = fimc_is_hardware_frame_done(hw_ip, frame, wq_id,
+					output_id, done_type, false);
 
 	wq_id     = -1;
 	output_id = FIMC_IS_HW_CORE_END;
 	if (test_bit(hw_ip->id, &frame->core_flag))
-		ret = fimc_is_hardware_frame_done(hw_ip, frame, wq_id, output_id,
-				false);
+		ret = fimc_is_hardware_frame_done(hw_ip, frame, wq_id,
+					output_id, done_type, false);
 
 	return ret;
 }
@@ -1015,9 +1016,9 @@ int fimc_is_hw_scp_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface *
 	int ret = 0;
 	int hw_slot = -1;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!itf);
-	FIMC_BUG(!itfc);
+	BUG_ON(!hw_ip);
+	BUG_ON(!itf);
+	BUG_ON(!itfc);
 
 	/* initialize device hardware */
 	hw_ip->id   = id;

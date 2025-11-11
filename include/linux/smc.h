@@ -29,6 +29,7 @@
 #define SMC_CMD_KERNEL_PANIC_NOTICE	(-122)
 #define SMC_CMD_SET_SEH_ADDRESS		(-123)
 #define SMC_CMD_LOCKUP_NOTICE		(0x8200007C)
+#define SMC_CMD_GET_SJTAG_STATUS	(0x8200012E)
 
 /* For protecting kernel text area */
 #define SMC_CMD_PROTECT_KERNEL_TEXT	(-125)

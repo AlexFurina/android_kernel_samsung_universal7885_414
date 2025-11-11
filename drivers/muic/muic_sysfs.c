@@ -25,10 +25,19 @@
 #include <linux/types.h>
 #include <linux/device.h>
 #include <linux/delay.h>
-#include <linux/sec_sysfs.h>
-#include <linux/muic/muic_interface.h>
+#include <linux/muic/muic.h>
+#include <linux/sec_class.h>
 #include <linux/muic/muic_sysfs.h>
-#if defined(CONFIG_MUIC_SUPPORT_SEC_EXT)
+#include <linux/muic/muic_interface.h>
+#include <linux/muic/s2mu106-muic-hv.h>
+
+//#include <linux/sec_ext.h>
+#if defined(CONFIG_BATTERY_SAMSUNG_V2)
+#include "../battery_v2/include/sec_charging_common.h"
+#else
+#include <linux/battery/sec_charging_common.h>
+#endif
+#if defined(CONFIG_SEC_PARAM)
 #include <linux/sec_ext.h>
 #endif
 
@@ -159,7 +168,7 @@ static ssize_t muic_sysfs_show_adc(struct device *dev,
 
 #if IS_ENABLED(CONFIG_MUIC_SYSFS_SHOW_REFRESH_ADC)
 	int is_afc_muic_ready;
-#if IS_ENABLED(CONFIG_MUIC_SUPPORT_CCIC)
+#if IS_ENABLED(CONFIG_MUIC_SUPPORT_PDIC)
 	/* TODO: NOTE: There are abnormal operations of rising volatage AFC 9V
 	 * by RID enable/disable in the muic_sysfs_refresh_adc functions in the
 	 * factory bianary. This is to minimize unnecessary interrupt by RID
@@ -356,6 +365,7 @@ static ssize_t muic_sysfs_show_attached_dev(struct device *dev,
 		return sprintf(buf, "PS CABLE\n");
 	case ATTACHED_DEV_AFC_CHARGER_5V_MUIC:
 	case ATTACHED_DEV_AFC_CHARGER_9V_MUIC:
+	case ATTACHED_DEV_AFC_CHARGER_DISABLED_MUIC:
 	case ATTACHED_DEV_QC_CHARGER_5V_MUIC:
 	case ATTACHED_DEV_QC_CHARGER_9V_MUIC:
 		return sprintf(buf, "AFC Charger\n");
@@ -446,15 +456,20 @@ static ssize_t muic_sysfs_set_afc_disable(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct muic_platform_data *pdata = dev_get_drvdata(dev);
+	struct muic_interface_t *muic_if = pdata->muic_if;
 	bool curr_val = pdata->afc_disable;
 	int param_val, ret = 0;
-
-	if (!strncasecmp(buf, "1", 1))
+#ifdef CONFIG_BATTERY_SAMSUNG
+	union power_supply_propval psy_val;
+#endif
+	if (!strncasecmp(buf, "1", 1)) {
 		pdata->afc_disable = true;
-	else if (!strncasecmp(buf, "0", 1))
+	} else if (!strncasecmp(buf, "0", 1)) {
 		pdata->afc_disable = false;
-	else
+	} else {
 		pr_warn("%s invalid value\n", __func__);
+		return -EINVAL;
+	}
 
 #if IS_ENABLED(CONFIG_MUIC_MANAGER)
 	param_val = pdata->afc_disable ? '1' : '0';
@@ -472,7 +487,14 @@ static ssize_t muic_sysfs_set_afc_disable(struct device *dev,
 	pr_err("%s:set_param is NOT supported! - %02x:%02x(%d)\n",
 		__func__, param_val, curr_val, ret);
 #endif
+
+#ifdef CONFIG_BATTERY_SAMSUNG
+	psy_val.intval = param_val;
+	psy_do_property("battery", set, POWER_SUPPLY_EXT_PROP_HV_DISABLE, psy_val);
+#endif
 	pr_info("%s afc_disable(%d)\n", __func__, pdata->afc_disable);
+	if (curr_val != pdata->afc_disable)
+		MUIC_PDATA_VOID_FUNC(muic_if->set_chgtype_usrcmd, pdata->drv_data);
 
 	return count;
 }
@@ -483,12 +505,11 @@ static ssize_t muic_store_afc_set_voltage(struct device *dev,
 {
 	struct muic_platform_data *muic_pdata = dev_get_drvdata(dev);
 	struct muic_interface_t *muic_if = muic_pdata->muic_if;
-	int ret = 0;
 
 	if (!strncasecmp(buf, "5V", 2)) {
-		MUIC_PDATA_FUNC_MULTI_PARAM(muic_if->set_afc_voltage, muic_pdata->drv_data, 5, &ret);
+		muic_if->change_afc_voltage(muic_pdata->drv_data, MUIC_HV_5V);
 	} else if (!strncasecmp(buf, "9V", 2)) {
-		MUIC_PDATA_FUNC_MULTI_PARAM(muic_if->set_afc_voltage, muic_pdata->drv_data, 9, &ret);
+		muic_if->change_afc_voltage(muic_pdata->drv_data, MUIC_HV_9V);
 	} else {
 		pr_warn("%s invalid value : %s\n", __func__, buf);
 	}
@@ -547,7 +568,7 @@ static DEVICE_ATTR(mansw, 0664, muic_sysfs_show_mansw, NULL);
 static DEVICE_ATTR(dump_registers, 0664, muic_sysfs_show_registers, NULL);
 static DEVICE_ATTR(int_status, 0664, muic_sysfs_show_interrupt_status, NULL);
 #endif
-static DEVICE_ATTR(usb_state, 0664, muic_sysfs_show_usb_state, NULL);
+static DEVICE_ATTR(usb_state, 0444, muic_sysfs_show_usb_state, NULL);
 #if IS_ENABLED(CONFIG_USB_HOST_NOTIFY)
 static DEVICE_ATTR(otg_test, 0664,
 		muic_sysfs_show_otg_test, muic_sysfs_set_otg_test);
@@ -612,10 +633,7 @@ static const struct attribute_group muic_sysfs_group = {
 int muic_sysfs_init(struct muic_platform_data *muic_pdata)
 {
 	int ret;
-	/* create sysfs group */
-#if IS_ENABLED(CONFIG_SEC_FACTORY)
-	muic_pdata->switch_device = sec_device_find("switch");
-#endif
+
 	mutex_init(&muic_pdata->sysfs_mutex);
 
 	if (muic_pdata->switch_device == NULL)

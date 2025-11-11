@@ -19,15 +19,15 @@
 #include "g2d_perf.h"
 #include "g2d_task.h"
 #include "g2d_uapi.h"
+#include <soc/samsung/bts.h>
 
 #include <linux/workqueue.h>
 
 #ifdef CONFIG_PM_DEVFREQ
-static void g2d_pm_qos_update_devfreq(struct pm_qos_request *req, u32 freq,
-				      int class)
+static void g2d_pm_qos_update_devfreq(struct pm_qos_request *req, u32 freq)
 {
 	if (!pm_qos_request_active(req))
-		pm_qos_add_request(req, class, 0);
+		pm_qos_add_request(req, PM_QOS_DEVICE_THROUGHPUT, 0);
 
 	pm_qos_update_request(req, freq);
 }
@@ -149,15 +149,10 @@ static void g2d_set_device_frequency(struct g2d_context *g2d_ctx,
 		}
 	}
 
-	if (!ip_clock) {
-		g2d_pm_qos_remove_devfreq(&g2d_ctx->dev_req);
-		g2d_pm_qos_remove_devfreq(&g2d_ctx->bus_req);
-	} else if (ip_clock) {
-		g2d_pm_qos_update_devfreq(&g2d_ctx->dev_req, ip_clock,
-					  PM_QOS_DEVICE_THROUGHPUT);
-		g2d_pm_qos_update_devfreq(&g2d_ctx->bus_req, 845000,
-					  PM_QOS_BUS_THROUGHPUT);
-	}
+	if (!ip_clock)
+		g2d_pm_qos_remove_devfreq(&g2d_ctx->req);
+	else if (ip_clock)
+		g2d_pm_qos_update_devfreq(&g2d_ctx->req, ip_clock);
 }
 
 static void g2d_set_qos_frequency(struct g2d_context *g2d_ctx,
@@ -228,15 +223,13 @@ static void g2d_set_qos_frequency(struct g2d_context *g2d_ctx,
 	}
 
 	if ((rbw != cur_rbw) || (wbw != cur_wbw)) {
-		/*
-		 * FIXME: BTS is not available for now
-		 * struct bts_bw bw;
-		 *
-		 * bw.peak = ((rbw + wbw) / 1000) * BTS_PEAK_FPS_RATIO / 2;
-		 * bw.write = wbw;
-		 * bw.read = rbw;
-		 * bts_update_bw(BTS_BW_G2D, bw);
-		 */
+		struct bts_bw bw;
+
+		bw.write = wbw;
+		bw.read = rbw;
+
+		bw.peak = ((rbw + wbw) / 1000) * BTS_PEAK_FPS_RATIO / 2;
+		bts_update_bw(BTS_BW_G2D, bw);
 	}
 }
 
@@ -258,8 +251,6 @@ void g2d_set_performance(struct g2d_context *ctx,
 
 	if (!data->num_frame) {
 		if (g2d_still_need_perf(g2d_dev) && !release) {
-			mod_delayed_work(system_wq, &ctx->dwork,
-					 msecs_to_jiffies(50));
 			mutex_unlock(&g2d_dev->lock_qos);
 			return;
 		}

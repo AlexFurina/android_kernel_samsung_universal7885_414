@@ -203,6 +203,18 @@ static int  __init exynos_set_seh_address(void)
 }
 arch_initcall(exynos_set_seh_address);
 
+int exynos_tz_peri_save(unsigned int addr)
+{
+        return exynos_smc(SMC_CMD_PREAPRE_PD_ONOFF,
+                        EXYNOS_GET_IN_PD_DOWN, addr, 0);
+}
+
+int exynos_tz_peri_restore(unsigned int addr)
+{
+        return exynos_smc(SMC_CMD_PREAPRE_PD_ONOFF,
+                        EXYNOS_WAKEUP_PD_DOWN, addr, 0);
+}
+
 /*
  * The function to save TZPC of power domains
  * by calling SMC to EL3 Monitor

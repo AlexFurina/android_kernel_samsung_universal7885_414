@@ -37,6 +37,9 @@
 #include "fimc-is-device-preprocessor.h"
 #include "fimc-is-core.h"
 #include "fimc-is-dvfs.h"
+#ifdef CONFIG_COMPANION_FACTORY_VALIDATION
+#include "fimc-is-companion.h"
+#endif
 
 extern struct pm_qos_request exynos_isp_qos_int;
 extern struct pm_qos_request exynos_isp_qos_mem;
@@ -48,7 +51,7 @@ int fimc_is_preproc_g_module(struct fimc_is_device_preproc *device,
 {
 	int ret = 0;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	*module = device->module;
 	if (!*module) {
@@ -76,17 +79,17 @@ static int fimc_is_preproc_mclk_on(struct fimc_is_device_preproc *device)
 	struct fimc_is_device_sensor *device_sensor;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
 
 	pdata = device->pdata;
 	core = device->private_data;
 	device_sensor = &core->sensor[pdata->id];
 
-	FIMC_BUG(!device_sensor);
-	FIMC_BUG(!device_sensor->pdev);
-	FIMC_BUG(!device_sensor->pdata);
+	BUG_ON(!device_sensor);
+	BUG_ON(!device_sensor->pdev);
+	BUG_ON(!device_sensor->pdata);
 
 	if (test_bit(FIMC_IS_PREPROC_MCLK_ON, &device->state)) {
 		err("%s : already clk on", __func__);
@@ -161,18 +164,18 @@ static int fimc_is_preproc_mclk_off(struct fimc_is_device_preproc *device)
 	struct fimc_is_device_sensor *device_sensor;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->private_data);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
 
 	pdata = device->pdata;
 	core = device->private_data;
 	device_sensor = &core->sensor[pdata->id];
 
-	FIMC_BUG(!device_sensor);
-	FIMC_BUG(!device_sensor->pdev);
-	FIMC_BUG(!device_sensor->pdata);
+	BUG_ON(!device_sensor);
+	BUG_ON(!device_sensor->pdev);
+	BUG_ON(!device_sensor->pdata);
 
 	if (!test_bit(FIMC_IS_PREPROC_MCLK_ON, &device->state)) {
 		err("%s : already clk off", __func__);
@@ -244,9 +247,9 @@ static int fimc_is_preproc_iclk_on(struct fimc_is_device_preproc *device)
 	struct platform_device *pdev;
 	struct exynos_platform_fimc_is_preproc *pdata;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
 
 	pdev = device->pdev;
 	pdata = device->pdata;
@@ -292,9 +295,9 @@ static int fimc_is_preproc_iclk_off(struct fimc_is_device_preproc *device)
 	struct platform_device *pdev;
 	struct exynos_platform_fimc_is_preproc *pdata;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
 
 	pdev = device->pdev;
 	pdata = device->pdata;
@@ -330,10 +333,10 @@ static int fimc_is_preproc_gpio_on(struct fimc_is_device_preproc *device)
 	struct fimc_is_module_enum *module;
 	struct fimc_is_vender *vender;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->private_data);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
 
 	module = NULL;
 	gpio_scenario = GPIO_SCENARIO_ON;
@@ -415,10 +418,10 @@ static int fimc_is_preproc_gpio_off(struct fimc_is_device_preproc *device)
 	struct fimc_is_module_enum *module;
 	struct fimc_is_vender *vender;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->private_data);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
 
 	module = NULL;
 	gpio_scenario = GPIO_SCENARIO_OFF;
@@ -500,9 +503,9 @@ int fimc_is_preproc_open(struct fimc_is_device_preproc *device,
 	struct fimc_is_vender *vender;
 	struct exynos_platform_fimc_is_preproc *pdata;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->private_data);
+	BUG_ON(!device);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
 
 	core = device->private_data;
 	pdata = device->pdata;
@@ -536,9 +539,9 @@ int fimc_is_preproc_close(struct fimc_is_device_preproc *device)
 	struct fimc_is_vender *vender;
 	struct exynos_platform_fimc_is_preproc *pdata;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->private_data);
+	BUG_ON(!device);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
 
 	core = device->private_data;
 	pdata = device->pdata;
@@ -587,7 +590,7 @@ static int fimc_is_preproc_probe(struct platform_device *pdev)
 	struct fimc_is_device_preproc *device;
 	struct exynos_platform_fimc_is_preproc *pdata;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	if (fimc_is_dev == NULL) {
 		warn("fimc_is_dev is not yet probed(preprocessor)");
@@ -689,9 +692,10 @@ static int fimc_is_preproc_resume(struct device *dev)
 int fimc_is_preproc_runtime_suspend(struct device *dev)
 {
 	int ret = 0;
+	struct platform_device *pdev = to_platform_device(dev);
 	struct fimc_is_device_preproc *device;
 
-	device = (struct fimc_is_device_preproc *)dev_get_drvdata(dev);
+	device = (struct fimc_is_device_preproc *)platform_get_drvdata(pdev);
 	if (!device) {
 		err("device is NULL");
 		ret = -EINVAL;
@@ -733,9 +737,10 @@ p_err:
 int fimc_is_preproc_runtime_resume(struct device *dev)
 {
 	int ret = 0;
+	struct platform_device *pdev = to_platform_device(dev);
 	struct fimc_is_device_preproc *device;
 
-	device = (struct fimc_is_device_preproc *)dev_get_drvdata(dev);
+	device = (struct fimc_is_device_preproc *)platform_get_drvdata(pdev);
 	if (!device) {
 		err("device is NULL");
 		ret = -EINVAL;
@@ -763,10 +768,10 @@ int fimc_is_preproc_s_input(struct fimc_is_device_preproc *device,
 	struct fimc_is_vender *vender;
 	struct fimc_is_device_sensor *device_sensor;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->private_data);
-	FIMC_BUG(input >= SENSOR_NAME_END);
+	BUG_ON(!device);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
+	BUG_ON(input >= SENSOR_NAME_END);
 
 	TIME_LAUNCH_STR(LAUNCH_PREPROC_LOAD);
 
@@ -774,9 +779,9 @@ int fimc_is_preproc_s_input(struct fimc_is_device_preproc *device,
 	vender = &core->vender;
 	device_sensor = &core->sensor[device->pdata->id];
 
-	ret = fimc_is_search_sensor_module_with_sensorid(device_sensor, input, &device->module);
+	ret = fimc_is_search_sensor_module(device_sensor, input, &device->module);
 	if (ret) {
-		err("fimc_is_search_sensor_module_with_sensorid is fail(%d)", ret);
+		err("fimc_is_search_sensor_module is fail(%d)", ret);
 		goto p_err;
 	}
 
@@ -820,6 +825,75 @@ p_err:
 	TIME_LAUNCH_END(LAUNCH_PREPROC_LOAD);
 	return ret;
 }
+
+#ifdef CONFIG_COMPANION_FACTORY_VALIDATION
+int fimc_is_preproc_fac_valid_check(struct fimc_is_device_preproc *device,
+	u32 input,
+	u32 scenario)
+{
+	int ret = 0;
+	struct fimc_is_core *core;
+	struct fimc_is_vender *vender;
+	struct fimc_is_device_sensor *device_sensor;
+
+	BUG_ON(!device);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
+	BUG_ON(input >= SENSOR_NAME_END);
+
+	core = device->private_data;
+	vender = &core->vender;
+	device_sensor = &core->sensor[device->pdata->id];
+
+	ret = fimc_is_search_sensor_module(device_sensor, input, &device->module);
+	if (ret) {
+		err("fimc_is_search_sensor_module is fail(%d)", ret);
+		goto p_err;
+	}
+
+	core->current_position = device->module->position;
+
+	ret = fimc_is_preproc_mclk_on(device);
+	if (ret) {
+		err("fimc_is_preproc_mclk_on is fail(%d)", ret);
+		goto p_err;
+	}
+
+	ret = fimc_is_preproc_gpio_on(device);
+	if (ret) {
+		err("fimc_is_preproc_gpio_on is fail(%d)", ret);
+		fimc_is_preproc_mclk_off(device);
+		goto p_err;
+	}
+
+	msleep(150);
+
+	ret = fimc_is_comp_is_valid_fac(core);
+	if (ret) {
+		err("fimc_is_comp_is_valid is fail(%d)", ret);
+		fimc_is_preproc_gpio_off(device);
+		fimc_is_preproc_mclk_off(device);
+		goto p_err;
+	}
+
+	ret = fimc_is_preproc_gpio_off(device);
+	if (ret) {
+		err("fimc_is_preproc_gpio_off is fail(%d)", ret);
+		fimc_is_preproc_mclk_off(device);
+		goto p_err;
+	}
+
+	ret = fimc_is_preproc_mclk_off(device);
+	if (ret) {
+		err("fimc_is_preproc_mclk_off is fail(%d)", ret);
+		goto p_err;
+	}
+
+p_err:
+	minfo("[PRE:D] %s(%d, %d):%d\n", device, __func__, scenario, input, ret);
+	return ret;
+}
+#endif
 
 static const struct dev_pm_ops fimc_is_preproc_pm_ops = {
 	.suspend		= fimc_is_preproc_suspend,

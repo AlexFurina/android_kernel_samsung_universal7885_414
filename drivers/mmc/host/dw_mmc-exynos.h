@@ -12,7 +12,6 @@
 #ifndef _DW_MMC_EXYNOS_H_
 #define _DW_MMC_EXYNOS_H_
 
-#include <crypto/smu.h>
 #include <crypto/fmp.h>
 
 #define NUM_PINS(x)			(x + 2)
@@ -41,15 +40,6 @@
 #define TUNING_PHASE_14		14
 #define TUNING_PHASE_15		15
 
-struct exynos_smu_data {
-	struct exynos_smu_variant_ops *vops;
-	struct platform_device *pdev;
-};
-
-struct exynos_fmp_data {
-	struct exynos_fmp_variant_ops *vops;
-	struct platform_device *pdev;
-};
 
 /* Exynos implementation specific driver private data */
 struct dw_mci_exynos_priv_data {
@@ -68,6 +58,8 @@ struct dw_mci_exynos_priv_data {
 	u32 hs400_ulp_timing;
 	u32 hs400_tx_t_fastlimit;
 	u32 hs400_tx_t_initval;
+	u32	hs400_ulp_tx_t_fastlimit;
+	u32	hs400_ulp_tx_t_initval;
 	u32 sdr104_timing;
 	u32 sdr50_timing;
 	u32 *ref_clk;
@@ -79,14 +71,18 @@ struct dw_mci_exynos_priv_data {
 	struct pinctrl_state *clk_drive_base;
 	struct pinctrl_state *clk_drive_str[6];
 	int cd_gpio;
+	int sec_sd_slot_type;
+#define SEC_NO_DET_SD_SLOT  0 /* No detect GPIO SD slot case */
+#define SEC_HOTPLUG_SD_SLOT 1 /* detect GPIO SD slot without Tray */
+#define SEC_HYBRID_SD_SLOT  2 /* detect GPIO SD slot with Tray */
 	u32 caps;
 	u32 ctrl_flag;
 	u32 ctrl_windows;
 	u32 ignore_phase;
 	u32 selclk_drv;
 	u32 voltage_int_extra;
-	struct exynos_smu_data smu;
-	struct exynos_fmp_data fmp;
+	enum smu_id		fmp;
+	enum smu_id		smu;
 
 #define DW_MMC_EXYNOS_BYPASS_FOR_ALL_PASS	BIT(0)
 #define DW_MMC_EXYNOS_ENABLE_SHIFT		BIT(1)
@@ -253,8 +249,14 @@ extern void dw_mci_reg_dump(struct dw_mci *host);
 
 /* HWACG Control */
 #define MMC_HWACG_CONTROL			BIT(4)
+#define W_INIT					3
+#define W_FREE					2
 #define HWACG_Q_ACTIVE_EN			1
 #define HWACG_Q_ACTIVE_DIS			0
+
+#define HWACG_WORK_INIT				2
+#define CMDQ_MODE				1
+#define LEGACY_MODE                             0
 
 /* Phase 7 Mux Control */
 #define sample_path_sel_en(dev, reg) ({\

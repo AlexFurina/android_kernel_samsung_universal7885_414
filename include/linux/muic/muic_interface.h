@@ -1,7 +1,6 @@
 /*
- * Copyright (C) 2019 Samsung Electronics
- * Sejong Park <sejong123.park@samsung.com>
- * Taejung Kim <tj.kim@samsung.com>
+ * Copyright (C) 2010 Samsung Electronics
+ * Thomas Ryu <smilesr.ryu@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,9 +22,13 @@
 #define __MUIC_INTERNAL_H__
 
 #include <linux/muic/muic.h>
-
 #if defined(CONFIG_MUIC_SUPPORT_POWERMETER)
 #include <linux/power_supply.h>
+#endif
+#if defined(CONFIG_BATTERY_SAMSUNG_V2)
+#include "../drivers/battery_v2/include/sec_charging_common.h"
+#else
+#include <linux/battery/sec_charging_common.h>
 #endif
 
 #define muic_err(fmt, ...)					\
@@ -45,7 +48,7 @@
 
 enum muic_op_mode {
 	OPMODE_MUIC = 0<<0,
-	OPMODE_CCIC = 1<<0,
+	OPMODE_PDIC = 1<<0,
 };
 
 /* Slave addr = 0x4A: MUIC */
@@ -61,8 +64,8 @@ enum ioctl_cmd {
 	GET_RESID3 = 0x09,
 };
 
-enum switching_mode {
-	SWMODE_MANUAL = 0,
+enum switching_mode{
+	SWMODE_MANUAL =0,
 	SWMODE_AUTO = 1,
 };
 
@@ -84,25 +87,25 @@ enum com_index {
 	COM_AUDIO   = 7,
 };
 
-enum {
+enum{
 	ADC_SCANMODE_CONTINUOUS = 0x0,
 	ADC_SCANMODE_ONESHOT = 0x1,
 	ADC_SCANMODE_PULSE = 0x2,
 };
 
-enum vps_type {
-	VPS_TYPE_SCATTERED = 0,
-	VPS_TYPE_TABLE = 1,
+enum vps_type{
+	VPS_TYPE_SCATTERED =0,
+	VPS_TYPE_TABLE =1,
 };
 
 /* VPS data from a chip. */
 typedef struct _muic_vps_scatterred_type {
-	u8 val1;
-	u8 val2;
-	u8 val3;
-	u8 adc;
-	u8 vbvolt;
-} vps_scatterred_type;
+        u8      val1;
+        u8      val2;
+        u8      val3;
+        u8      adc;
+        u8      vbvolt;
+}vps_scatterred_type;
 
 typedef struct _muic_vps_table_t {
 	u8  adc;
@@ -118,7 +121,7 @@ typedef struct _muic_vps_table_t {
 	u8 status[3];
 	u8 control[4];
 	u8 hvcontrol[2];
-} vps_table_type;
+}vps_table_type;
 
 struct muic_intr_data {
 	u8	intr1;
@@ -138,7 +141,7 @@ typedef union _muic_vps_t {
 	vps_scatterred_type s;
 	vps_table_type t;
 	char vps_data[120];
-} vps_data_t;
+}vps_data_t;
 
 /* muic chip specific internal data structure
  * that setted at muic-xxxx.c file
@@ -146,35 +149,43 @@ typedef union _muic_vps_t {
 struct regmap_desc;
 
 typedef enum {
-	CCIC_RID_UNDEFINED = 0,
-	CCIC_RID_000K,
-	CCIC_RID_001K,
-	CCIC_RID_255K,
-	CCIC_RID_301K,
-	CCIC_RID_523K,
-	CCIC_RID_619K,
-	CCIC_RID_OPEN,
-} muic_ccic_rid_t;
+	PDIC_RID_UNDEFINED = 0,
+	PDIC_RID_000K,
+	PDIC_RID_001K,
+	PDIC_RID_255K,
+	PDIC_RID_301K,
+	PDIC_RID_523K,
+	PDIC_RID_619K,
+	PDIC_RID_OPEN,
+} muic_pdic_rid_t;
 
-struct ccic_rid_desc_t {
+struct pdic_rid_desc_t {
 	char *name;
 	int attached_dev;
 };
 
-struct ccic_desc_t {
-	int ccic_evt_attached; /* 1: attached, -1: detached, 0: undefined */
-	int ccic_evt_rid; /* the last rid */
-	int ccic_evt_rprd; /*rprd */
-	int ccic_evt_roleswap; /* check rprd role swap event */
-	int ccic_evt_dcdcnt; /* count dcd timeout */
+struct pdic_desc_t {
+	int pdic_evt_attached; /* 1: attached, -1: detached, 0: undefined */
+	int pdic_evt_rid; /* the last rid */
+	int pdic_evt_rprd; /*rprd */
+	int pdic_evt_roleswap; /* check rprd role swap event */
+	int pdic_evt_dcdcnt; /* count dcd timeout */
 	int attached_dev; /* attached dev */
-	struct ccic_rid_desc_t *rid_desc;
+	struct pdic_rid_desc_t *rid_desc;
 };
 
 typedef enum {
 	MUIC_NORMAL_OTG,
 	MUIC_ABNORMAL_OTG,
 } muic_usb_killer_t;
+
+#if defined(CONFIG_MUIC_SUPPORT_PRSWAP)
+typedef enum {
+	MUIC_PRSWAP_UNDIFINED,
+	MUIC_PRSWAP_TO_SINK,
+	MUIC_PRSWAP_TO_SRC,
+} muic_prswap_t;
+#endif
 
 struct muic_interface_t {
 	struct device *dev;
@@ -184,7 +195,7 @@ struct muic_interface_t {
 
 	/* model dependant muic platform data */
 	struct muic_platform_data *pdata;
-	struct ccic_desc_t *ccic;
+	struct pdic_desc_t *pdic;
 
 	void *muic_data;
 
@@ -219,10 +230,15 @@ struct muic_interface_t {
 	bool			is_muic_ready;
 	bool			undefined_range;
 	bool			discard_interrupt;
+#ifndef CONFIG_MUIC_SKIP_INCOMPLETE_INSERT
 	bool			is_dcdtmr_intr;
 	bool			is_dcp_charger;
 	bool			is_afc_reset;
+#endif
 	bool			is_afc_pdic_ready;
+	bool			is_bypass;
+	bool			is_pdic_attached;
+	bool			is_pdic_probe;
 
 	struct hv_data		*phv;
 
@@ -232,23 +248,23 @@ struct muic_interface_t {
 #endif
 
 #if defined(CONFIG_MUIC_MANAGER)
-	/* legacy TA or USB for CCIC */
+	/* legacy TA or USB for PDIC */
 	muic_attached_dev_t	legacy_dev;
-
-#ifdef CONFIG_IFCONN_NOTIFIER
-	struct notifier_block	ifconn_nb;
-#endif
 
 #ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
 	struct notifier_block	manager_nb;
 #else
-	struct notifier_block	ccic_nb;
+	struct notifier_block	pdic_nb;
 #endif
-	struct delayed_work	ccic_work;
-	bool afc_water_disable;
+	struct delayed_work	pdic_work;
+	bool 			afc_water_disable;
 #endif
 	/* Operation Mode */
 	enum muic_op_mode	opmode;
+
+#if defined(CONFIG_MUIC_SUPPORT_PRSWAP)
+	muic_prswap_t prswap_status;
+#endif
 
 #if defined(CONFIG_MUIC_SUPPORT_POWERMETER)
 	struct power_supply *psy_muic;
@@ -282,7 +298,11 @@ struct muic_interface_t {
 #endif
 #if IS_ENABLED(CONFIG_HV_MUIC_VOLTAGE_CTRL)
 	int (*set_afc_voltage)(void *, int vol);
+	void (*change_afc_voltage)(void *, int);
+	int (*afc_get_voltage)(void *);
+	int (*afc_set_voltage)(void *, int);
 #endif
+	void (*set_chgtype_usrcmd)(void *);
 	void (*hv_reset)(void *);
 	void (*hv_dcp_charger)(void *);
 	void (*hv_fast_charge_adaptor)(void *);
@@ -315,6 +335,12 @@ struct muic_interface_t {
 	int (*set_hiccup_mode)(void *, bool en);
 	int (*get_hiccup_mode)(void *);
 #endif
+#if defined(CONFIG_MUIC_SUPPORT_PRSWAP)
+	void (*set_chg_det)(void *, bool en);
+	void (*prswap_work)(void *, int mode);
+#endif
+	void (*set_bypass)(void *);
+	void (*set_water_state)(void *, bool en);
 };
 
 extern struct device *switch_device;
@@ -323,7 +349,7 @@ struct muic_interface_t *muic_manager_init(void *pdata, void *drv_data);
 void muic_manager_exit(struct muic_interface_t *muic_if);
 int muic_manager_get_legacy_dev(struct muic_interface_t *muic_if);
 void muic_manager_set_legacy_dev(struct muic_interface_t *muic_if, int new_dev);
-void muic_manager_handle_ccic_detach(struct muic_interface_t *muic_if);
+void muic_manager_handle_pdic_detach(struct muic_interface_t *muic_if);
 int muic_manager_dcd_rescan(struct muic_interface_t *muic_if);
 #if defined(CONFIG_MUIC_SUPPORT_POWERMETER)
 int muic_manager_psy_init(struct muic_interface_t *muic_if, struct device *parent);

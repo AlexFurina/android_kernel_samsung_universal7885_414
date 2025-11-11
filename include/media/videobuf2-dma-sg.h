@@ -15,8 +15,6 @@
 
 #include <media/videobuf2-v4l2.h>
 
-#define VB2_DMA_SG_MEMFLAG_IOMMU_UNCACHED	16
-
 static inline struct sg_table *vb2_dma_sg_plane_desc(
 		struct vb2_buffer *vb, unsigned int plane_no)
 {

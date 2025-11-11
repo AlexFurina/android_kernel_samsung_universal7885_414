@@ -16,6 +16,7 @@
 #endif
 
 #include "mfc_qos.h"
+#include "mfc_utils.h"
 
 #ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 enum {
@@ -53,8 +54,8 @@ void mfc_perf_boost_enable(struct mfc_dev *dev)
 #ifdef CONFIG_EXYNOS_BTS
 	if (perf_boost_mode & MFC_PERF_BOOST_MO) {
 		if (pdata->mo_control) {
-			bts_update_scen(BS_MFC_UHD_10BIT, 1);
-			mfc_debug(3, "[QoS][BOOST] BTS(MO): UHD_10BIT\n");
+			bts_update_scen(BS_MFC_UHD, 1);
+			mfc_debug(3, "[QoS][BOOST] BTS(MO): UHD\n");
 		}
 	}
 #endif
@@ -85,7 +86,7 @@ void mfc_perf_boost_disable(struct mfc_dev *dev)
 #ifdef CONFIG_EXYNOS_BTS
 	if (perf_boost_mode & MFC_PERF_BOOST_MO) {
 		if (pdata->mo_control) {
-			bts_update_scen(BS_MFC_UHD_10BIT, 0);
+			bts_update_scen(BS_MFC_UHD, 0);
 			mfc_debug(3, "[QoS][BOOST] BTS(MO) off\n");
 		}
 	}
@@ -99,25 +100,17 @@ void mfc_perf_boost_disable(struct mfc_dev *dev)
 	}
 }
 
-static void __mfc_qos_operate(struct mfc_ctx *ctx, int opr_type, int idx)
+static void __mfc_qos_operate(struct mfc_dev *dev, int opr_type, int idx)
 {
-	struct mfc_dev *dev = ctx->dev;
 	struct mfc_platdata *pdata = dev->pdata;
 	struct mfc_qos *qos_table = pdata->qos_table;
-	int freq_mfc = pdata->qos_table[idx].freq_mfc;
 
 	switch (opr_type) {
 	case MFC_QOS_ADD:
-		if (dev->mfc_freq_by_bps > freq_mfc) {
-			mfc_debug(2, "[QoS] mfc freq set to high %d -> %d by bps\n",
-					freq_mfc, dev->mfc_freq_by_bps);
-			freq_mfc = dev->mfc_freq_by_bps;
-		}
-
 		if (pdata->mfc_freq_control)
 			pm_qos_add_request(&dev->qos_req_mfc,
 					PM_QOS_MFC_THROUGHPUT,
-					freq_mfc);
+					qos_table[idx].freq_mfc);
 		pm_qos_add_request(&dev->qos_req_int,
 				PM_QOS_DEVICE_THROUGHPUT,
 				qos_table[idx].freq_int);
@@ -127,10 +120,8 @@ static void __mfc_qos_operate(struct mfc_ctx *ctx, int opr_type, int idx)
 
 #ifdef CONFIG_EXYNOS_BTS
 		if (pdata->mo_control) {
-			bts_update_scen(BS_MFC_UHD_ENC60, qos_table[idx].mo_uhd_enc60_value);
-			bts_update_scen(BS_MFC_UHD_10BIT, qos_table[idx].mo_10bit_value);
 			bts_update_scen(BS_MFC_UHD, qos_table[idx].mo_value);
-			MFC_TRACE_CTX("BTS(MO) update - uhd:%d, uhd_10bit:%d, uhd_enc60:%d\n",
+			MFC_TRACE_DEV("BTS(MO) update - uhd:%d, uhd_10bit:%d, uhd_enc60:%d\n",
 					qos_table[idx].mo_value, qos_table[idx].mo_10bit_value,
 					qos_table[idx].mo_uhd_enc60_value);
 			mfc_debug(2, "[QoS] BTS(MO) update - uhd:%d, uhd_10bit:%d, uhd_enc60:%d\n",
@@ -140,31 +131,26 @@ static void __mfc_qos_operate(struct mfc_ctx *ctx, int opr_type, int idx)
 #endif
 
 		atomic_set(&dev->qos_req_cur, idx + 1);
-		MFC_TRACE_CTX("QoS add[%d] - mfc:%d(%s), int:%d, mif:%d\n",
-				idx, freq_mfc, pdata->mfc_freq_control ? "used" : "un-used",
+		MFC_TRACE_DEV("QoS add[%d] - mfc:%d(%s), int:%d, mif:%d\n",
+				idx, qos_table[idx].freq_mfc, pdata->mfc_freq_control ? "used" : "un-used",
 				qos_table[idx].freq_int, qos_table[idx].freq_mif);
 		mfc_debug(2, "[QoS] QoS add[%d] - mfc:%d(%s), int:%d, mif:%d\n",
-				idx, freq_mfc, pdata->mfc_freq_control ? "used" : "un-used",
+				idx, qos_table[idx].freq_mfc, pdata->mfc_freq_control ? "used" : "un-used",
 				 qos_table[idx].freq_int, qos_table[idx].freq_mif);
 		break;
 	case MFC_QOS_UPDATE:
-		if (dev->mfc_freq_by_bps > freq_mfc) {
-			mfc_debug(2, "[QoS] mfc freq set to high %d -> %d by bps\n",
-					freq_mfc, dev->mfc_freq_by_bps);
-			freq_mfc = dev->mfc_freq_by_bps;
-		}
-
 		if (pdata->mfc_freq_control)
-			pm_qos_update_request(&dev->qos_req_mfc, freq_mfc);
-		pm_qos_update_request(&dev->qos_req_int, qos_table[idx].freq_int);
-		pm_qos_update_request(&dev->qos_req_mif, qos_table[idx].freq_mif);
+			pm_qos_update_request(&dev->qos_req_mfc,
+					qos_table[idx].freq_mfc);
+		pm_qos_update_request(&dev->qos_req_int,
+				qos_table[idx].freq_int);
+		pm_qos_update_request(&dev->qos_req_mif,
+				qos_table[idx].freq_mif);
 
 #ifdef CONFIG_EXYNOS_BTS
 		if (pdata->mo_control) {
-			bts_update_scen(BS_MFC_UHD_ENC60, qos_table[idx].mo_uhd_enc60_value);
-			bts_update_scen(BS_MFC_UHD_10BIT, qos_table[idx].mo_10bit_value);
 			bts_update_scen(BS_MFC_UHD, qos_table[idx].mo_value);
-			MFC_TRACE_CTX("BTS(MO) update - uhd:%d, uhd_10bit:%d, uhd_enc60:%d\n",
+			MFC_TRACE_DEV("BTS(MO) update - uhd:%d, uhd_10bit:%d, uhd_enc60:%d\n",
 					qos_table[idx].mo_value, qos_table[idx].mo_10bit_value,
 					qos_table[idx].mo_uhd_enc60_value);
 			mfc_debug(2, "[QoS] BTS(MO) update - uhd:%d, uhd_10bit:%d, uhd_enc60:%d\n",
@@ -174,11 +160,11 @@ static void __mfc_qos_operate(struct mfc_ctx *ctx, int opr_type, int idx)
 #endif
 
 		atomic_set(&dev->qos_req_cur, idx + 1);
-		MFC_TRACE_CTX("QoS update[%d] - mfc:%d(%s), int:%d, mif:%d\n",
-				idx, freq_mfc, pdata->mfc_freq_control ? "used" : "un-used",
+		MFC_TRACE_DEV("QoS update[%d] - mfc:%d(%s), int:%d, mif:%d\n",
+				idx, qos_table[idx].freq_mfc, pdata->mfc_freq_control ? "used" : "un-used",
 				qos_table[idx].freq_int, qos_table[idx].freq_mif);
 		mfc_debug(2, "[QoS] QoS update[%d] - mfc:%d(%s), int:%d, mif:%d\n",
-				idx, freq_mfc, pdata->mfc_freq_control ? "used" : "un-used",
+				idx, qos_table[idx].freq_mfc, pdata->mfc_freq_control ? "used" : "un-used",
 				qos_table[idx].freq_int, qos_table[idx].freq_mif);
 		break;
 	case MFC_QOS_REMOVE:
@@ -189,8 +175,6 @@ static void __mfc_qos_operate(struct mfc_ctx *ctx, int opr_type, int idx)
 
 #ifdef CONFIG_EXYNOS_BTS
 		if (pdata->mo_control) {
-			bts_update_scen(BS_MFC_UHD_ENC60, 0);
-			bts_update_scen(BS_MFC_UHD_10BIT, 0);
 			bts_update_scen(BS_MFC_UHD, 0);
 		}
 
@@ -203,14 +187,14 @@ static void __mfc_qos_operate(struct mfc_ctx *ctx, int opr_type, int idx)
 #endif
 
 		atomic_set(&dev->qos_req_cur, 0);
-		MFC_TRACE_CTX("QoS remove\n");
+		MFC_TRACE_DEV("QoS remove\n");
 		mfc_debug(2, "[QoS] QoS remove\n");
 		break;
 	case MFC_QOS_BW:
 #ifdef CONFIG_EXYNOS_BTS
 		if (pdata->bw_control) {
 			bts_update_bw(BTS_BW_MFC, dev->mfc_bw);
-			MFC_TRACE_CTX("BTS(BW) update (peak: %d, read: %d, write: %d)\n",
+			MFC_TRACE_DEV("BTS(BW) update (peak: %d, read: %d, write: %d)\n",
 					dev->mfc_bw.peak, dev->mfc_bw.read, dev->mfc_bw.write);
 			mfc_debug(2, "[QoS] BTS(BW) update (peak: %d, read: %d, write: %d)\n",
 					dev->mfc_bw.peak, dev->mfc_bw.read, dev->mfc_bw.write);
@@ -218,7 +202,7 @@ static void __mfc_qos_operate(struct mfc_ctx *ctx, int opr_type, int idx)
 #endif
 		break;
 	default:
-		mfc_err_ctx("[QoS] Unknown request for opr [%d]\n", opr_type);
+		mfc_err_dev("[QoS] Unknown request for opr [%d]\n", opr_type);
 		break;
 	}
 }
@@ -245,23 +229,14 @@ static void __mfc_qos_set(struct mfc_ctx *ctx, int i)
 		dev->mfc_bw.peak = curr_mfc_bw->peak;
 		dev->mfc_bw.read = curr_mfc_bw->read;
 		dev->mfc_bw.write = curr_mfc_bw->write;
-		__mfc_qos_operate(ctx, MFC_QOS_BW, i);
+		__mfc_qos_operate(dev, MFC_QOS_BW, i);
 	}
 #endif
 
-	mutex_lock(&dev->qos_mutex);
-	if (atomic_read(&dev->qos_req_cur) == 0) {
-		__mfc_qos_operate(ctx, MFC_QOS_ADD, i);
-	} else {
-		/*
-		 * 1) QoS level is changed
-		 * 2) MFC freq should be high regardless of QoS level
-		 */
-		if ((atomic_read(&dev->qos_req_cur) != (i + 1)) ||
-				(dev->mfc_freq_by_bps > pdata->qos_table[i].freq_mfc))
-			__mfc_qos_operate(ctx, MFC_QOS_UPDATE, i);
-	}
-	mutex_unlock(&dev->qos_mutex);
+	if (atomic_read(&dev->qos_req_cur) == 0)
+		__mfc_qos_operate(dev, MFC_QOS_ADD, i);
+	else if (atomic_read(&dev->qos_req_cur) != (i + 1))
+		__mfc_qos_operate(dev, MFC_QOS_UPDATE, i);
 }
 
 static inline unsigned long __mfc_qos_get_weighted_mb(struct mfc_ctx *ctx,
@@ -402,9 +377,9 @@ static inline unsigned long __mfc_qos_get_mb_per_second(struct mfc_ctx *ctx)
 	fps = ctx->framerate / 1000;
 
 	mb = mb_width * mb_height * fps;
-	mfc_debug(4, "[QoS] ctx[%d:%s] %d x %d @ %ld fps (mb: %ld), %dKbps\n",
+	mfc_debug(4, "[QoS] ctx[%d:%s] %d x %d @ %ld fps (mb: %ld)\n",
 			ctx->num, ctx->type == MFCINST_ENCODER ? "ENC" : "DEC",
-			ctx->crop_width, ctx->crop_height, fps, mb, ctx->Kbps);
+			ctx->crop_width, ctx->crop_height, fps, mb);
 
 	return __mfc_qos_get_weighted_mb(ctx, mb);
 }
@@ -518,46 +493,26 @@ static void __mfc_qos_get_bw_per_second(struct mfc_ctx *ctx, struct bts_bw *curr
 }
 #endif
 
-static int __mfc_qos_get_freq_by_bps(struct mfc_dev *dev, unsigned long total_bps)
-{
-	int i;
-
-	if (total_bps > dev->pdata->max_Kbps[0]) {
-		mfc_debug(4, "[QoS] overspec bps %d > %d\n",
-				total_bps, dev->pdata->max_Kbps[0]);
-		return dev->bitrate_table[dev->pdata->num_mfc_freq - 1].mfc_freq;
-	}
-
-	for (i = 0; i < dev->pdata->num_mfc_freq; i++) {
-		if (total_bps <= dev->bitrate_table[i].bps_interval)
-			return dev->bitrate_table[i].mfc_freq;
-	}
-
-	/* Not changed the MFC freq according to BPS */
-	return 0;
-}
-
 void mfc_qos_on(struct mfc_ctx *ctx)
 {
 	struct mfc_dev *dev = ctx->dev;
 	struct mfc_platdata *pdata = dev->pdata;
 	struct mfc_qos *qos_table = pdata->qos_table;
 	struct mfc_ctx *qos_ctx;
-	unsigned long hw_mb = 0, total_mb = 0, total_fps = 0, total_bps = 0;
+	unsigned long hw_mb = 0, total_mb = 0, total_fps = 0;
 	unsigned int fw_time, sw_time;
 	int i, found = 0, enc_found = 0;
 	int start_qos_step;
 #ifdef CONFIG_EXYNOS_BTS
 	struct bts_bw curr_mfc_bw, curr_mfc_bw_ctx;
 #endif
-	unsigned long flags;
 
 	if (perf_boost_mode) {
 		mfc_info_ctx("[QoS][BOOST] skip control\n");
 		return;
 	}
 
-	spin_lock_irqsave(&dev->qos_lock, flags);
+	mutex_lock(&dev->qos_mutex);
 	list_for_each_entry(qos_ctx, &dev->qos_queue, qos_list)
 		if (qos_ctx == ctx)
 			found = 1;
@@ -576,7 +531,6 @@ void mfc_qos_on(struct mfc_ctx *ctx)
 			enc_found = 1;
 		hw_mb += __mfc_qos_get_mb_per_second(qos_ctx);
 		total_fps += (qos_ctx->framerate / 1000);
-		total_bps += qos_ctx->Kbps;
 #ifdef CONFIG_EXYNOS_BTS
 		__mfc_qos_get_bw_per_second(qos_ctx, &curr_mfc_bw_ctx);
 		curr_mfc_bw.peak += curr_mfc_bw_ctx.peak;
@@ -584,7 +538,6 @@ void mfc_qos_on(struct mfc_ctx *ctx)
 		curr_mfc_bw.write += curr_mfc_bw_ctx.write;
 #endif
 	}
-	spin_unlock_irqrestore(&dev->qos_lock, flags);
 
 	start_qos_step = pdata->num_qos_steps;
 	if (enc_found)
@@ -611,14 +564,12 @@ void mfc_qos_on(struct mfc_ctx *ctx)
 	if (total_mb > pdata->max_mb)
 		mfc_debug(4, "[QoS] overspec mb %ld > %d\n", total_mb, pdata->max_mb);
 
-	/* search the suitable independent mfc freq using bps */
-	dev->mfc_freq_by_bps = __mfc_qos_get_freq_by_bps(dev, total_bps);
-
 #ifdef CONFIG_EXYNOS_BTS
 	__mfc_qos_set(ctx, &curr_mfc_bw, i);
 #else
 	__mfc_qos_set(ctx, i);
 #endif
+	mutex_unlock(&dev->qos_mutex);
 }
 
 void mfc_qos_off(struct mfc_ctx *ctx)
@@ -627,25 +578,24 @@ void mfc_qos_off(struct mfc_ctx *ctx)
 	struct mfc_platdata *pdata = dev->pdata;
 	struct mfc_qos *qos_table = pdata->qos_table;
 	struct mfc_ctx *qos_ctx;
-	unsigned long hw_mb = 0, total_mb = 0, total_fps = 0, total_bps = 0;
+	unsigned long hw_mb = 0, total_mb = 0, total_fps = 0;
 	unsigned int fw_time, sw_time;
 	int i, found = 0, enc_found = 0;
 	int start_qos_step;
 #ifdef CONFIG_EXYNOS_BTS
 	struct bts_bw mfc_bw, mfc_bw_ctx;
 #endif
-	unsigned long flags;
 
 	if (perf_boost_mode) {
 		mfc_info_ctx("[QoS][BOOST] skip control\n");
 		return;
 	}
 
+	mutex_lock(&dev->qos_mutex);
 	if (list_empty(&dev->qos_queue)) {
-		mutex_lock(&dev->qos_mutex);
 		if (atomic_read(&dev->qos_req_cur) != 0) {
 			mfc_err_ctx("[QoS] MFC request count is wrong!\n");
-			__mfc_qos_operate(ctx, MFC_QOS_REMOVE, 0);
+			__mfc_qos_operate(dev, MFC_QOS_REMOVE, 0);
 		}
 		mutex_unlock(&dev->qos_mutex);
 		return;
@@ -656,8 +606,6 @@ void mfc_qos_off(struct mfc_ctx *ctx)
 	mfc_bw.read = 0;
 	mfc_bw.write = 0;
 #endif
-
-	spin_lock_irqsave(&dev->qos_lock, flags);
 	/* get the hw macroblock */
 	list_for_each_entry(qos_ctx, &dev->qos_queue, qos_list) {
 		if (qos_ctx == ctx) {
@@ -669,7 +617,6 @@ void mfc_qos_off(struct mfc_ctx *ctx)
 			enc_found = 1;
 		hw_mb += __mfc_qos_get_mb_per_second(qos_ctx);
 		total_fps += (qos_ctx->framerate / 1000);
-		total_bps += qos_ctx->Kbps;
 #ifdef CONFIG_EXYNOS_BTS
 		__mfc_qos_get_bw_per_second(qos_ctx, &mfc_bw_ctx);
 		mfc_bw.peak += mfc_bw_ctx.peak;
@@ -679,7 +626,6 @@ void mfc_qos_off(struct mfc_ctx *ctx)
 	}
 	if (found)
 		list_del(&ctx->qos_list);
-	spin_unlock_irqrestore(&dev->qos_lock, flags);
 
 	start_qos_step = pdata->num_qos_steps;
 	if (enc_found)
@@ -706,13 +652,8 @@ void mfc_qos_off(struct mfc_ctx *ctx)
 	if (total_mb > pdata->max_mb)
 		mfc_debug(4, "[QoS] overspec mb %ld > %d\n", total_mb, pdata->max_mb);
 
-	/* search the suitable independent mfc freq using bps */
-	dev->mfc_freq_by_bps = __mfc_qos_get_freq_by_bps(dev, total_bps);
-
 	if (list_empty(&dev->qos_queue) || total_mb == 0) {
-		mutex_lock(&dev->qos_mutex);
-		__mfc_qos_operate(ctx, MFC_QOS_REMOVE, 0);
-		mutex_unlock(&dev->qos_mutex);
+		__mfc_qos_operate(dev, MFC_QOS_REMOVE, 0);
 	} else {
 #ifdef CONFIG_EXYNOS_BTS
 		__mfc_qos_set(ctx, &mfc_bw, i);
@@ -720,8 +661,53 @@ void mfc_qos_off(struct mfc_ctx *ctx)
 		__mfc_qos_set(ctx, i);
 #endif
 	}
+
+	mutex_unlock(&dev->qos_mutex);
+}
+
+void __mfc_qos_off_all(struct mfc_dev *dev)
+{
+	struct mfc_ctx *qos_ctx, *tmp_ctx;
+
+	mutex_lock(&dev->qos_mutex);
+	if (list_empty(&dev->qos_queue)) {
+		mfc_err_dev("[QoS][MFCIDLE] MFC QoS list already empty (%d)\n",
+				atomic_read(&dev->qos_req_cur));
+		mutex_unlock(&dev->qos_mutex);
+		return;
+	}
+
+	/* Delete all of QoS list */
+	list_for_each_entry_safe(qos_ctx, tmp_ctx, &dev->qos_queue, qos_list)
+		list_del(&qos_ctx->qos_list);
+
+	/* Select the opend ctx structure for QoS remove */
+	__mfc_qos_operate(dev, MFC_QOS_REMOVE, 0);
+	mutex_unlock(&dev->qos_mutex);
 }
 #endif
+
+void mfc_qos_idle_worker(struct work_struct *work)
+{
+	struct mfc_dev *dev;
+
+	dev = container_of(work, struct mfc_dev, mfc_idle_work);
+
+	mutex_lock(&dev->idle_qos_mutex);
+	if (dev->idle_mode == MFC_IDLE_MODE_CANCEL) {
+		mfc_change_idle_mode(dev, MFC_IDLE_MODE_NONE);
+		mfc_debug(2, "[QoS][MFCIDLE] idle mode is canceled\n");
+		mutex_unlock(&dev->idle_qos_mutex);
+		return;
+	}
+#ifdef CONFIG_MFC_USE_BUS_DEVFREQ
+	__mfc_qos_off_all(dev);
+#endif
+	mfc_info_dev("[QoS][MFCIDLE] MFC go to QoS idle mode\n");
+
+	mfc_change_idle_mode(dev, MFC_IDLE_MODE_IDLE);
+	mutex_unlock(&dev->idle_qos_mutex);
+}
 
 #define COL_FRAME_RATE		0
 #define COL_FRAME_INTERVAL	1
@@ -770,27 +756,6 @@ static unsigned long __mfc_qos_get_framerate_by_interval(int interval)
 	return 0;
 }
 
-static int __mfc_qos_get_bps_section_by_bps(struct mfc_dev *dev, int Kbps)
-{
-	int i;
-
-	if (Kbps > dev->pdata->max_Kbps[0]) {
-		mfc_debug(4, "[QoS] overspec bps %d > %d\n",
-				Kbps, dev->pdata->max_Kbps[0]);
-		return dev->pdata->num_mfc_freq - 1;
-	}
-
-	for (i = 0; i < dev->pdata->num_mfc_freq; i++) {
-		if (Kbps <= dev->bitrate_table[i].bps_interval) {
-			mfc_debug(3, "[QoS] MFC freq lv%d, %dKHz is needed\n",
-					i, dev->bitrate_table[i].mfc_freq);
-			return i;
-		}
-	}
-
-	return 0;
-}
-
 /* Return the minimum interval between previous and next entry */
 static int __mfc_qos_get_interval(struct list_head *head, struct list_head *entry)
 {
@@ -834,9 +799,9 @@ static int __mfc_qos_add_timestamp(struct mfc_ctx *ctx,
 	curr_ts->index = ctx->ts_count;
 	ctx->ts_count++;
 
-	if (ctx->ts_count == MAX_TIME_INDEX) {
+	if (ctx->ts_count == MFC_TIME_INDEX) {
 		ctx->ts_is_full = 1;
-		ctx->ts_count %= MAX_TIME_INDEX;
+		ctx->ts_count %= MFC_TIME_INDEX;
 	}
 
 	return 0;
@@ -844,7 +809,6 @@ static int __mfc_qos_add_timestamp(struct mfc_ctx *ctx,
 
 static unsigned long __mfc_qos_get_fps_by_timestamp(struct mfc_ctx *ctx, struct timeval *time)
 {
-	struct list_head *head = &ctx->ts_list;
 	struct mfc_timestamp *temp_ts;
 	int found;
 	int index = 0;
@@ -910,10 +874,6 @@ static unsigned long __mfc_qos_get_fps_by_timestamp(struct mfc_ctx *ctx, struct 
 				min_interval, max_framerate);
 	}
 
-	/* Calculation the last frame fps for drop control */
-	temp_ts = list_entry(head->prev, struct mfc_timestamp, list);
-	ctx->ts_last_interval = temp_ts->interval;
-
 	if (!ctx->ts_is_full) {
 		if (debug_ts == 1)
 			mfc_info_ctx("[TS] ts doesn't full, keep %ld fps\n", ctx->framerate);
@@ -923,77 +883,37 @@ static unsigned long __mfc_qos_get_fps_by_timestamp(struct mfc_ctx *ctx, struct 
 	return max_framerate;
 }
 
-static int __mfc_qos_get_bps_section(struct mfc_ctx *ctx, u32 bytesused)
+void mfc_qos_update_framerate(struct mfc_ctx *ctx, int idle_trigger_only)
 {
 	struct mfc_dev *dev = ctx->dev;
-	struct list_head *head = &ctx->bitrate_list;
-	struct mfc_bitrate *temp_bitrate;
-	struct mfc_bitrate *new_bitrate = &ctx->bitrate_array[ctx->bitrate_index];
-	unsigned long sum_size = 0, avg_Kbits;
-	int count = 0, bps_section = 0;
+	bool update_framerate = false, update_idle = false;
 
-	if (ctx->bitrate_is_full) {
-		temp_bitrate = list_entry(head->next, struct mfc_bitrate, list);
-		list_del(&temp_bitrate->list);
+	/* 1) Idle mode trigger */
+	mutex_lock(&dev->idle_qos_mutex);
+	if (dev->idle_mode == MFC_IDLE_MODE_IDLE) {
+		mfc_debug(2, "[QoS][MFCIDLE] restart QoS control\n");
+		mfc_change_idle_mode(dev, MFC_IDLE_MODE_NONE);
+		update_idle = true;
+	} else if (dev->idle_mode == MFC_IDLE_MODE_RUNNING) {
+		mfc_debug(2, "[QoS][MFCIDLE] restart QoS control, cancel idle\n");
+		mfc_change_idle_mode(dev, MFC_IDLE_MODE_CANCEL);
+		update_idle = true;
 	}
+	mutex_unlock(&dev->idle_qos_mutex);
 
-	new_bitrate->bytesused = bytesused;
-	list_add_tail(&new_bitrate->list, head);
+	if (idle_trigger_only)
+		goto update_qos;
 
-	list_for_each_entry(temp_bitrate, head, list) {
-		mfc_debug(4, "[QoS][%d] strm_size %d\n", count, temp_bitrate->bytesused);
-		sum_size += temp_bitrate->bytesused;
-		count++;
-	}
-
-	avg_Kbits = ((sum_size * BITS_PER_BYTE) / count) / 1024;
-	ctx->Kbps = (int)(avg_Kbits * (ctx->last_framerate / 1000));
-	/* Standardization to high bitrate spec */
-	if (!CODEC_HIGH_PERF(ctx))
-		ctx->Kbps = dev->bps_ratio * ctx->Kbps;
-	mfc_debug(3, "[QoS] %d Kbps, average %lld Kbits per frame\n", ctx->Kbps, avg_Kbits);
-
-	ctx->bitrate_index++;
-	if (ctx->bitrate_index == MAX_TIME_INDEX) {
-		ctx->bitrate_is_full = 1;
-		ctx->bitrate_index %= MAX_TIME_INDEX;
-	}
-
-	/*
-	 * When there is a value of ts_is_full,
-	 * we can trust fps(trusted fps calculated by timestamp diff).
-	 * When fps information becomes reliable,
-	 * we will start QoS handling by obtaining bps section.
-	 */
-	if (ctx->ts_is_full)
-		bps_section = __mfc_qos_get_bps_section_by_bps(dev, ctx->Kbps);
-
-	return bps_section;
-}
-
-void mfc_qos_update_framerate(struct mfc_ctx *ctx, u32 bytesused)
-{
-	int bps_section;
-	bool update = false;
-
-	if (ctx->type == MFCINST_DECODER) {
-		bps_section = __mfc_qos_get_bps_section(ctx, bytesused);
-		if (ctx->last_bps_section != bps_section) {
-			mfc_debug(2, "[QoS] bps section changed: %d -> %d\n",
-					ctx->last_bps_section, bps_section);
-			ctx->last_bps_section = bps_section;
-			update = true;
-		}
-	}
-
+	/* 2) framerate is updated */
 	if (ctx->last_framerate != 0 && ctx->last_framerate != ctx->framerate) {
 		mfc_debug(2, "[QoS] fps changed: %ld -> %ld, qos ratio: %d\n",
 				ctx->framerate, ctx->last_framerate, ctx->qos_ratio);
 		ctx->framerate = ctx->last_framerate;
-		update = true;
+		update_framerate = true;
 	}
 
-	if (update)
+update_qos:
+	if (update_idle || update_framerate)
 		mfc_qos_on(ctx);
 }
 

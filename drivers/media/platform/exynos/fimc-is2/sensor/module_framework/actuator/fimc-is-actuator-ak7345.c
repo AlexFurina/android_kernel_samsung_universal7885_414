@@ -38,7 +38,7 @@ static int sensor_ak7345_write_position(struct i2c_client *client, u32 val)
 	int ret = 0;
 	u8 val_high = 0, val_low = 0;
 
-	FIMC_BUG(!client);
+	BUG_ON(!client);
 
 	if (!client->adapter) {
 		err("Could not find adapter!\n");
@@ -81,7 +81,7 @@ int sensor_ak7345_actuator_init(struct v4l2_subdev *subdev, u32 val)
 
 	int first_position = DEF_AK7345_FIRST_POSITION;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	dbg_actuator("%s\n", __func__);
 
@@ -98,22 +98,21 @@ int sensor_ak7345_actuator_init(struct v4l2_subdev *subdev, u32 val)
 		goto p_err;
 	}
 
-	I2C_MUTEX_LOCK(actuator->i2c_lock);
 	ret = fimc_is_sensor_addr8_read8(client, 0x03, &product_id);
 	if (ret < 0)
-		goto p_err_mutex;
+		goto p_err;
 
 #if 0
 	if (product_id != AK7345_PRODUCT_ID) {
 		err("AK7345 is not detected(%d), Slave: %d\n", product_id, client->addr);
-		goto p_err_mutex;
+		goto p_err;
 	}
 #endif
 
 	/* EEPROM AF calData address */
 	if (gPtr_lib_support.binary_load_flg) {
 		/* get pan_focus */
-		cal_addr = gPtr_lib_support.minfo->kvaddr_cal[SENSOR_POSITION_REAR] + EEPROM_OEM_BASE;
+		cal_addr = gPtr_lib_support.minfo->kvaddr_rear_cal + EEPROM_OEM_BASE;
 		memcpy((void *)&cal_data, (void *)cal_addr, sizeof(cal_data));
 
 		if (cal_data > 0)
@@ -124,13 +123,13 @@ int sensor_ak7345_actuator_init(struct v4l2_subdev *subdev, u32 val)
 
 	ret = sensor_ak7345_write_position(client, first_position);
 	if (ret <0)
-		goto p_err_mutex;
+		goto p_err;
 	actuator->position = first_position;
 
 	/* Go active mode */
 	ret = fimc_is_sensor_addr8_write8(client, 0x02, 0);
 	if (ret <0)
-		goto p_err_mutex;
+		goto p_err;
 
 	dbg_actuator("initial position: %d\n", first_position);
 
@@ -140,9 +139,6 @@ int sensor_ak7345_actuator_init(struct v4l2_subdev *subdev, u32 val)
 	do_gettimeofday(&end);
 	pr_info("[%s] time %lu us", __func__, (end.tv_sec - st.tv_sec) * 1000000 + (end.tv_usec - st.tv_usec));
 #endif
-
-p_err_mutex:
-	I2C_MUTEX_UNLOCK(actuator->i2c_lock);
 
 p_err:
 	return ret;
@@ -161,11 +157,11 @@ int sensor_ak7345_actuator_get_status(struct v4l2_subdev *subdev, u32 *info)
 
 	dbg_actuator("%s\n", __func__);
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!info);
+	BUG_ON(!subdev);
+	BUG_ON(!info);
 
 	actuator = (struct fimc_is_actuator *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!actuator);
+	BUG_ON(!actuator);
 
 	client = actuator->client;
 	if (unlikely(!client)) {
@@ -201,11 +197,11 @@ int sensor_ak7345_actuator_set_position(struct v4l2_subdev *subdev, u32 *info)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!info);
+	BUG_ON(!subdev);
+	BUG_ON(!info);
 
 	actuator = (struct fimc_is_actuator *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!actuator);
+	BUG_ON(!actuator);
 
 	client = actuator->client;
 	if (unlikely(!client)) {
@@ -214,7 +210,6 @@ int sensor_ak7345_actuator_set_position(struct v4l2_subdev *subdev, u32 *info)
 		goto p_err;
 	}
 
-	I2C_MUTEX_LOCK(actuator->i2c_lock);
 	position = *info;
 	if (position > AK7345_POS_MAX_SIZE) {
 		err("Invalid af position(position : %d, Max : %d).\n",
@@ -240,7 +235,6 @@ int sensor_ak7345_actuator_set_position(struct v4l2_subdev *subdev, u32 *info)
 	pr_info("[%s] time %lu us", __func__, (end.tv_sec - st.tv_sec) * 1000000 + (end.tv_usec - st.tv_usec));
 #endif
 p_err:
-	I2C_MUTEX_UNLOCK(actuator->i2c_lock);
 	return ret;
 }
 
@@ -303,7 +297,7 @@ static const struct v4l2_subdev_ops subdev_ops = {
 	.core = &core_ops,
 };
 
-static int sensor_ak7345_actuator_probe(struct i2c_client *client,
+int sensor_ak7345_actuator_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -316,8 +310,8 @@ static int sensor_ak7345_actuator_probe(struct i2c_client *client,
 	struct device *dev;
 	struct device_node *dnode;
 
-	FIMC_BUG(!fimc_is_dev);
-	FIMC_BUG(!client);
+	BUG_ON(!fimc_is_dev);
+	BUG_ON(!client);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -372,9 +366,6 @@ static int sensor_ak7345_actuator_probe(struct i2c_client *client,
 	actuator->max_position = AK7345_POS_MAX_SIZE;
 	actuator->pos_size_bit = AK7345_POS_SIZE_BIT;
 	actuator->pos_direction = AK7345_POS_DIRECTION;
-	actuator->i2c_lock = NULL;
-	actuator->need_softlanding = 0;
-	actuator->actuator_ops = NULL;
 
 	device->subdev_actuator[place] = subdev_actuator;
 	device->actuator[place] = actuator;
@@ -389,48 +380,43 @@ static int sensor_ak7345_actuator_probe(struct i2c_client *client,
 	return ret;
 
 p_err:
-	if (actuator)
+	if (!actuator)
 		kzfree(actuator);
 
-	if (subdev_actuator)
-		kzfree(subdev_actuator);
+	if (!subdev_actuator)
+		kzfree(actuator);
 
 	return ret;
 }
 
-static const struct of_device_id sensor_actuator_ak7345_match[] = {
+static int sensor_ak7345_actuator_remove(struct i2c_client *client)
+{
+	int ret = 0;
+
+	return ret;
+}
+
+static const struct of_device_id exynos_fimc_is_ak7345_match[] = {
 	{
 		.compatible = "samsung,exynos5-fimc-is-actuator-ak7345",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, sensor_actuator_ak7345_match);
+MODULE_DEVICE_TABLE(of, exynos_fimc_is_ak7345_match);
 
-static const struct i2c_device_id sensor_actuator_ak7345_idt[] = {
+static const struct i2c_device_id actuator_ak7345_idt[] = {
 	{ ACTUATOR_NAME, 0 },
 	{},
 };
 
-static struct i2c_driver sensor_actuator_ak7345_driver = {
-	.probe  = sensor_ak7345_actuator_probe,
+static struct i2c_driver actuator_ak7345_driver = {
 	.driver = {
 		.name	= ACTUATOR_NAME,
 		.owner	= THIS_MODULE,
-		.of_match_table = sensor_actuator_ak7345_match,
-		.suppress_bind_attrs = true,
+		.of_match_table = exynos_fimc_is_ak7345_match
 	},
-	.id_table = sensor_actuator_ak7345_idt,
+	.probe	= sensor_ak7345_actuator_probe,
+	.remove	= sensor_ak7345_actuator_remove,
+	.id_table = actuator_ak7345_idt
 };
-
-static int __init sensor_actuator_ak7345_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&sensor_actuator_ak7345_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_actuator_ak7345_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(sensor_actuator_ak7345_init);
+module_i2c_driver(actuator_ak7345_driver);

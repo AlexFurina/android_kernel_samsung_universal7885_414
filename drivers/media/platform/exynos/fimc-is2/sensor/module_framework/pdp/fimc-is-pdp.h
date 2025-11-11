@@ -12,14 +12,6 @@
 #ifndef FIMC_IS_PDP_H
 #define FIMC_IS_PDP_H
 
-#include "fimc-is-device-sensor.h"
-#include "fimc-is-interface-sensor.h"
-
-extern int debug_pdp;
-
-#define dbg_pdp(level, fmt, args...) \
-	dbg_common(((debug_pdp) >= (level)), "[PDP]", fmt, ##args)
-
 #define MAX_NUM_OF_PDP 2
 
 int pdp_register(struct fimc_is_module_enum *module, int pdp_ch);

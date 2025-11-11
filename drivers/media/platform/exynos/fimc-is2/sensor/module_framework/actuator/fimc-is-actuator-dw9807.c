@@ -62,8 +62,8 @@ int sensor_dw9807_init(struct i2c_client *client, struct fimc_is_caldata_list_dw
 		if (ret < 0)
 			goto p_err;
 
-		/* wait 100us after power-on */
-		usleep_range(100, 100);
+		/* wait 100us after power-on for DW9807 */
+		usleep_range(PWR_ON_DELAY, PWR_ON_DELAY);
 
 		/* Ring mode enable */
 		i2c_data[0] = REG_CONTROL;
@@ -102,15 +102,15 @@ int sensor_dw9807_init(struct i2c_client *client, struct fimc_is_caldata_list_dw
 		if (ret < 0)
 			goto p_err;
 
-		/* wait 100us after power-on */
-		usleep_range(100, 100);
-
 		/* PD disable(normal operation) */
 		i2c_data[0] = REG_CONTROL;
 		i2c_data[1] = 0x00;
 		ret = fimc_is_sensor_addr8_write8(client, i2c_data[0], i2c_data[1]);
 		if (ret < 0)
 			goto p_err;
+
+		/* wait 100us after power-on for DW9807 */
+		usleep_range(PWR_ON_DELAY, PWR_ON_DELAY);
 
 		/* Ring mode enable */
 		i2c_data[0] = REG_CONTROL;
@@ -154,7 +154,7 @@ static int sensor_dw9807_write_position(struct i2c_client *client, u32 val)
 	int ret = 0;
 	u8 val_high = 0, val_low = 0;
 
-	FIMC_BUG(!client);
+	BUG_ON(!client);
 
 	if (!client->adapter) {
 		err("Could not find adapter!\n");
@@ -186,7 +186,7 @@ static int sensor_dw9807_valid_check(struct i2c_client * client)
 {
 	int i;
 
-	FIMC_BUG(!client);
+	BUG_ON(!client);
 
 	if (sysfs_actuator.init_step > 0) {
 		for (i = 0; i < sysfs_actuator.init_step; i++) {
@@ -274,7 +274,7 @@ int sensor_dw9807_actuator_init(struct v4l2_subdev *subdev, u32 val)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	dbg_actuator("%s\n", __func__);
 
@@ -292,7 +292,7 @@ int sensor_dw9807_actuator_init(struct v4l2_subdev *subdev, u32 val)
 	}
 
 	/* EEPROM AF calData address */
-	cal_addr = gPtr_lib_support.minfo->kvaddr_cal[SENSOR_POSITION_REAR] + EEPROM_OEM_BASE;
+	cal_addr = gPtr_lib_support.minfo->kvaddr_rear_cal + EEPROM_OEM_BASE;
 	cal_data = (struct fimc_is_caldata_list_dw9807 *)(cal_addr);
 
 	/* Read into EEPROM data or default setting */
@@ -326,11 +326,11 @@ int sensor_dw9807_actuator_get_status(struct v4l2_subdev *subdev, u32 *info)
 
 	dbg_actuator("%s\n", __func__);
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!info);
+	BUG_ON(!subdev);
+	BUG_ON(!info);
 
 	actuator = (struct fimc_is_actuator *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!actuator);
+	BUG_ON(!actuator);
 
 	client = actuator->client;
 	if (unlikely(!client)) {
@@ -375,11 +375,11 @@ int sensor_dw9807_actuator_set_position(struct v4l2_subdev *subdev, u32 *info)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!info);
+	BUG_ON(!subdev);
+	BUG_ON(!info);
 
 	actuator = (struct fimc_is_actuator *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!actuator);
+	BUG_ON(!actuator);
 
 	client = actuator->client;
 	if (unlikely(!client)) {
@@ -475,7 +475,7 @@ static const struct v4l2_subdev_ops subdev_ops = {
 	.core = &core_ops,
 };
 
-static int sensor_dw9807_actuator_probe(struct i2c_client *client,
+int sensor_dw9807_actuator_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -483,14 +483,16 @@ static int sensor_dw9807_actuator_probe(struct i2c_client *client,
 	struct v4l2_subdev *subdev_actuator = NULL;
 	struct fimc_is_actuator *actuator = NULL;
 	struct fimc_is_device_sensor *device = NULL;
-	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
-	u32 sensor_id = 0;
+	u32 sensor_id[FIMC_IS_STREAM_COUNT] = {0, };
 	u32 place = 0;
 	struct device *dev;
 	struct device_node *dnode;
+	const u32 *sensor_id_spec;
+	u32 sensor_id_len;
+	int i = 0;
 
-	FIMC_BUG(!fimc_is_dev);
-	FIMC_BUG(!client);
+	BUG_ON(!fimc_is_dev);
+	BUG_ON(!client);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -502,108 +504,100 @@ static int sensor_dw9807_actuator_probe(struct i2c_client *client,
 	dev = &client->dev;
 	dnode = dev->of_node;
 
-	ret = of_property_read_u32(dnode, "id", &sensor_id);
-	if (ret) {
-		err("id read is fail(%d)", ret);
+	sensor_id_spec = of_get_property(dnode, "id", &sensor_id_len);
+		if (!sensor_id_spec) {
+			err("sensor_id num read is fail(%d)", ret);
 		goto p_err;
 	}
 
-	ret = of_property_read_u32(dnode, "place", &place);
-	if (ret) {
-		pr_info("place read is fail(%d)", ret);
-		place = 0;
-	}
-	probe_info("%s sensor_id(%d) actuator_place(%d)\n", __func__, sensor_id, place);
+	sensor_id_len /= sizeof(*sensor_id_spec);
 
-	device = &core->sensor[sensor_id];
-	if (!test_bit(FIMC_IS_SENSOR_PROBE, &device->state)) {
-		err("sensor device is not yet probed");
-		ret = -EPROBE_DEFER;
+	ret = of_property_read_u32_array(dnode, "id", sensor_id, sensor_id_len);
+		if (ret) {
+			err("sensor_id read is fail(%d)", ret);
 		goto p_err;
 	}
 
-	sensor_peri = find_peri_by_act_id(device, ACTUATOR_NAME_DW9807);
-	if (!sensor_peri) {
-		probe_info("sensor peri is net yet probed");
-		return -EPROBE_DEFER;
+	for (i = 0; i < sensor_id_len; i++) {
+		ret = of_property_read_u32(dnode, "place", &place);
+		if (ret) {
+			pr_info("place read is fail(%d)", ret);
+			place = 0;
+		}
+		probe_info("%s sensor_id(%d) actuator_place(%d)\n", __func__, sensor_id[i], place);
+
+		device = &core->sensor[sensor_id[i]];
+
+		actuator = kzalloc(sizeof(struct fimc_is_actuator), GFP_KERNEL);
+		if (!actuator) {
+			err("actuator is NULL");
+			ret = -ENOMEM;
+			goto p_err;
+		}
+
+		subdev_actuator = kzalloc(sizeof(struct v4l2_subdev), GFP_KERNEL);
+		if (!subdev_actuator) {
+			err("subdev_actuator is NULL");
+			ret = -ENOMEM;
+			kfree(actuator);
+			goto p_err;
+		}
+
+		/* This name must is match to sensor_open_extended actuator name */
+		actuator->id = ACTUATOR_NAME_DW9807;
+		actuator->subdev = subdev_actuator;
+		actuator->device = sensor_id[i];
+		actuator->client = client;
+		actuator->position = 0;
+		actuator->max_position = DW9807_POS_MAX_SIZE;
+		actuator->pos_size_bit = DW9807_POS_SIZE_BIT;
+		actuator->pos_direction = DW9807_POS_DIRECTION;
+		actuator->i2c_lock = NULL;
+
+		device->subdev_actuator[place] = subdev_actuator;
+		device->actuator[place] = actuator;
+
+		core->client3 = client;
+
+		v4l2_i2c_subdev_init(subdev_actuator, client, &subdev_ops);
+		v4l2_set_subdevdata(subdev_actuator, actuator);
+		v4l2_set_subdev_hostdata(subdev_actuator, device);
+
+		snprintf(subdev_actuator->name, V4L2_SUBDEV_NAME_SIZE, "actuator-subdev.%d", actuator->id);
 	}
-
-	actuator = &sensor_peri->actuator[place];
-	if (!actuator) {
-		err("acuator is NULL");
-		ret = -ENOMEM;
-		goto p_err;
-	}
-
-	subdev_actuator = kzalloc(sizeof(struct v4l2_subdev), GFP_KERNEL);
-	if (!subdev_actuator) {
-		err("subdev_actuator is NULL");
-		ret = -ENOMEM;
-		goto p_err;
-	}
-	sensor_peri->subdev_actuator = subdev_actuator;
-
-	/* This name must is match to sensor_open_extended actuator name */
-	actuator->id = ACTUATOR_NAME_DW9807;
-	actuator->subdev = subdev_actuator;
-	actuator->device = sensor_id;
-	actuator->client = client;
-	actuator->position = 0;
-	actuator->max_position = DW9807_POS_MAX_SIZE;
-	actuator->pos_size_bit = DW9807_POS_SIZE_BIT;
-	actuator->pos_direction = DW9807_POS_DIRECTION;
-
-	v4l2_i2c_subdev_init(subdev_actuator, client, &subdev_ops);
-	v4l2_set_subdevdata(subdev_actuator, actuator);
-	v4l2_set_subdev_hostdata(subdev_actuator, device);
-
-	set_bit(FIMC_IS_SENSOR_ACTUATOR_AVAILABLE, &sensor_peri->peri_state);
-
-	snprintf(subdev_actuator->name, V4L2_SUBDEV_NAME_SIZE, "actuator-subdev.%d", actuator->id);
-
+p_err:
 	probe_info("%s done\n", __func__);
 	return ret;
+}
 
-p_err:
-	if (subdev_actuator)
-		kzfree(subdev_actuator);
+static int sensor_dw9807_actuator_remove(struct i2c_client *client)
+{
+	int ret = 0;
 
 	return ret;
 }
 
-static const struct of_device_id sensor_actuator_dw9807_match[] = {
+static const struct of_device_id exynos_fimc_is_dw9807_match[] = {
 	{
 		.compatible = "samsung,exynos5-fimc-is-actuator-dw9807",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, sensor_actuator_dw9807_match);
+MODULE_DEVICE_TABLE(of, exynos_fimc_is_dw9807_match);
 
-static const struct i2c_device_id sensor_actuator_dw9807_idt[] = {
+static const struct i2c_device_id actuator_dw9807_idt[] = {
 	{ ACTUATOR_NAME, 0 },
 	{},
 };
 
-static struct i2c_driver sensor_actuator_dw9807_driver = {
-	.probe  = sensor_dw9807_actuator_probe,
+static struct i2c_driver actuator_dw9807_driver = {
 	.driver = {
 		.name	= ACTUATOR_NAME,
 		.owner	= THIS_MODULE,
-		.of_match_table = sensor_actuator_dw9807_match,
-		.suppress_bind_attrs = true,
+		.of_match_table = exynos_fimc_is_dw9807_match
 	},
-	.id_table = sensor_actuator_dw9807_idt,
+	.probe	= sensor_dw9807_actuator_probe,
+	.remove	= sensor_dw9807_actuator_remove,
+	.id_table = actuator_dw9807_idt
 };
-
-static int __init sensor_actuator_dw9807_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&sensor_actuator_dw9807_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_actuator_dw9807_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(sensor_actuator_dw9807_init);
+module_i2c_driver(actuator_dw9807_driver);

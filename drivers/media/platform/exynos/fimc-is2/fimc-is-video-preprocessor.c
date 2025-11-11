@@ -41,7 +41,7 @@ int fimc_is_pre_video_probe(void *data)
 	struct fimc_is_device_preproc *device;
 	struct fimc_is_video *video;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	device = (struct fimc_is_device_preproc *)data;
 	video = &device->video;
@@ -132,7 +132,7 @@ static int fimc_is_pre_video_close(struct file *file)
 	struct fimc_is_video *video = NULL;
 	struct fimc_is_device_preproc *device = NULL;
 
-	FIMC_BUG(!vctx);
+	BUG_ON(!vctx);
 
 	video = video_drvdata(file);
 	device = container_of(video, struct fimc_is_device_preproc, video);
@@ -173,7 +173,7 @@ static int fimc_is_pre_video_s_input(struct file *file, void *priv,
 	struct fimc_is_video_ctx *vctx = file->private_data;
 	struct fimc_is_device_preproc *device = NULL;
 
-	FIMC_BUG(!vctx);
+	BUG_ON(!vctx);
 
 	mdbgv_pre("%s(input : %08X)\n", vctx, __func__, input);
 

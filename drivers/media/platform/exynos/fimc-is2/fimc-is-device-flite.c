@@ -140,8 +140,7 @@ trigger_skip:
 
 	frame = peek_frame(framemgr, FS_REQUEST);
 	if (frame) {
-		flite_hw_set_dma_addr(flite->base_reg, 0, true,
-				(u32)frame->dvaddr_buffer[0]);
+		flite_hw_set_dma_addr(flite->base_reg, 0, true, frame->dvaddr_buffer[0]);
 		trans_frame(framemgr, frame, FS_PROCESS);
 	} else {
 		flite_hw_set_dma_addr(flite->base_reg, 0, false, 0);
@@ -180,8 +179,7 @@ void tasklet_flite_str_m2m(unsigned long data)
 
 	frame = peek_frame(framemgr, FS_REQUEST);
 	if (frame) {
-		flite_hw_set_dma_addr(flite->base_reg, 0, true,
-				(u32)frame->dvaddr_buffer[0]);
+		flite_hw_set_dma_addr(flite->base_reg, 0, true, frame->dvaddr_buffer[0]);
 		trans_frame(framemgr, frame, FS_PROCESS);
 	} else {
 		flite_hw_set_dma_addr(flite->base_reg, 0, false, 0);
@@ -244,8 +242,7 @@ static void tasklet_flite_end(unsigned long data)
 						(1 << FLITE_STATUS_MIPI_VALID), false)) {
 					merr("over vblank", flite);
 				} else {
-					flite_hw_set_dma_addr(flite->base_reg, 0, true,
-							(u32)frame->dvaddr_buffer[0]);
+					flite_hw_set_dma_addr(flite->base_reg, 0, true, frame->dvaddr_buffer[0]);
 					trans_frame(framemgr, frame, FS_PROCESS);
 				}
 			} else {
@@ -490,9 +487,9 @@ int fimc_is_flite_open(struct v4l2_subdev *subdev,
 	struct fimc_is_device_flite *flite;
 	struct fimc_is_device_sensor *device = v4l2_get_subdev_hostdata(subdev);
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!framemgr);
+	BUG_ON(!device);
+	BUG_ON(!subdev);
+	BUG_ON(!framemgr);
 
 	flite = v4l2_get_subdevdata(subdev);
 	if (!flite) {
@@ -531,8 +528,8 @@ int fimc_is_flite_close(struct v4l2_subdev *subdev)
 	struct fimc_is_device_flite *flite;
 	struct fimc_is_device_sensor *device = v4l2_get_subdev_hostdata(subdev);
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!subdev);
+	BUG_ON(!device);
+	BUG_ON(!subdev);
 
 	flite = v4l2_get_subdevdata(subdev);
 	if (!flite) {
@@ -555,7 +552,7 @@ static int flite_init(struct v4l2_subdev *subdev, u32 value)
 	int ret = 0;
 	struct fimc_is_device_flite *flite;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flite = v4l2_get_subdevdata(subdev);
 	if (!flite) {
@@ -587,9 +584,9 @@ static int flite_stream_on(struct v4l2_subdev *subdev,
 	struct fimc_is_frame *frame;
 	struct fimc_is_device_sensor *device = v4l2_get_subdev_hostdata(subdev);
 
-	FIMC_BUG(!flite);
-	FIMC_BUG(!flite->framemgr);
-	FIMC_BUG(!device);
+	BUG_ON(!flite);
+	BUG_ON(!flite->framemgr);
+	BUG_ON(!device);
 
 	if (test_bit(FLITE_START_STREAM, &flite->state)) {
 		merr("already start", flite);
@@ -623,8 +620,7 @@ static int flite_stream_on(struct v4l2_subdev *subdev,
 	if (framemgr->queued_count[FS_REQUEST] >= 1) {
 		frame = peek_frame(framemgr, FS_REQUEST);
 		if (frame) {
-			flite_hw_set_dma_addr(flite->base_reg, 0, true,
-					(u32)frame->dvaddr_buffer[0]);
+			flite_hw_set_dma_addr(flite->base_reg, 0, true, frame->dvaddr_buffer[0]);
 			trans_frame(framemgr, frame, FS_PROCESS);
 			buffer_ready = true;
 		} else {
@@ -699,10 +695,10 @@ static int flite_stream_off(struct v4l2_subdev *subdev,
 	struct fimc_is_frame *frame;
 	struct fimc_is_device_sensor *device = v4l2_get_subdev_hostdata(subdev);
 
-	FIMC_BUG(!flite);
-	FIMC_BUG(!flite->base_reg);
-	FIMC_BUG(!flite->framemgr);
-	FIMC_BUG(!device);
+	BUG_ON(!flite);
+	BUG_ON(!flite->base_reg);
+	BUG_ON(!flite->framemgr);
+	BUG_ON(!device);
 
 	if (!test_bit(FLITE_START_STREAM, &flite->state)) {
 		merr("already stop", flite);
@@ -793,7 +789,7 @@ static int flite_s_stream(struct v4l2_subdev *subdev, int enable)
 	bool nowait;
 	struct fimc_is_device_flite *flite;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	nowait = (enable & FLITE_NOWAIT_MASK) >> FLITE_NOWAIT_SHIFT;
 	enable = enable & FLITE_ENABLE_MASK;
@@ -842,8 +838,8 @@ static int flite_s_format(struct v4l2_subdev *subdev,
 	int ret = 0;
 	struct fimc_is_device_flite *flite;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!fmt);
+	BUG_ON(!subdev);
+	BUG_ON(!fmt);
 
 	flite = (struct fimc_is_device_flite *)v4l2_get_subdevdata(subdev);
 	if (!flite) {
@@ -864,6 +860,7 @@ static int flite_s_format(struct v4l2_subdev *subdev,
 	flite->image.window.o_width = fmt->format.width;
 	flite->image.window.o_height = fmt->format.height;
 	flite->image.format.pixelformat = fmt->format.code;
+	flite->image.format.bitwidth = fmt->format.reserved[0];
 
 p_err:
 	mdbgd_back("%s(%dx%d, %X)\n", flite, __func__, fmt->format.width,
@@ -879,7 +876,7 @@ static int flite_s_buffer(struct v4l2_subdev *subdev, void *buf, unsigned int *s
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_frame *frame;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flite = (struct fimc_is_device_flite *)v4l2_get_subdevdata(subdev);
 	if (unlikely(flite == NULL)) {
@@ -904,8 +901,7 @@ static int flite_s_buffer(struct v4l2_subdev *subdev, void *buf, unsigned int *s
 		frame = peek_frame(framemgr, FS_REQUEST);
 		if (frame) {
 			if (!flite_hw_get_output_dma(flite->base_reg)) {
-				flite_hw_set_dma_addr(flite->base_reg, 0, true,
-						(u32)frame->dvaddr_buffer[0]);
+				flite_hw_set_dma_addr(flite->base_reg, 0, true, frame->dvaddr_buffer[0]);
 				trans_frame(framemgr, frame, FS_PROCESS);
 			}
 		}
@@ -922,8 +918,8 @@ static int flite_s_ctrl(struct v4l2_subdev *subdev, struct v4l2_control *ctrl)
 	int ret = 0;
 	struct fimc_is_device_flite *flite;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!ctrl);
+	BUG_ON(!subdev);
+	BUG_ON(!ctrl);
 
 	flite = (struct fimc_is_device_flite *)v4l2_get_subdevdata(subdev);
 	if (!flite) {
@@ -991,7 +987,7 @@ int fimc_is_flite_probe(struct fimc_is_device_sensor *device,
 	struct resource *mem_res;
 	struct platform_device *pdev;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	subdev_flite = kzalloc(sizeof(struct v4l2_subdev), GFP_KERNEL);
 	if (!subdev_flite) {
@@ -1009,7 +1005,7 @@ int fimc_is_flite_probe(struct fimc_is_device_sensor *device,
 	}
 
 	pdev = device->pdev;
-	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 10);
+	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	if (!mem_res) {
 		probe_err("Failed to get io memory region(%p)", mem_res);
 		ret = -EBUSY;

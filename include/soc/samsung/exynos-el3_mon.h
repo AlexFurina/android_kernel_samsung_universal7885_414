@@ -47,7 +47,8 @@ enum __error_flag {
 
 int exynos_pd_tz_save(unsigned int addr);
 int exynos_pd_tz_restore(unsigned int addr);
-
+int exynos_tz_peri_save(unsigned int addr);
+int exynos_tz_peri_restore(unsigned int addr);
 int exynos_conn_tz_save(unsigned int addr);
 int exynos_conn_tz_restore(unsigned int addr);
 #endif	/* __ASSEMBLY__ */

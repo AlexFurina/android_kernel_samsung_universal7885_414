@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2013-2018 TRUSTONIC LIMITED
+ * Copyright (c) 2013-2019 TRUSTONIC LIMITED
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -58,8 +59,8 @@ struct tee_client {
 	struct list_head	operations;
 	/* The list entry to attach to "ctx.clients" list */
 	struct list_head	list;
-	/* task_struct for the client application, if going through a proxy */
-	struct task_struct	*task;
+	/* Virtual Machine ID string of the client */
+	char			vm_id[16];
 };
 
 /* Context */
@@ -131,8 +132,10 @@ static void cbuf_release(struct kref *kref)
 	client_put(client);
 	/* Free */
 	free_pages(cbuf->addr, cbuf->order);
-	mc_dev_devel("freed cbuf %p: client %p addr %lx uaddr %lx len %u",
-		     cbuf, client, cbuf->addr, cbuf->uaddr, cbuf->len);
+	mc_dev_devel(
+	"freed cbuf %p: client %p addr %lx uaddr %lx len %u phys 0x%llx",
+		     cbuf, client, cbuf->addr, cbuf->uaddr, cbuf->len,
+		     (u64)cbuf->phys);
 	kfree(cbuf);
 	/* Decrement debug counter */
 	atomic_dec(&g_ctx.c_cbufs);
@@ -382,7 +385,7 @@ end:
 /*
  * Allocate and initialize a client object
  */
-struct tee_client *client_create(bool is_from_kernel)
+struct tee_client *client_create(bool is_from_kernel, const char *vm_id)
 {
 	struct tee_client *client;
 
@@ -407,6 +410,7 @@ struct tee_client *client_create(bool is_from_kernel)
 	mutex_init(&client->cwsm_release_lock);
 	INIT_LIST_HEAD(&client->cwsms);
 	INIT_LIST_HEAD(&client->operations);
+	strlcpy(client->vm_id, vm_id, sizeof(client->vm_id));
 	/* Add client to list of clients */
 	mutex_lock(&client_ctx.clients_lock);
 	list_add_tail(&client->list, &client_ctx.clients);
@@ -424,9 +428,6 @@ static void client_release(struct kref *kref)
 	/* Client is closed, remove from closing list */
 	list_del(&client->list);
 	mc_dev_devel("freed client %p", client);
-	if (client->task)
-		put_task_struct(client->task);
-
 	kfree(client);
 	/* Decrement debug counter */
 	atomic_dec(&g_ctx.c_clients);
@@ -601,6 +602,16 @@ void client_cleanup(void)
 }
 
 /*
+ * Get the vm id of the client passed in argument
+ * @param client_t client
+ * @return vm id of the client
+ */
+const char *client_vm_id(struct tee_client *client)
+{
+	return client->vm_id;
+}
+
+/*
  * Open TA for given client. TA binary is provided by the daemon.
  * @param
  * @return driver error code
@@ -629,12 +640,11 @@ int client_mc_open_session(struct tee_client *client,
  * @return driver error code
  */
 int client_mc_open_trustlet(struct tee_client *client,
-			    u32 spid, uintptr_t ta_va, size_t ta_len,
+			    uintptr_t ta_va, size_t ta_len,
 			    uintptr_t tci_va, size_t tci_len, u32 *session_id)
 {
 	struct mcp_open_info info = {
 		.type = TEE_MC_TA,
-		.spid = spid,
 		.va = ta_va,
 		.len = ta_len,
 		.tci_va = tci_va,
@@ -778,7 +788,7 @@ int client_notify_session(struct tee_client *client, u32 session_id)
  * @return driver error code
  */
 int client_waitnotif_session(struct tee_client *client, u32 session_id,
-			     s32 timeout, bool silent_expiry)
+			     s32 timeout)
 {
 	struct tee_session *session;
 	int ret;
@@ -788,7 +798,7 @@ int client_waitnotif_session(struct tee_client *client, u32 session_id,
 	if (!session)
 		return -ENXIO;
 
-	ret = session_mc_wait(session, timeout, silent_expiry);
+	ret = session_mc_wait(session, timeout);
 	/* Put session */
 	session_put(session);
 	mc_dev_devel("session %x, exit with %d", session_id, ret);
@@ -1206,8 +1216,10 @@ int client_cbuf_create(struct tee_client *client, u32 len, uintptr_t *addr,
 	mutex_lock(&client->cbufs_lock);
 	list_add_tail(&cbuf->list, &client->cbufs);
 	mutex_unlock(&client->cbufs_lock);
-	mc_dev_devel("created cbuf %p: client %p addr %lx uaddr %lx len %u",
-		     cbuf, client, cbuf->addr, cbuf->uaddr, cbuf->len);
+	mc_dev_devel(
+	"created cbuf %p: client %p addr %lx uaddr %lx len %u phys 0x%llx",
+		     cbuf, client, cbuf->addr, cbuf->uaddr, cbuf->len,
+		     (u64)cbuf->phys);
 	return ret;
 }
 

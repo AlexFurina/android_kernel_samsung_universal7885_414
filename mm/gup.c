@@ -18,101 +18,7 @@
 #include <asm/pgtable.h>
 #include <asm/tlbflush.h>
 
-#include <linux/migrate.h>
-#include <linux/mm_inline.h>
-#include <linux/mmu_notifier.h>
-#include <asm/tlbflush.h>
-
 #include "internal.h"
-
-#ifdef CONFIG_CMA
-static struct page *__alloc_nonmovable_userpage(struct page *page,
-				unsigned long private, int **result)
-{
-	return alloc_page(GFP_HIGHUSER);
-}
-
-static bool __need_migrate_cma_page(struct page *page,
-				struct vm_area_struct *vma,
-				unsigned long start, unsigned int flags)
-{
-	if (!(flags & FOLL_GET) || !(flags & FOLL_CMA))
-		return false;
-
-	if (!is_migrate_cma_page(page))
-		return false;
-
-	if ((vma->vm_flags & VM_STACK_INCOMPLETE_SETUP) ==
-					VM_STACK_INCOMPLETE_SETUP)
-		return false;
-
-	if (!PageLRU(page)) {
-		migrate_prep_local();
-		if (WARN_ON(!PageLRU(page))) {
-			__dump_page(page, "non-lru cma page");
-			return false;
-		}
-	}
-
-	return true;
-}
-
-static int __isolate_cma_pinpage(struct page *page)
-{
-	struct zone *zone = page_zone(page);
-	struct lruvec *lruvec;
-
-	spin_lock_irq(zone_lru_lock(zone));
-	if (__isolate_lru_page(page, 0) != 0) {
-		spin_unlock_irq(zone_lru_lock(zone));
-		dump_page(page, "failed to isolate lru page");
-		return -EBUSY;
-	} else {
-		lruvec = mem_cgroup_page_lruvec(page, zone->zone_pgdat);
-		del_page_from_lru_list(page, lruvec, page_lru(page));
-	}
-	spin_unlock_irq(zone_lru_lock(zone));
-
-	return 0;
-}
-
-static int __migrate_cma_pinpage(struct page *page, struct vm_area_struct *vma)
-{
-	struct list_head migratepages;
-	int tries = 0;
-	int ret = 0;
-
-	INIT_LIST_HEAD(&migratepages);
-
-	list_add(&page->lru, &migratepages);
-	inc_zone_page_state(page, NR_ISOLATED_ANON + page_is_file_cache(page));
-
-	while (!list_empty(&migratepages) && tries++ < 5) {
-		ret = migrate_pages(&migratepages, __alloc_nonmovable_userpage,
-					NULL, 0, MIGRATE_SYNC, MR_CMA);
-	}
-
-	if (ret < 0) {
-		putback_movable_pages(&migratepages);
-		pr_err("%s: migration failed %p[%#lx]\n", __func__,
-					page, page_to_pfn(page));
-		return -EFAULT;
-	}
-
-	return 0;
-}
-#else
-static bool __need_migrate_cma_page(struct page *page,
-				struct vm_area_struct *vma,
-				unsigned long start, unsigned int flags)
-{
-	return false;
-}
-static int __migrate_cma_pinpage(struct page *page, struct vm_area_struct *vma)
-{
-	return 0;
-}
-#endif
 
 static struct page *no_page_table(struct vm_area_struct *vma,
 		unsigned int flags)
@@ -233,35 +139,6 @@ retry:
 		}
 	}
 
-	if (__need_migrate_cma_page(page, vma, address, flags)) {
-		if (__isolate_cma_pinpage(page)) {
-			pr_warn("%s: Failed to migrate a cma page\n", __func__);
-			pr_warn("because of racing with compaction.\n");
-			WARN(1, "Please try again get_user_pages()\n");
-			page = ERR_PTR(-EBUSY);
-			goto out;
-		}
-		pte_unmap_unlock(ptep, ptl);
-		if (__migrate_cma_pinpage(page, vma)) {
-			ptep = pte_offset_map_lock(mm, pmd, address, &ptl);
-		} else {
-			struct page *old_page = page;
-
-			migration_entry_wait(mm, pmd, address);
-			ptep = pte_offset_map_lock(mm, pmd, address, &ptl);
-			update_mmu_cache(vma, address, ptep);
-			pte = *ptep;
-			set_pte_at_notify(mm, address, ptep, pte);
-			page = vm_normal_page(vma, address, pte);
-			BUG_ON(!page);
-
-			pr_debug("cma: cma page %p[%#lx] migrated to new "
-					"page %p[%#lx]\n", old_page,
-					page_to_pfn(old_page),
-					page, page_to_pfn(page));
-		}
-	}
-
 	if (flags & FOLL_SPLIT && PageTransCompound(page)) {
 		int ret;
 		get_page(page);
@@ -276,7 +153,10 @@ retry:
 	}
 
 	if (flags & FOLL_GET) {
-		get_page(page);
+		if (unlikely(!try_get_page(page))) {
+			page = ERR_PTR(-ENOMEM);
+			goto out;
+		}
 
 		/* drop the pgmap reference now that we hold the page */
 		if (pgmap) {
@@ -403,7 +283,10 @@ retry_locked:
 			if (pmd_trans_unstable(pmd))
 				ret = -EBUSY;
 		} else {
-			get_page(page);
+			if (unlikely(!try_get_page(page))) {
+				spin_unlock(ptl);
+				return ERR_PTR(-ENOMEM);
+			}
 			spin_unlock(ptl);
 			lock_page(page);
 			ret = split_huge_page(page);
@@ -559,11 +442,14 @@ static int get_gate_page(struct mm_struct *mm, unsigned long address,
 		pgd = pgd_offset_k(address);
 	else
 		pgd = pgd_offset_gate(mm, address);
-	BUG_ON(pgd_none(*pgd));
+	if (pgd_none(*pgd))
+		return -EFAULT;
 	p4d = p4d_offset(pgd, address);
-	BUG_ON(p4d_none(*p4d));
+	if (p4d_none(*p4d))
+		return -EFAULT;
 	pud = pud_offset(p4d, address);
-	BUG_ON(pud_none(*pud));
+	if (pud_none(*pud))
+		return -EFAULT;
 	pmd = pmd_offset(pud, address);
 	if (!pmd_present(*pmd))
 		return -EFAULT;
@@ -587,7 +473,10 @@ static int get_gate_page(struct mm_struct *mm, unsigned long address,
 		if (is_device_public_page(*page))
 			goto unmap;
 	}
-	get_page(*page);
+	if (unlikely(!try_get_page(*page))) {
+		ret = -ENOMEM;
+		goto unmap;
+	}
 out:
 	ret = 0;
 unmap:
@@ -782,9 +671,6 @@ static long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 	 */
 	if (!(gup_flags & FOLL_FORCE))
 		gup_flags |= FOLL_NUMA;
-
-	if ((gup_flags & FOLL_CMA) != 0)
-		migrate_prep();
 
 	do {
 		struct page *page;
@@ -1481,7 +1367,8 @@ static inline pte_t gup_get_pte(pte_t *ptep)
 }
 #endif
 
-static void undo_dev_pagemap(int *nr, int nr_start, struct page **pages)
+static void __maybe_unused undo_dev_pagemap(int *nr, int nr_start,
+					    struct page **pages)
 {
 	while ((*nr) - nr_start) {
 		struct page *page = pages[--(*nr)];
@@ -1489,6 +1376,20 @@ static void undo_dev_pagemap(int *nr, int nr_start, struct page **pages)
 		ClearPageReferenced(page);
 		put_page(page);
 	}
+}
+
+/*
+ * Return the compund head page with ref appropriately incremented,
+ * or NULL if that failed.
+ */
+static inline struct page *try_get_compound_head(struct page *page, int refs)
+{
+	struct page *head = compound_head(page);
+	if (WARN_ON_ONCE(page_ref_count(head) < 0))
+		return NULL;
+	if (unlikely(!page_cache_add_speculative(head, refs)))
+		return NULL;
+	return head;
 }
 
 #ifdef __HAVE_ARCH_PTE_SPECIAL
@@ -1525,9 +1426,9 @@ static int gup_pte_range(pmd_t pmd, unsigned long addr, unsigned long end,
 
 		VM_BUG_ON(!pfn_valid(pte_pfn(pte)));
 		page = pte_page(pte);
-		head = compound_head(page);
 
-		if (!page_cache_get_speculative(head))
+		head = try_get_compound_head(page, 1);
+		if (!head)
 			goto pte_unmap;
 
 		if (unlikely(pte_val(pte) != pte_val(*ptep))) {
@@ -1663,8 +1564,8 @@ static int gup_huge_pmd(pmd_t orig, pmd_t *pmdp, unsigned long addr,
 		refs++;
 	} while (addr += PAGE_SIZE, addr != end);
 
-	head = compound_head(pmd_page(orig));
-	if (!page_cache_add_speculative(head, refs)) {
+	head = try_get_compound_head(pmd_page(orig), refs);
+	if (!head) {
 		*nr -= refs;
 		return 0;
 	}
@@ -1701,8 +1602,8 @@ static int gup_huge_pud(pud_t orig, pud_t *pudp, unsigned long addr,
 		refs++;
 	} while (addr += PAGE_SIZE, addr != end);
 
-	head = compound_head(pud_page(orig));
-	if (!page_cache_add_speculative(head, refs)) {
+	head = try_get_compound_head(pud_page(orig), refs);
+	if (!head) {
 		*nr -= refs;
 		return 0;
 	}
@@ -1738,8 +1639,8 @@ static int gup_huge_pgd(pgd_t orig, pgd_t *pgdp, unsigned long addr,
 		refs++;
 	} while (addr += PAGE_SIZE, addr != end);
 
-	head = compound_head(pgd_page(orig));
-	if (!page_cache_add_speculative(head, refs)) {
+	head = try_get_compound_head(pgd_page(orig), refs);
+	if (!head) {
 		*nr -= refs;
 		return 0;
 	}

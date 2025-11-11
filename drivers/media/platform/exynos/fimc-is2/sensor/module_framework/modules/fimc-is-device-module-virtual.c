@@ -40,29 +40,23 @@
 #define SENSOR_NAME "VIRTUAL"
 
 static struct fimc_is_sensor_cfg config_virtual[] = {
-	/* width, height, fps, settle, mode, lane, speed, interleave, pd_mode */
 	/* 5344x3008@30fps */
-	FIMC_IS_SENSOR_CFG(4032, 3024, 30, 0, 0, CSI_DATA_LANES_4, 1500, 0, PD_NONE,
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0),
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0),
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0),
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0)),
+	FIMC_IS_SENSOR_CFG(4032, 3024, 30, 30, 0, CSI_DATA_LANES_4),	//1400Mbps - settle : 30
 	/* 3264x2448@30fps */
-	FIMC_IS_SENSOR_CFG(3264, 2448, 30, 0, 0, CSI_DATA_LANES_2, 1500, 0, PD_NONE,
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0),
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0),
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0),
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0)),
-	FIMC_IS_SENSOR_CFG(960, 800, 30, 0, 0, CSI_DATA_LANES_4, 1500, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW8, 960, 800), VC_OUT(HW_FORMAT_RAW8, VC_NOTHING, 0, 0),
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0),
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0),
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0)),
-	FIMC_IS_SENSOR_CFG(1920, 800, 30, 0, 0, CSI_DATA_LANES_4, 1500, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_YUV422_8BIT, 1920, 800), VC_OUT(HW_FORMAT_RAW8, VC_NOTHING, 0, 0),
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0),
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0),
-		VC_IN(0, 0, 0, 0), VC_OUT(0, 0, 0, 0)),
+	FIMC_IS_SENSOR_CFG(3264, 2448, 30, 33, 0, CSI_DATA_LANES_2),	//1500Mbps - settle : 33
+};
+
+static struct fimc_is_vci vci_virtual[] = {
+	{
+		.pixelformat = V4L2_PIX_FMT_SBGGR10,
+		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_UNKNOWN}, {2, HW_FORMAT_UNKNOWN}, {3, 0}}
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR12,
+		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_UNKNOWN}, {2, HW_FORMAT_UNKNOWN}, {3, 0}}
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR16,
+		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_UNKNOWN}, {2, HW_FORMAT_UNKNOWN}, {3, 0}}
+	}
 };
 
 static int sensor_virtual_open(struct v4l2_subdev *sd,
@@ -111,13 +105,6 @@ static const struct v4l2_subdev_core_ops core_ops = {
 	.ioctl = sensor_virtual_module_ioctl,
 };
 
-
-static int sensor_virtual_s_routing(struct v4l2_subdev *sd,
-		u32 input, u32 output, u32 config) {
-
-	return 0;
-}
-
 static int sensor_virtual_s_stream(struct v4l2_subdev *subdev, int enable)
 {
 	int ret = 0;
@@ -158,8 +145,8 @@ static int sensor_virtual_s_param(struct v4l2_subdev *subdev, struct v4l2_stream
 	struct v4l2_fract *tpf;
 	u64 duration;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!param);
+	BUG_ON(!subdev);
+	BUG_ON(!param);
 
 	pr_info("%s\n", __func__);
 
@@ -284,7 +271,6 @@ int sensor_virtual_g_max_dgain(struct v4l2_subdev *subdev)
 }
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_routing = sensor_virtual_s_routing,
 	.s_stream = sensor_virtual_s_stream,
 	.s_parm = sensor_virtual_s_param
 };
@@ -320,21 +306,11 @@ struct fimc_is_sensor_ops module_virtual_ops = {
 static int sensor_virtual_power_setpin(struct platform_device *pdev,
 	struct exynos_platform_fimc_is_module *pdata)
 {
-	SET_PIN_INIT(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON);
-	SET_PIN_INIT(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF);
-	SET_PIN_INIT(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON);
-	SET_PIN_INIT(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF);
-
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, 0, "", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, 0, "", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 0, "", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 0, "", PIN_OUTPUT, 0, 0);
-
 	return 0;
 }
 #endif
 
-static int __init sensor_module_virtual_probe(struct platform_device *pdev)
+int sensor_virtual_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -388,6 +364,10 @@ static int __init sensor_module_virtual_probe(struct platform_device *pdev)
 	//module->pixel_height = module->active_height + 10;
 	module->max_framerate = 30;
 	module->position = pdata->position;
+	module->mode = CSI_MODE_CH0_ONLY;
+	module->lanes = CSI_DATA_LANES_4;
+	module->vcis = ARRAY_SIZE(vci_virtual);
+	module->vci = vci_virtual;
 	module->sensor_maker = "SLSI";
 	module->sensor_name = "virtual";
 	module->setfile_name = "setfile_virtual.bin";
@@ -405,6 +385,7 @@ static int __init sensor_module_virtual_probe(struct platform_device *pdev)
 	#endif
 
 	ext = &module->ext;
+	ext->mipi_lane_num = module->lanes;
 
 	ext->sensor_con.product_name = SENSOR_NAME_VIRTUAL;
 	ext->sensor_con.peri_type = SE_I2C;
@@ -439,36 +420,51 @@ probe_defer:
 	return -EPROBE_DEFER;
 }
 
-static const struct of_device_id exynos_fimc_is_sensor_module_virtual_match[] = {
+#ifdef CONFIG_OF
+static int sensor_virtual_remove(struct platform_device *pdev)
+{
+	int ret = 0;
+	return ret;
+}
+
+static const struct of_device_id exynos_fimc_is_sensor_virtual_match[] = {
 	{
 		.compatible = "samsung,exynos5-fimc-is-sensor-virtual",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_virtual_match);
+MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_virtual_match);
 
-static struct platform_driver sensor_module_virtual_driver = {
+static struct platform_driver sensor_virtual_driver = {
+	.probe  = sensor_virtual_probe,
+	.remove = sensor_virtual_remove,
 	.driver = {
 		.name   = SENSOR_NAME,
 		.owner  = THIS_MODULE,
-		.of_match_table = exynos_fimc_is_sensor_module_virtual_match,
+		.of_match_table = exynos_fimc_is_sensor_virtual_match,
 	}
 };
 
-static int __init fimc_is_sensor_module_virtual_init(void)
+module_platform_driver(sensor_virtual_driver);
+#else
+static int __init fimc_is_sensor_module_init(void)
 {
-	int ret;
+	int ret = 0;
 
-	ret = platform_driver_probe(&sensor_module_virtual_driver,
-				sensor_module_virtual_probe);
+	ret = platform_driver_register(&sensor_virtual_driver);
 	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_virtual_driver.driver.name, ret);
+		err("platform_driver_register failed: %d\n", ret);
 
 	return ret;
 }
-late_initcall(fimc_is_sensor_module_virtual_init);
 
+static void __exit fimc_is_sensor_module_exit(void)
+{
+	platform_driver_unregister(&sensor_virtual_driver);
+}
+module_init(fimc_is_sensor_module_init);
+module_exit(fimc_is_sensor_module_exit);
+#endif
 MODULE_AUTHOR("Gilyeon lim");
 MODULE_DESCRIPTION("Sensor virtual driver");
 MODULE_LICENSE("GPL v2");

@@ -105,8 +105,11 @@ struct pmucal_seq shub_reset_release[] = {
 	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "RESET_SUBCPU_SHUB_CONFIGURATION",
 			0x11860000, 0x3D20, (0x1 << 0), (0x1 << 0), 0, 0,
 			0xffffffff, 0),
-	PMUCAL_SEQ_DESC(PMUCAL_READ, "RESET_SUBCPU_SHUB_STATUS", 0x11860000,
-			0x3D24, (0xF << 0), (0xF << 0), 0, 0, 0xffffffff, 0)
+	PMUCAL_SEQ_DESC(PMUCAL_WRITE, "RESET_SUBCPU_SHUB_OPTION",
+			0x11860000, 0x3D28, (0x1 << 15), (0x1 << 15), 0, 0,
+			0xffffffff, 0),
+	PMUCAL_SEQ_DESC(PMUCAL_WAIT, "RESET_SUBCPU_SHUB_STATUS", 0x11860000,
+			0x3D24, (0x1 << 0), (0x1 << 0), 0, 0, 0xffffffff, 0)
 };
 
 struct pmucal_shub pmucal_shub_list = {

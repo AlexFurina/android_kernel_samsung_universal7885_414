@@ -13,31 +13,69 @@
 #include "../interface/fimc-is-interface-ischain.h"
 #include "fimc-is-param.h"
 #include "fimc-is-err.h"
-#include <linux/videodev2_exynos_media.h>
 
-int debug_subblk_ctrl;
-module_param(debug_subblk_ctrl, int, 0644);
+spinlock_t	shared_output_slock;
+static ulong hw_mcsc_out_configured = 0xFFFF;
+#define HW_MCSC_OUT_CLEARED_ALL (0x3F)
 
-spinlock_t	mcsc_out_slock;
-static ulong	mcsc_out_st = 0xFFFF;	/* To check shared output state */
-#define MCSC_RST_CHK (MCSC_OUTPUT_MAX)
-#define check_shared_out_running(cap, out_bit) \
-	(cap->enable_shared_output && test_bit(out_id, &mcsc_out_st))
-
-static int fimc_is_hw_mcsc_rdma_cfg(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
-	struct param_mcs_input *input);
+static int fimc_is_hw_mcsc_rdma_cfg(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame);
 static void fimc_is_hw_mcsc_wdma_cfg(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame);
 static void fimc_is_hw_mcsc_size_dump(struct fimc_is_hw_ip *hw_ip);
+
+static const struct djag_setfile_contents init_djag_cfgs = {
+	.xfilter_dejagging_coeff_cfg = {
+		.xfilter_dejagging_weight0 = 3,
+		.xfilter_dejagging_weight1 = 4,
+		.xfilter_hf_boost_weight = 4,
+		.center_hf_boost_weight = 2,
+		.diagonal_hf_boost_weight = 3,
+		.center_weighted_mean_weight = 3,
+	},
+	.thres_1x5_matching_cfg = {
+		.thres_1x5_matching_sad = 128,
+		.thres_1x5_abshf = 512,
+	},
+	.thres_shooting_detect_cfg = {
+		.thres_shooting_llcrr = 255,
+		.thres_shooting_lcr = 255,
+		.thres_shooting_neighbor = 255,
+		.thres_shooting_uucdd = 80,
+		.thres_shooting_ucd = 80,
+		.min_max_weight = 2,
+	},
+	.lfsr_seed_cfg = {
+		.lfsr_seed_0 = 44257,
+		.lfsr_seed_1 = 4671,
+		.lfsr_seed_2 = 47792,
+	},
+	.dither_cfg = {
+		.dither_value = {0, 0, 1, 2, 3, 4, 6, 7, 8},
+		.sat_ctrl = 5,
+		.dither_sat_thres = 1000,
+		.dither_thres = 5,
+	},
+	.cp_cfg = {
+		.cp_hf_thres = 40,
+		.cp_arbi_max_cov_offset = 0,
+		.cp_arbi_max_cov_shift = 6,
+		.cp_arbi_denom = 7,
+		.cp_arbi_mode = 1,
+	},
+};
 
 static int fimc_is_hw_mcsc_handle_interrupt(u32 id, void *context)
 {
 	struct fimc_is_hardware *hardware;
 	struct fimc_is_hw_ip *hw_ip = NULL;
 	struct fimc_is_group *head;
-	struct mcs_param *param;
-	u32 status, mask, instance, hw_fcount, index, hl = 0, vl = 0;
-	bool f_err = false, f_clk_gate = false;
+	u32 status, intr_mask, intr_status;
+	bool err_intr_flag = false;
 	int ret = 0;
+	u32 hl = 0, vl = 0;
+	u32 instance;
+	u32 hw_fcount, index;
+	struct mcs_param *param;
+	bool flag_clk_gate = false;
 
 	hw_ip = (struct fimc_is_hw_ip *)context;
 	hardware = hw_ip->hardware;
@@ -50,16 +88,11 @@ static int fimc_is_hw_mcsc_handle_interrupt(u32 id, void *context)
 		return 0;
 	}
 
-	if (test_bit(HW_OVERFLOW_RECOVERY, &hardware->hw_recovery_flag)) {
-		mserr_hw("During recovery : invalid interrupt", instance, hw_ip);
-		return 0;
-	}
-
 	fimc_is_scaler_get_input_status(hw_ip->regs, hw_ip->id, &hl, &vl);
 	/* read interrupt status register (sc_intr_status) */
-	mask = fimc_is_scaler_get_intr_mask(hw_ip->regs, hw_ip->id);
-	status = fimc_is_scaler_get_intr_status(hw_ip->regs, hw_ip->id);
-	status = (~mask) & status;
+	intr_mask = fimc_is_scaler_get_intr_mask(hw_ip->regs, hw_ip->id);
+	intr_status = fimc_is_scaler_get_intr_status(hw_ip->regs, hw_ip->id);
+	status = (~intr_mask) & intr_status;
 
 	fimc_is_scaler_clear_intr_src(hw_ip->regs, hw_ip->id, status);
 
@@ -70,68 +103,43 @@ static int fimc_is_hw_mcsc_handle_interrupt(u32 id, void *context)
 
 	if (status & (1 << INTR_MC_SCALER_OVERFLOW)) {
 		mserr_hw("Overflow!! (0x%x)", instance, hw_ip, status);
-		f_err = true;
+		err_intr_flag = true;
 	}
 
 	if (status & (1 << INTR_MC_SCALER_OUTSTALL)) {
 		mserr_hw("Output Block BLOCKING!! (0x%x)", instance, hw_ip, status);
-		f_err = true;
+		err_intr_flag = true;
 	}
 
 	if (status & (1 << INTR_MC_SCALER_INPUT_VERTICAL_UNF)) {
 		mserr_hw("Input OTF Vertical Underflow!! (0x%x)", instance, hw_ip, status);
-		f_err = true;
+		err_intr_flag = true;
 	}
 
 	if (status & (1 << INTR_MC_SCALER_INPUT_VERTICAL_OVF)) {
 		mserr_hw("Input OTF Vertical Overflow!! (0x%x)", instance, hw_ip, status);
-		f_err = true;
+		err_intr_flag = true;
 	}
 
 	if (status & (1 << INTR_MC_SCALER_INPUT_HORIZONTAL_UNF)) {
 		mserr_hw("Input OTF Horizontal Underflow!! (0x%x)", instance, hw_ip, status);
-		f_err = true;
+		err_intr_flag = true;
 	}
 
 	if (status & (1 << INTR_MC_SCALER_INPUT_HORIZONTAL_OVF)) {
 		mserr_hw("Input OTF Horizontal Overflow!! (0x%x)", instance, hw_ip, status);
-		f_err = true;
+		err_intr_flag = true;
 	}
 
 	if (status & (1 << INTR_MC_SCALER_WDMA_FINISH))
 		mserr_hw("Disabeld interrupt occurred! WDAM FINISH!! (0x%x)", instance, hw_ip, status);
 
-	if (status & (1 << INTR_MC_SCALER_FRAME_END)) {
-		atomic_add(hw_ip->num_buffers, &hw_ip->count.fe);
-		if (hardware->hw_fro_en)
-			hw_ip->cur_e_int += hw_ip->num_buffers;
-		else
-			hw_ip->cur_e_int++;
-
-		if (hw_ip->cur_e_int >= hw_ip->num_buffers) {
-			fimc_is_hw_mcsc_frame_done(hw_ip, NULL, IS_SHOT_SUCCESS);
-
-			if (!atomic_read(&hardware->streaming[hardware->sensor_position[instance]]))
-				sinfo_hw("[F:%d]F.E\n", hw_ip, hw_fcount);
-
-			atomic_set(&hw_ip->status.Vvalid, V_BLANK);
-			if (atomic_read(&hw_ip->count.fs) < atomic_read(&hw_ip->count.fe)) {
-				mserr_hw("fs(%d), fe(%d), dma(%d), status(0x%x)", instance, hw_ip,
-					atomic_read(&hw_ip->count.fs),
-					atomic_read(&hw_ip->count.fe),
-					atomic_read(&hw_ip->count.dma), status);
-			}
-
-			wake_up(&hw_ip->status.wait_queue);
-			f_clk_gate = true;
-			hw_ip->mframe = NULL;
-		}
-	}
+	if ((status & (1 << INTR_MC_SCALER_FRAME_START)) && (status & (1 << INTR_MC_SCALER_FRAME_END)))
+		mswarn_hw("start/end overlapped!! (0x%x)", instance, hw_ip, status);
 
 	if (status & (1 << INTR_MC_SCALER_FRAME_START)) {
-		atomic_add(hw_ip->num_buffers, &hw_ip->count.fs);
+		atomic_inc(&hw_ip->count.fs);
 		hw_ip->cur_s_int++;
-
 		if (hw_ip->cur_s_int == 1) {
 			hw_ip->debug_index[1] = hw_ip->debug_index[0] % DEBUG_FRAME_COUNT;
 			index = hw_ip->debug_index[1];
@@ -141,12 +149,7 @@ static int fimc_is_hw_mcsc_handle_interrupt(u32 id, void *context)
 			if (!atomic_read(&hardware->streaming[hardware->sensor_position[instance]]))
 				msinfo_hw("[F:%d]F.S\n", instance, hw_ip, hw_fcount);
 
-			if (param->input.dma_cmd == DMA_INPUT_COMMAND_ENABLE) {
-				fimc_is_hardware_frame_start(hw_ip, instance);
-			} else {
-				clear_bit(HW_CONFIG, &hw_ip->state);
-				atomic_set(&hw_ip->status.Vvalid, V_VALID);
-			}
+			fimc_is_hardware_frame_start(hw_ip, instance);
 		}
 
 		/* for set shadow register write start */
@@ -154,18 +157,21 @@ static int fimc_is_hw_mcsc_handle_interrupt(u32 id, void *context)
 		if (test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state))
 			fimc_is_scaler_set_shadow_ctrl(hw_ip->regs, hw_ip->id, SHADOW_WRITE_START);
 
-		if ((hw_ip->cur_s_int < hw_ip->num_buffers) && (!hardware->hw_fro_en)) {
+		if (hw_ip->cur_s_int < hw_ip->num_buffers) {
 			if (hw_ip->mframe) {
 				struct fimc_is_frame *mframe = hw_ip->mframe;
 				mframe->cur_buf_index = hw_ip->cur_s_int;
-
+				/* WDMA cfg */
 				fimc_is_hw_mcsc_wdma_cfg(hw_ip, mframe);
 
-				ret = fimc_is_hw_mcsc_rdma_cfg(hw_ip, mframe, &param->input);
-				if (ret) {
-					mserr_hw("[F:%d]mcsc rdma_cfg failed\n",
-						mframe->instance, hw_ip, mframe->fcount);
-					return ret;
+				/* RDMA cfg */
+				if (param->input.dma_cmd == DMA_INPUT_COMMAND_ENABLE) {
+					ret = fimc_is_hw_mcsc_rdma_cfg(hw_ip, mframe);
+					if (ret) {
+						mserr_hw("[F:%d]mcsc rdma_cfg failed\n",
+							mframe->instance, hw_ip, mframe->fcount);
+						return ret;
+					}
 				}
 			} else {
 				serr_hw("mframe is null(s:%d, e:%d, t:%d)", hw_ip,
@@ -181,22 +187,48 @@ static int fimc_is_hw_mcsc_handle_interrupt(u32 id, void *context)
 			 * TODO: Don't touch global control, but we don't know how to be mapped
 			 *       with group-id and scX_ctrl.
 			 */
-			if (!test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state))
+			if (!test_bit(FIMC_IS_GROUP_OTF_INPUT, &group->state))
 				fimc_is_scaler_stop(hw_ip->regs, hw_ip->id);
 		}
 	}
 
-	/* for handle chip dependant intr */
-	f_err |= fimc_is_scaler_handle_extended_intr(status);
+	if (status & (1 << INTR_MC_SCALER_FRAME_END)) {
+		atomic_inc(&hw_ip->count.fe);
+		hw_ip->cur_e_int++;
+		if (hw_ip->cur_e_int >= hw_ip->num_buffers) {
+			fimc_is_hw_mcsc_frame_done(hw_ip, NULL, IS_SHOT_SUCCESS);
 
-	if (f_err) {
+			if (!atomic_read(&hardware->streaming[hardware->sensor_position[instance]]))
+				sinfo_hw("[F:%d]F.E\n", hw_ip, hw_fcount);
+
+			atomic_set(&hw_ip->status.Vvalid, V_BLANK);
+			if (atomic_read(&hw_ip->count.fs) < atomic_read(&hw_ip->count.fe)) {
+				mserr_hw("fs(%d), fe(%d), dma(%d), status(0x%x)", instance, hw_ip,
+					atomic_read(&hw_ip->count.fs),
+					atomic_read(&hw_ip->count.fe),
+					atomic_read(&hw_ip->count.dma), status);
+			}
+
+			wake_up(&hw_ip->status.wait_queue);
+			head = GET_HEAD_GROUP_IN_DEVICE(FIMC_IS_DEVICE_ISCHAIN, hw_ip->group[instance]);
+			if (!test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state))
+				up(&hw_ip->smp_resource);
+			flag_clk_gate = true;
+			hw_ip->mframe = NULL;
+		}
+	}
+
+	/* for handle chip dependant intr */
+	err_intr_flag |= fimc_is_scaler_handle_extended_intr(status);
+
+	if (err_intr_flag) {
 		msinfo_hw("[F:%d] Ocurred error interrupt (%d,%d) status(0x%x)\n",
 			instance, hw_ip, hw_fcount, hl, vl, status);
 		fimc_is_scaler_dump(hw_ip->regs);
 		fimc_is_hardware_size_dump(hw_ip);
 	}
 
-	if (f_clk_gate)
+	if (flag_clk_gate)
 		CALL_HW_OPS(hw_ip, clk_gate, instance, false, false);
 
 p_err:
@@ -211,9 +243,8 @@ void fimc_is_hw_mcsc_hw_info(struct fimc_is_hw_ip *hw_ip, struct fimc_is_hw_mcsc
 		return;
 
 	sinfo_hw("==== h/w info(ver:0x%X) ====\n", hw_ip, cap->hw_ver);
-	sinfo_hw("[IN] out:%d, in(otf:%d/dma:%d), hwfc:%d, tdnr:%d, djag:%d, ds_vra:%d, ysum:%d\n", hw_ip,
-		cap->max_output, cap->in_otf, cap->in_dma, cap->hwfc,
-		cap->tdnr, cap->djag, cap->ds_vra, cap->ysum);
+	info_hw("[IN] max_out:%d, in(otf/dma):%d/%d, hwfc:%d, tdnr:%d\n",
+			cap->max_output, cap->in_otf, cap->in_dma, cap->hwfc, cap->tdnr);
 	for (i = MCSC_OUTPUT0; i < cap->max_output; i++)
 		info_hw("[OUT%d] out(otf/dma):%d/%d, hwfc:%d\n", i,
 			cap->out_otf[i], cap->out_dma[i], cap->out_hwfc[i]);
@@ -221,60 +252,31 @@ void fimc_is_hw_mcsc_hw_info(struct fimc_is_hw_ip *hw_ip, struct fimc_is_hw_mcsc
 	sinfo_hw("========================\n", hw_ip);
 }
 
-struct fimc_is_hw_ip *get_mcsc_hw_ip(struct fimc_is_hw_ip *hw_ip)
+void get_mcsc_hw_ip(struct fimc_is_hardware *hardware, struct fimc_is_hw_ip **hw_ip0, struct fimc_is_hw_ip **hw_ip1)
 {
 	int hw_slot = -1;
-	u32 hw_id;
 
-	if (!hw_ip)
-		return NULL;
-
-	switch (hw_ip->id) {
-	case DEV_HW_MCSC0:
-		hw_id = DEV_HW_MCSC1;
-		break;
-	case DEV_HW_MCSC1:
-		hw_id = DEV_HW_MCSC0;
-		break;
-	default:
-		serr_hw("Invalid hw_ip->id\n", hw_ip);
-		return NULL;
-	}
-
-	hw_slot = fimc_is_hw_slot_id(hw_id);
+	hw_slot = fimc_is_hw_slot_id(DEV_HW_MCSC0);
 	if (valid_hw_slot_id(hw_slot))
-		return &hw_ip->hardware->hw_ip[hw_slot];
+		*hw_ip0 = &hardware->hw_ip[hw_slot];
 
-	return NULL;
-}
-
-int check_sc_core_running(struct fimc_is_hw_ip *hw_ip, struct fimc_is_hw_mcsc_cap *cap)
-{
-	struct fimc_is_hw_ip *hw_ip_ = NULL;
-	u32 ret = 0;
-
-	hw_ip_ = get_mcsc_hw_ip(hw_ip);
-
-	if (cap->enable_shared_output) {
-		if (hw_ip && test_bit(HW_RUN, &hw_ip->state))
-			ret = hw_ip->id;
-
-		if (hw_ip_ && test_bit(HW_RUN, &hw_ip_->state))
-			ret = hw_ip_->id;
-	}
-
-	return ret;
+	hw_slot = fimc_is_hw_slot_id(DEV_HW_MCSC1);
+	if (valid_hw_slot_id(hw_slot))
+		*hw_ip1 = &hardware->hw_ip[hw_slot];
 }
 
 static int fimc_is_hw_mcsc_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	struct fimc_is_group *group)
 {
-	int ret = 0, i, j;
+	int ret = 0;
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct fimc_is_hw_mcsc_cap *cap;
+	struct fimc_is_hardware *hardware;
+	struct fimc_is_hw_ip *hw_ip0 = NULL, *hw_ip1 = NULL;
 	u32 output_id;
+	int i, j;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (test_bit(HW_OPEN, &hw_ip->state))
 		return 0;
@@ -307,36 +309,41 @@ static int fimc_is_hw_mcsc_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	/* print hw info */
 	fimc_is_hw_mcsc_hw_info(hw_ip, cap);
 
-	hw_ip->subblk_ctrl = debug_subblk_ctrl;
 	hw_ip->mframe = NULL;
 	atomic_set(&hw_ip->status.Vvalid, V_BLANK);
 	set_bit(HW_OPEN, &hw_ip->state);
 	msdbg_hw(2, "open: [G:0x%x], framemgr[%s]", instance, hw_ip,
 		GROUP_ID(group->id), hw_ip->framemgr->name);
 
+	hardware = hw_ip->hardware;
+	get_mcsc_hw_ip(hardware, &hw_ip0, &hw_ip1);
+
 	for (i = 0; i < SENSOR_POSITION_MAX; i++) {
 		for (j = 0; j < FIMC_IS_STREAM_COUNT; j++)
-			hw_mcsc->cur_setfile[i][j] = NULL;
+			hw_mcsc->applied_setfile[i][j] = NULL;
 	}
-	if (check_sc_core_running(hw_ip, cap))
-		return 0;
 
-	/* initialize of shared values between MCSC0 and MCSC1 */
+	if (cap->enable_shared_output) {
+		if (hw_ip0 && test_bit(HW_RUN, &hw_ip0->state))
+			return 0;
+
+		if (hw_ip1 && test_bit(HW_RUN, &hw_ip1->state))
+			return 0;
+	}
+
 	for (output_id = MCSC_OUTPUT0; output_id < cap->max_output; output_id++)
-		set_bit(output_id, &mcsc_out_st);
-	clear_bit(MCSC_RST_CHK, &mcsc_out_st);
+		set_bit(output_id, &hw_mcsc_out_configured);
+	clear_bit(HW_MCSC_OUT_CLEARED_ALL, &hw_mcsc_out_configured);
 
-	msinfo_hw("mcsc_open: done, (0x%lx)\n", instance, hw_ip, mcsc_out_st);
+	msinfo_hw("mcsc_open: done, (0x%lx)\n", instance, hw_ip, hw_mcsc_out_configured);
 
 	return 0;
 
 err_query_cap:
 	vfree(hw_ip->priv_info);
-	hw_ip->priv_info = NULL;
 err_alloc:
 	frame_manager_close(hw_ip->framemgr);
 	frame_manager_close(hw_ip->framemgr_late);
-
 	return ret;
 }
 
@@ -351,7 +358,7 @@ static int fimc_is_hw_mcsc_init(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	struct fimc_is_video_ctx *vctx;
 	struct fimc_is_video *video;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 	hw_mcsc->rep_flag[instance] = flag;
@@ -381,34 +388,41 @@ static int fimc_is_hw_mcsc_init(struct fimc_is_hw_ip *hw_ip, u32 instance,
 		set_bit(output_id, &hw_mcsc->out_en);
 	}
 
+	fimc_is_hw_mcsc_djag_init(hw_ip);
+
 	set_bit(HW_INIT, &hw_ip->state);
 	msdbg_hw(2, "init: out_en[0x%lx]\n", instance, hw_ip, hw_mcsc->out_en);
 
 	return ret;
 }
 
-static int fimc_is_hw_mcsc_deinit(struct fimc_is_hw_ip *hw_ip, u32 instance)
-{
-	return 0;
-}
-
 static int fimc_is_hw_mcsc_close(struct fimc_is_hw_ip *hw_ip, u32 instance)
 {
 	int ret = 0;
+	u32 output_id;
+	struct fimc_is_hw_mcsc *hw_mcsc;
+	struct fimc_is_hw_mcsc_cap *cap;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit(HW_OPEN, &hw_ip->state))
 		return 0;
 
+	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
+	cap = GET_MCSC_HW_CAP(hw_ip);
+
+	/* clear out_en bit */
+	for (output_id = MCSC_OUTPUT0; output_id < cap->max_output; output_id++) {
+		if (test_bit(output_id, &hw_mcsc->out_en))
+			clear_bit(output_id, &hw_mcsc->out_en);
+	}
+
 	vfree(hw_ip->priv_info);
-	hw_ip->priv_info = NULL;
 	frame_manager_close(hw_ip->framemgr);
 	frame_manager_close(hw_ip->framemgr_late);
 
 	clear_bit(HW_OPEN, &hw_ip->state);
-	clear_bit(HW_MCS_YSUM_CFG, &hw_ip->state);
-	clear_bit(HW_MCS_DS_CFG, &hw_ip->state);
+	msinfo_hw("close (%d)\n", instance, hw_ip, atomic_read(&hw_ip->rsccount));
 
 	return ret;
 }
@@ -419,8 +433,8 @@ static int fimc_is_hw_mcsc_enable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulo
 	ulong flag = 0;
 	struct mcs_param *mcs_param;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!hw_ip->priv_info);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
@@ -430,34 +444,41 @@ static int fimc_is_hw_mcsc_enable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulo
 		return -EINVAL;
 	}
 
-	atomic_inc(&hw_ip->run_rsccount);
 	if (test_bit(HW_RUN, &hw_ip->state))
 		return ret;
 
-	msdbg_hw(2, "enable: start, (0x%lx)\n", instance, hw_ip, mcsc_out_st);
+	msdbg_hw(2, "enable: start, (0x%lx)\n", instance, hw_ip, hw_mcsc_out_configured);
 
-	spin_lock_irqsave(&mcsc_out_slock, flag);
+	mcs_param = &hw_ip->region[instance]->parameter.mcs;
+
+	spin_lock_irqsave(&shared_output_slock, flag);
 	ret = fimc_is_hw_mcsc_reset(hw_ip);
 	if (ret != 0) {
 		mserr_hw("MCSC sw reset fail", instance, hw_ip);
-		spin_unlock_irqrestore(&mcsc_out_slock, flag);
+		spin_unlock_irqrestore(&shared_output_slock, flag);
 		return -ENODEV;
 	}
+
+	/* input source select 0: otf, 1:rdma */
+	if (test_bit(FIMC_IS_GROUP_OTF_INPUT, &hw_ip->group[instance]->state))
+		fimc_is_scaler_set_input_source(hw_ip->regs, hw_ip->id, 0);
+	else
+		fimc_is_scaler_set_input_source(hw_ip->regs, hw_ip->id, 1);
 
 	ret = fimc_is_hw_mcsc_clear_interrupt(hw_ip);
 	if (ret != 0) {
 		mserr_hw("MCSC sw reset fail", instance, hw_ip);
-		spin_unlock_irqrestore(&mcsc_out_slock, flag);
+		spin_unlock_irqrestore(&shared_output_slock, flag);
 		return -ENODEV;
 	}
 
-	msdbg_hw(2, "enable: done, (0x%lx)\n", instance, hw_ip, mcsc_out_st);
+	msdbg_hw(2, "enable: done, (0x%lx)\n", instance, hw_ip, hw_mcsc_out_configured);
 
-	mcs_param = &hw_ip->region[instance]->parameter.mcs;
+#if defined(ENABLE_DNR_COMPRESSOR_IN_MCSC)
 	fimc_is_hw_mcsc_tdnr_init(hw_ip, mcs_param, instance);
-
+#endif
 	set_bit(HW_RUN, &hw_ip->state);
-	spin_unlock_irqrestore(&mcsc_out_slock, flag);
+	spin_unlock_irqrestore(&shared_output_slock, flag);
 
 	return ret;
 }
@@ -467,22 +488,26 @@ static int fimc_is_hw_mcsc_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ul
 	int ret = 0;
 	u32 input_id, output_id;
 	long timetowait;
+	bool config = true;
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
-	struct fimc_is_hw_ip *hw_ip_ = NULL;
-	struct mcs_param *mcs_param;
+	struct fimc_is_hw_mcsc *hw_mcsc;
+	struct fimc_is_hardware *hardware;
+	struct fimc_is_hw_ip *hw_ip0 = NULL, *hw_ip1 = NULL;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!cap);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!cap);
+	BUG_ON(!hw_ip->priv_info);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
 
-	if (atomic_dec_return(&hw_ip->run_rsccount) > 0)
+	if (atomic_read(&hw_ip->rsccount) > 1)
 		return 0;
 
 	msinfo_hw("mcsc_disable: Vvalid(%d)\n", instance, hw_ip,
 		atomic_read(&hw_ip->status.Vvalid));
+
+	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 
 	if (test_bit(HW_RUN, &hw_ip->state)) {
 		timetowait = wait_event_timeout(hw_ip->status.wait_queue,
@@ -504,17 +529,23 @@ static int fimc_is_hw_mcsc_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ul
 	} else {
 		msdbg_hw(2, "already disabled\n", instance, hw_ip);
 	}
-	hw_ip->mframe = NULL;
 
-	if (check_sc_core_running(hw_ip, cap))
+	hw_ip->mframe = NULL;
+	hardware = hw_ip->hardware;
+	get_mcsc_hw_ip(hardware, &hw_ip0, &hw_ip1);
+
+	if (hw_ip0 && test_bit(HW_RUN, &hw_ip0->state))
 		return 0;
 
-	if (hw_ip)
-		fimc_is_scaler_stop(hw_ip->regs, hw_ip->id);
+	if (hw_ip1 && test_bit(HW_RUN, &hw_ip1->state))
+		return 0;
 
-	hw_ip_ = get_mcsc_hw_ip(hw_ip);
-	if (hw_ip_)
-		fimc_is_scaler_stop(hw_ip_->regs, hw_ip_->id);
+
+	if (hw_ip0)
+		fimc_is_scaler_stop(hw_ip0->regs, hw_ip0->id);
+
+	if (hw_ip1)
+		fimc_is_scaler_stop(hw_ip1->regs, hw_ip1->id);
 
 	/* disable MCSC */
 	if (cap->in_dma == MCSC_CAP_SUPPORT)
@@ -522,7 +553,8 @@ static int fimc_is_hw_mcsc_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ul
 
 	for (output_id = MCSC_OUTPUT0; output_id < cap->max_output; output_id++) {
 		input_id = fimc_is_scaler_get_scaler_path(hw_ip->regs, hw_ip->id, output_id);
-		if (cap->enable_shared_output == false || !test_bit(output_id, &mcsc_out_st)) {
+		config = (input_id == hw_ip->id ? true: false);
+		if (cap->enable_shared_output == false || !test_bit(output_id, &hw_mcsc_out_configured)) {
 			msinfo_hw("[OUT:%d]hw_mcsc_disable: clear_wdma_addr\n", instance, hw_ip, output_id);
 			fimc_is_scaler_clear_wdma_addr(hw_ip->regs, output_id);
 		}
@@ -531,42 +563,47 @@ static int fimc_is_hw_mcsc_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ul
 	fimc_is_scaler_clear_shadow_ctrl(hw_ip->regs, hw_ip->id);
 
 	/* disable TDNR */
-	mcs_param = &hw_ip->region[instance]->parameter.mcs;
-	fimc_is_hw_mcsc_tdnr_deinit(hw_ip, mcs_param, instance);
+	if (cap->tdnr == MCSC_CAP_SUPPORT) {
+		fimc_is_scaler_set_tdnr_mode_select(hw_ip->regs, TDNR_MODE_BYPASS);
+
+		fimc_is_scaler_clear_tdnr_rdma_addr(hw_ip->regs, TDNR_IMAGE);
+		fimc_is_scaler_clear_tdnr_rdma_addr(hw_ip->regs, TDNR_WEIGHT);
+
+		fimc_is_scaler_set_tdnr_wdma_enable(hw_ip->regs, TDNR_WEIGHT, false);
+		fimc_is_scaler_clear_tdnr_wdma_addr(hw_ip->regs, TDNR_WEIGHT);
+
+		hw_mcsc->cur_tdnr_mode = TDNR_MODE_BYPASS;
+	}
 
 	for (output_id = MCSC_OUTPUT0; output_id < cap->max_output; output_id++)
-		set_bit(output_id, &mcsc_out_st);
-	clear_bit(MCSC_RST_CHK, &mcsc_out_st);
+		set_bit(output_id, &hw_mcsc_out_configured);
+	clear_bit(HW_MCSC_OUT_CLEARED_ALL, &hw_mcsc_out_configured);
 
-	msinfo_hw("mcsc_disable: done, (0x%lx)\n", instance, hw_ip, mcsc_out_st);
+	msinfo_hw("mcsc_disable: done, (0x%lx)\n", instance, hw_ip, hw_mcsc_out_configured);
 
 	return ret;
 }
 
-static int fimc_is_hw_mcsc_rdma_cfg(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
-	struct param_mcs_input *input)
+static int fimc_is_hw_mcsc_rdma_cfg(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame)
 {
-	int ret = 0, i;
-	u32 rdma_addr[4] = {0}, plane;
-	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
+	int ret = 0;
+	int i;
+	u32 rdma_addr[4] = {0};
+	struct mcs_param *param;
+	u32 plane;
 
-	/* can't support this function */
-	if (cap->in_dma != MCSC_CAP_SUPPORT)
-		return ret;
+	param = &hw_ip->region[frame->instance]->parameter.mcs;
 
-	if (input->dma_cmd == DMA_INPUT_COMMAND_DISABLE)
-		return ret;
-
-	plane = input->plane;
+	plane = param->input.plane;
 	for (i = 0; i < plane; i++)
-		rdma_addr[i] = (typeof(*rdma_addr))
-			frame->dvaddr_buffer[plane * frame->cur_buf_index + i];
+		rdma_addr[i] = frame->sourceAddress[plane * frame->cur_buf_index + i];
 
 	/* DMA in */
 	msdbg_hw(2, "[F:%d]rdma_cfg [addr: %x]\n",
 		frame->instance, hw_ip, frame->fcount, rdma_addr[0]);
 
-	if (!rdma_addr[0]) {
+	if ((rdma_addr[0] == 0)
+		&& (param->input.dma_cmd == DMA_INPUT_COMMAND_ENABLE)) {
 		mserr_hw("Wrong rdma_addr(%x)\n", frame->instance, hw_ip, rdma_addr[0]);
 		fimc_is_scaler_clear_rdma_addr(hw_ip->regs);
 		ret = -EINVAL;
@@ -576,8 +613,10 @@ static int fimc_is_hw_mcsc_rdma_cfg(struct fimc_is_hw_ip *hw_ip, struct fimc_is_
 	/* use only one buffer (per-frame) */
 	fimc_is_scaler_set_rdma_frame_seq(hw_ip->regs, 0x1 << USE_DMA_BUFFER_INDEX);
 
-	if (input->plane == DMA_INPUT_PLANE_4) {
+	if (param->input.plane == DMA_INPUT_PLANE_4) {
 		/* 8+2(10bit) format */
+		rdma_addr[2] = rdma_addr[0] + ALIGN(param->input.dma_crop_width, 16);
+		rdma_addr[3] = rdma_addr[1] + ALIGN(param->input.dma_crop_width, 16);
 		fimc_is_scaler_set_rdma_addr(hw_ip->regs,
 			rdma_addr[0], rdma_addr[1], 0, USE_DMA_BUFFER_INDEX);
 		fimc_is_scaler_set_rdma_2bit_addr(hw_ip->regs,
@@ -587,94 +626,18 @@ static int fimc_is_hw_mcsc_rdma_cfg(struct fimc_is_hw_ip *hw_ip, struct fimc_is_
 			rdma_addr[0], rdma_addr[1], rdma_addr[2],
 			USE_DMA_BUFFER_INDEX);
 	}
+
 	return ret;
-}
-
-static u32 *hw_mcsc_get_target_addr(u32 out_id, struct fimc_is_frame *frame)
-{
-	u32 *addr = NULL;
-
-	switch (out_id) {
-	case MCSC_OUTPUT0:
-		addr = frame->sc0TargetAddress;
-		break;
-	case MCSC_OUTPUT1:
-		addr = frame->sc1TargetAddress;
-		break;
-	case MCSC_OUTPUT2:
-		addr = frame->sc2TargetAddress;
-		break;
-	case MCSC_OUTPUT3:
-		addr = frame->sc3TargetAddress;
-		break;
-	case MCSC_OUTPUT4:
-		addr = frame->sc4TargetAddress;
-		break;
-	case MCSC_OUTPUT5:
-		addr = frame->sc5TargetAddress;
-		break;
-	default:
-		panic("[F:%d] invalid output id(%d)", frame->fcount, out_id);
-		break;
-	}
-
-	return addr;
-}
-
-static void hw_mcsc_set_wdma_addr(struct fimc_is_hw_ip *hw_ip, u32 *wdma_addr,
-	u32 out_id, u32 plane, u32 buf_idx)
-{
-	u32 addr[4];
-
-	if (plane == DMA_OUTPUT_PLANE_4) {
-		/* addr_2bit_y, addr_2bit_uv */
-		addr[0] = wdma_addr[0];
-		addr[1] = wdma_addr[1];
-		addr[2] = 0;
-		fimc_is_scaler_set_wdma_2bit_addr(hw_ip->regs, out_id,
-				wdma_addr[2], wdma_addr[3], buf_idx);
-	} else {
-		addr[0] = wdma_addr[0];
-		addr[1] = wdma_addr[1];
-		addr[2] = wdma_addr[2];
-	}
-	fimc_is_scaler_set_wdma_addr(hw_ip->regs, out_id,
-		addr[0], addr[1], addr[2], buf_idx);
-}
-
-static void fimc_is_hw_mcsc_wdma_clear(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
-	struct mcs_param *param, u32 out_id, struct fimc_is_hw_mcsc_cap *cap)
-{
-	u32 wdma_enable = 0;
-	ulong flag;
-
-	wdma_enable = fimc_is_scaler_get_dma_out_enable(hw_ip->regs, out_id);
-
-	spin_lock_irqsave(&mcsc_out_slock, flag);
-	if (wdma_enable && !check_shared_out_running(cap, out_id)) {
-		fimc_is_scaler_set_dma_out_enable(hw_ip->regs, out_id, false);
-		fimc_is_scaler_clear_wdma_addr(hw_ip->regs, out_id);
-		msdbg_hw(2, "[OUT:%d]shot: dma_out disabled\n",
-			frame->instance, hw_ip, out_id);
-
-		if (out_id == MCSC_OUTPUT_DS) {
-			fimc_is_scaler_set_ds_enable(hw_ip->regs, false);
-			msdbg_hw(2, "DS off\n", frame->instance, hw_ip);
-		}
-	}
-	spin_unlock_irqrestore(&mcsc_out_slock, flag);
-	msdbg_hw(2, "[OUT:%d]mcsc_wdma_clear: en(%d)[F:%d][T:%d][cmd:%d][addr:0x0]\n",
-		frame->instance, hw_ip, out_id, wdma_enable, frame->fcount, frame->type,
-		param->output[out_id].dma_cmd);
 }
 
 static void fimc_is_hw_mcsc_wdma_cfg(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame)
 {
+	int i;
 	struct mcs_param *param;
+	u32 wdma_addr[MCSC_OUTPUT_MAX][4] = {{0}};
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
 	struct fimc_is_hw_mcsc *hw_mcsc;
-	u32 wdma_addr[MCSC_OUTPUT_MAX][4] = {{0} }, *wdma_base = NULL;
-	u32 plane, buf_idx, out_id, i;
+	u32 plane;
 	ulong flag;
 
 	BUG_ON(!cap);
@@ -683,53 +646,111 @@ static void fimc_is_hw_mcsc_wdma_cfg(struct fimc_is_hw_ip *hw_ip, struct fimc_is
 	param = &hw_ip->region[frame->instance]->parameter.mcs;
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 
-	for (out_id = MCSC_OUTPUT0; out_id < cap->max_output; out_id++) {
-		if ((cap->out_dma[out_id] != MCSC_CAP_SUPPORT)
-			|| !test_bit(out_id, &hw_mcsc->out_en))
+	if (frame->type == SHOT_TYPE_INTERNAL)
+		goto skip_addr;
+
+	plane = param->output[MCSC_OUTPUT0].plane;
+	for (i = 0; i < plane; i++) {
+		wdma_addr[MCSC_OUTPUT0][i] =
+			frame->sc0TargetAddress[plane * frame->cur_buf_index + i];
+		dbg_hw(2, "M0P(P:%d)(A:0x%X)\n", i, wdma_addr[MCSC_OUTPUT0][i]);
+	}
+
+	plane = param->output[MCSC_OUTPUT1].plane;
+	for (i = 0; i < plane; i++) {
+		wdma_addr[MCSC_OUTPUT1][i] =
+			frame->sc1TargetAddress[plane * frame->cur_buf_index + i];
+		dbg_hw(2, "M1P(P:%d)(A:0x%X)\n", i, wdma_addr[MCSC_OUTPUT1][i]);
+	}
+
+	plane = param->output[MCSC_OUTPUT2].plane;
+	for (i = 0; i < plane; i++) {
+		wdma_addr[MCSC_OUTPUT2][i] =
+			frame->sc2TargetAddress[plane * frame->cur_buf_index + i];
+		dbg_hw(2, "M2P(P:%d)(A:0x%X)\n", i, wdma_addr[MCSC_OUTPUT2][i]);
+	}
+
+	plane = param->output[MCSC_OUTPUT3].plane;
+	for (i = 0; i < plane; i++) {
+		wdma_addr[MCSC_OUTPUT3][i] =
+			frame->sc3TargetAddress[plane * frame->cur_buf_index + i];
+		dbg_hw(2, "M3P(P:%d)(A:0x%X)\n", i, wdma_addr[MCSC_OUTPUT3][i]);
+	}
+
+	plane = param->output[MCSC_OUTPUT4].plane;
+	for (i = 0; i < plane; i++) {
+		wdma_addr[MCSC_OUTPUT4][i] =
+			frame->sc4TargetAddress[plane * frame->cur_buf_index + i];
+		dbg_hw(2, "M4P(P:%d)(A:0x%X)\n", i, wdma_addr[MCSC_OUTPUT4][i]);
+	}
+
+	plane = param->output[MCSC_OUTPUT5].plane;
+	for (i = 0; i < plane; i++) {
+		wdma_addr[MCSC_OUTPUT5][i] =
+			frame->sc5TargetAddress[plane * frame->cur_buf_index + i];
+		dbg_hw(2, "M5P(P:%d)(A:0x%X)\n", i, wdma_addr[MCSC_OUTPUT5][i]);
+	}
+skip_addr:
+
+	/* DMA out */
+	for (i = MCSC_OUTPUT0; i < cap->max_output; i++) {
+		if ((cap->out_dma[i] != MCSC_CAP_SUPPORT) || !test_bit(i, &hw_mcsc->out_en))
 			continue;
 
-		wdma_base = hw_mcsc_get_target_addr(out_id, frame);
 		msdbg_hw(2, "[F:%d]wdma_cfg [T:%d][addr%d: %x]\n", frame->instance, hw_ip,
-			frame->fcount, frame->type, out_id, wdma_base[0]);
+			frame->fcount, frame->type, i, wdma_addr[i][0]);
 
-		if (param->output[out_id].dma_cmd != DMA_OUTPUT_COMMAND_DISABLE
-			&& wdma_base && wdma_base[0]
+		if (param->output[i].dma_cmd != DMA_OUTPUT_COMMAND_DISABLE
+			&& wdma_addr[i][0] != 0
 			&& frame->type != SHOT_TYPE_INTERNAL) {
 
-			spin_lock_irqsave(&mcsc_out_slock, flag);
-			if (check_shared_out_running(cap, out_id) && frame->type != SHOT_TYPE_MULTI) {
+			spin_lock_irqsave(&shared_output_slock, flag);
+			if (cap->enable_shared_output && test_bit(i, &hw_mcsc_out_configured)
+				&& frame->type != SHOT_TYPE_MULTI) {
 				mswarn_hw("[OUT:%d]DMA_OUTPUT in running state[F:%d]",
-					frame->instance, hw_ip, out_id, frame->fcount);
-				spin_unlock_irqrestore(&mcsc_out_slock, flag);
-				continue;
+					frame->instance, hw_ip, i, frame->fcount);
+				spin_unlock_irqrestore(&shared_output_slock, flag);
+				return;
 			}
-			set_bit(out_id, &mcsc_out_st);
-			spin_unlock_irqrestore(&mcsc_out_slock, flag);
+			set_bit(i, &hw_mcsc_out_configured);
+			spin_unlock_irqrestore(&shared_output_slock, flag);
 
-			msdbg_hw(2, "[OUT:%d]dma_out enabled\n", frame->instance, hw_ip, out_id);
-			if (out_id != MCSC_OUTPUT_DS)
-				fimc_is_scaler_set_dma_out_enable(hw_ip->regs, out_id, true);
+			msdbg_hw(2, "[OUT:%d]dma_out enabled\n", frame->instance, hw_ip, i);
+			fimc_is_scaler_set_dma_out_enable(hw_ip->regs, i, true);
 
 			/* use only one buffer (per-frame) */
-			fimc_is_scaler_set_wdma_frame_seq(hw_ip->regs, out_id,
+			fimc_is_scaler_set_wdma_frame_seq(hw_ip->regs, i,
 				0x1 << USE_DMA_BUFFER_INDEX);
-
-			plane = param->output[out_id].plane;
-			for (buf_idx = 0; buf_idx < frame->num_buffers; buf_idx++) {
-				for (i = 0; i < plane; i++) {
-					/*
-					 * If the number of buffers is not same between leader and subdev,
-					 * wdma addresses are forcibly set as the same address of first buffer.
-					 */
-					wdma_addr[out_id][i] = wdma_base[plane * buf_idx + i] ?
-						wdma_base[plane * buf_idx + i] : wdma_base[i];
-					dbg_hw(2, "M%dP(P:%d)(A:0x%X)\n", out_id, i, wdma_addr[out_id][i]);
-				}
-				hw_mcsc_set_wdma_addr(hw_ip, wdma_addr[out_id], out_id, plane, buf_idx);
-			}
-
+			fimc_is_scaler_set_wdma_addr(hw_ip->regs, i,
+				wdma_addr[i][0], wdma_addr[i][1], wdma_addr[i][2],
+				USE_DMA_BUFFER_INDEX);
+			/* TODO : 10bit format */
+/*
+ *			wdma_addr[i][3] = 0;
+ *			wdma_addr[i][4] = 0;
+ *			fimc_is_scaler_set_wdma_2bit_addr(hw_ip->regs, i,
+ *				wdma_addr[i][3], wdma_addr[i][4], USE_DMA_BUFFER_INDEX);
+ */
 		} else {
-			fimc_is_hw_mcsc_wdma_clear(hw_ip, frame, param, out_id, cap);
+			u32 wdma_enable = 0;
+
+			wdma_enable = fimc_is_scaler_get_dma_out_enable(hw_ip->regs, i);
+			spin_lock_irqsave(&shared_output_slock, flag);
+			if (wdma_enable && (cap->enable_shared_output == false || !test_bit(i, &hw_mcsc_out_configured))) {
+				fimc_is_scaler_set_dma_out_enable(hw_ip->regs, i, false);
+				fimc_is_scaler_clear_wdma_addr(hw_ip->regs, i);
+				msdbg_hw(2, "[OUT:%d]shot: dma_out disabled\n",
+						frame->instance, hw_ip, i);
+
+				if (i == MCSC_OUTPUT_DS) {
+					fimc_is_scaler_set_ds_enable(hw_ip->regs, false);
+					msinfo_hw(" DS off\n", frame->instance, hw_ip);
+				}
+			}
+			spin_unlock_irqrestore(&shared_output_slock, flag);
+			msdbg_hw(2, "[OUT:%d]mcsc_wdma_cfg:wmda_enable(%d)[F:%d][T:%d][cmd:%d][addr:0x%x]\n",
+				frame->instance, hw_ip, i, wdma_enable, frame->fcount, frame->type,
+				param->output[i].dma_cmd, wdma_addr[i][0]);
 		}
 	}
 }
@@ -738,20 +759,18 @@ static int fimc_is_hw_mcsc_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 	ulong hw_map)
 {
 	int ret = 0;
-	int ret_internal = 0;
 	struct fimc_is_group *head;
 	struct fimc_is_hardware *hardware;
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct is_param_region *param;
 	struct mcs_param *mcs_param;
 	bool start_flag = true;
-	u32 lindex, hindex, instance;
+	u32 instance;
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
-	ulong flag;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!frame);
-	FIMC_BUG(!cap);
+	BUG_ON(!hw_ip);
+	BUG_ON(!frame);
+	BUG_ON(!cap);
 
 	hardware = hw_ip->hardware;
 	instance = frame->instance;
@@ -766,19 +785,25 @@ static int fimc_is_hw_mcsc_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 		return -EINVAL;
 	}
 
+	head = GET_HEAD_GROUP_IN_DEVICE(FIMC_IS_DEVICE_ISCHAIN, hw_ip->group[frame->instance]);
+	if (!test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state)) {
+		ret = down_interruptible(&hw_ip->smp_resource);
+		if (ret) {
+			mserr_hw(" down fail(%d)", frame->instance, hw_ip, ret);
+			return -EINVAL;
+		}
+	}
+
 	if ((!test_bit(ENTRY_M0P, &frame->out_flag))
 		&& (!test_bit(ENTRY_M1P, &frame->out_flag))
 		&& (!test_bit(ENTRY_M2P, &frame->out_flag))
 		&& (!test_bit(ENTRY_M3P, &frame->out_flag))
-		&& (!test_bit(ENTRY_M4P, &frame->out_flag))
-		&& (!test_bit(ENTRY_M5P, &frame->out_flag)))
+		&& (!test_bit(ENTRY_M4P, &frame->out_flag)))
 		set_bit(hw_ip->id, &frame->core_flag);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 	param = &hw_ip->region[instance]->parameter;
 	mcs_param = &param->mcs;
-
-	head = hw_ip->group[frame->instance]->head;
 
 	if (test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state)) {
 		if (!test_bit(HW_CONFIG, &hw_ip->state)
@@ -792,22 +817,13 @@ static int fimc_is_hw_mcsc_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 
 	if (frame->type == SHOT_TYPE_INTERNAL) {
 		msdbg_hw(2, "request not exist\n", instance, hw_ip);
+		hw_ip->internal_fcount = frame->fcount;
 		goto config;
 	}
 
-	lindex = frame->shot->ctl.vendor_entry.lowIndexParam;
-	hindex = frame->shot->ctl.vendor_entry.highIndexParam;
-
 	hw_mcsc->back_param = param;
-	hw_mcsc->back_lindex = lindex;
-	hw_mcsc->back_hindex = hindex;
 
-	spin_lock_irqsave(&mcsc_out_slock, flag);
-
-	fimc_is_hw_mcsc_update_param(hw_ip, mcs_param,
-		lindex, hindex, instance);
-
-	spin_unlock_irqrestore(&mcsc_out_slock, flag);
+	fimc_is_hw_mcsc_update_param(hw_ip, mcs_param, instance);
 
 	msdbg_hw(2, "[F:%d]shot [T:%d]\n", instance, hw_ip, frame->fcount, frame->type);
 
@@ -821,26 +837,37 @@ config:
 		hw_ip->mframe = frame;
 
 	/* RDMA cfg */
-	ret = fimc_is_hw_mcsc_rdma_cfg(hw_ip, frame, &mcs_param->input);
-	if (ret) {
-		mserr_hw("[F:%d]mcsc rdma_cfg failed\n",
+	if (mcs_param->input.dma_cmd == DMA_INPUT_COMMAND_ENABLE
+		&& cap->in_dma == MCSC_CAP_SUPPORT) {
+		ret = fimc_is_hw_mcsc_rdma_cfg(hw_ip, frame);
+		if (ret) {
+			mserr_hw("[F:%d]mcsc rdma_cfg failed\n",
 				instance, hw_ip, frame->fcount);
-		return ret;
+			goto shot_fail;
+		}
 	}
 
 	/* WDMA cfg */
 	fimc_is_hw_mcsc_wdma_cfg(hw_ip, frame);
-	fimc_is_scaler_set_lfro_mode_enable(hw_ip->regs, hw_ip->id, hardware->hw_fro_en, frame->num_buffers);
 
-	ret_internal = fimc_is_hw_mcsc_update_dsvra_register(hw_ip, head, mcs_param, instance, frame->shot);
-	ret_internal = fimc_is_hw_mcsc_update_tdnr_register(hw_ip, frame, param, start_flag);
-	ret_internal = fimc_is_hw_mcsc_update_cac_register(hw_ip, frame, instance);
-	ret_internal = fimc_is_hw_mcsc_update_uvsp_register(hw_ip, frame, instance);
-	ret_internal = fimc_is_hw_mcsc_update_ysum_register(hw_ip, head, mcs_param, instance, frame->shot);
-	if (ret_internal) {
-		msdbg_hw(2, "ysum cfg is failed\n", instance, hw_ip);
-		fimc_is_scaler_set_ysum_enable(hw_ip->regs, false);
+	/* setting for DS */
+	if (cap->ds_vra == MCSC_CAP_SUPPORT) {
+		ret = fimc_is_hw_mcsc_update_dsvra_register(hw_ip, param, instance,
+			frame->shot ? frame->shot->uctl.scalerUd.mcsc_sub_blk_port[INTERFACE_TYPE_DS] : MCSC_PORT_NONE);
+		if (ret) {
+			msdbg_hw(2, "dsvra cfg is failed\n", instance, hw_ip);
+			fimc_is_scaler_set_ds_enable(hw_ip->regs, false);
+		}
 	}
+
+	/* setting for TDNR */
+	if (cap->tdnr == MCSC_CAP_SUPPORT)
+		ret = fimc_is_hw_mcsc_update_tdnr_register(hw_ip, frame, param, start_flag);
+
+	/* setting for YSUM */
+	if (cap->ysum == MCSC_CAP_SUPPORT)
+		ret = fimc_is_hw_mcsc_update_ysum_register(hw_ip, param,
+			frame->shot ? frame->shot->uctl.scalerUd.mcsc_sub_blk_port[INTERFACE_TYPE_YSUM] : MCSC_PORT_NONE);
 
 	/* for set shadow register write start
 	 * only group input is OTF && not async shot
@@ -856,12 +883,21 @@ config:
 			fimc_is_scaler_rdma_start(hw_ip->regs, hw_ip->id);
 	}
 
-	msdbg_hw(2, "shot: mcsc_out_st[0x%lx]\n", instance, hw_ip,
-		mcsc_out_st);
+	msdbg_hw(2, "shot: hw_mcsc_out_configured[0x%lx]\n", instance, hw_ip,
+		hw_mcsc_out_configured);
 
 	hw_mcsc->instance = instance;
-	clear_bit(MCSC_RST_CHK, &mcsc_out_st);
+	clear_bit(HW_MCSC_OUT_CLEARED_ALL, &hw_mcsc_out_configured);
 	set_bit(HW_CONFIG, &hw_ip->state);
+
+	if (ret)
+		goto shot_fail;
+
+	return 0;
+
+shot_fail:
+	if (!test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state))
+		up(&hw_ip->smp_resource);
 
 	return ret;
 }
@@ -872,8 +908,8 @@ static int fimc_is_hw_mcsc_set_param(struct fimc_is_hw_ip *hw_ip, struct is_regi
 	int ret = 0;
 	struct fimc_is_hw_mcsc *hw_mcsc;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!region);
+	BUG_ON(!hw_ip);
+	BUG_ON(!region);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
@@ -940,57 +976,42 @@ int fimc_is_hw_mcsc_update_register(struct fimc_is_hw_ip *hw_ip,
 }
 
 int fimc_is_hw_mcsc_update_param(struct fimc_is_hw_ip *hw_ip,
-	struct mcs_param *param, u32 lindex, u32 hindex, u32 instance)
+	struct mcs_param *param, u32 instance)
 {
 	int i = 0;
 	int ret = 0;
-	bool control_cmd = false;
 	struct fimc_is_hw_mcsc *hw_mcsc;
-	u32 dma_output_ids = 0;
 	u32 hwfc_output_ids = 0;
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!param);
-	FIMC_BUG(!cap);
+	BUG_ON(!hw_ip);
+	BUG_ON(!param);
+	BUG_ON(!cap);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 
 	if (hw_mcsc->instance != instance) {
-		control_cmd = true;
-		msdbg_hw(2, "update_param: hw_ip->instance(%d), control_cmd(%d)\n",
-			instance, hw_ip, hw_mcsc->instance, control_cmd);
+		msdbg_hw(2, "update_param: hw_ip->instance(%d)\n",
+			instance, hw_ip, hw_mcsc->instance);
 	}
 
-	if (control_cmd || (lindex & LOWBIT_OF(PARAM_MCS_INPUT))
-		|| (hindex & HIGHBIT_OF(PARAM_MCS_INPUT))
-		|| (test_bit(MCSC_RST_CHK, &mcsc_out_st))) {
-		ret = fimc_is_hw_mcsc_otf_input(hw_ip, &param->input, instance);
-		ret = fimc_is_hw_mcsc_dma_input(hw_ip, &param->input, instance);
-	}
+	ret |= fimc_is_hw_mcsc_otf_input(hw_ip, &param->input, instance);
+	ret |= fimc_is_hw_mcsc_dma_input(hw_ip, &param->input, instance);
 
-	fimc_is_hw_mcsc_update_djag_register(hw_ip, param, instance);	/* for DZoom */
+	if (cap->djag == MCSC_CAP_SUPPORT)
+		fimc_is_hw_mcsc_update_djag_register(hw_ip, param, instance);	/* for DZoom */
 
 	for (i = MCSC_OUTPUT0; i < cap->max_output; i++) {
-		if (control_cmd || (lindex & LOWBIT_OF((i + PARAM_MCS_OUTPUT0)))
-				|| (hindex & HIGHBIT_OF((i + PARAM_MCS_OUTPUT0)))
-				|| (test_bit(MCSC_RST_CHK, &mcsc_out_st))) {
-			ret = fimc_is_hw_mcsc_update_register(hw_ip, param, i, instance);
-			fimc_is_scaler_set_wdma_pri(hw_ip->regs, i, param->output[i].plane);	/* FIXME: */
+		ret |= fimc_is_hw_mcsc_update_register(hw_ip, param, i, instance);
+		fimc_is_scaler_set_wdma_pri(hw_ip->regs, i, param->output[i].plane);	/* FIXME: */
 
+			/* check the hwfc enable in all output */
+			if (param->output[i].hwfc)
+				hwfc_output_ids |= (1 << i);
 		}
-		/* check the hwfc enable in all output */
-		if (param->output[i].hwfc)
-			hwfc_output_ids |= (1 << i);
-
-		if (param->output[i].dma_cmd == DMA_OUTPUT_COMMAND_ENABLE)
-			dma_output_ids |= (1 << i);
-	}
 
 	/* setting for hwfc */
-	ret = fimc_is_hw_mcsc_hwfc_mode(hw_ip, &param->input, hwfc_output_ids, dma_output_ids, instance);
-
-	hw_mcsc->prev_hwfc_output_ids = hwfc_output_ids;
+	ret |= fimc_is_hw_mcsc_hwfc_mode(hw_ip, &param->input, hwfc_output_ids, instance);
 
 	if (ret)
 		fimc_is_hw_mcsc_size_dump(hw_ip);
@@ -1004,43 +1025,51 @@ int fimc_is_hw_mcsc_reset(struct fimc_is_hw_ip *hw_ip)
 	u32 output_id;
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
-	struct fimc_is_hw_ip *hw_ip_ = NULL;
+	struct fimc_is_hardware *hardware;
+	struct fimc_is_hw_ip *hw_ip0 = NULL, *hw_ip1 = NULL;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!cap);
+	BUG_ON(!hw_ip);
+	BUG_ON(!cap);
 
-	if (check_sc_core_running(hw_ip, cap))
-		return 0;
+	hardware = hw_ip->hardware;
+	get_mcsc_hw_ip(hardware, &hw_ip0, &hw_ip1);
+
+	if (cap->enable_shared_output) {
+		if (hw_ip0 && test_bit(HW_RUN, &hw_ip0->state))
+			return 0;
+
+		if (hw_ip1 && test_bit(HW_RUN, &hw_ip1->state))
+			return 0;
+	}
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 
-	if (hw_ip) {
-		sinfo_hw("hw_mcsc_reset: out_en[0x%lx]\n", hw_ip, hw_mcsc->out_en);
-		ret = fimc_is_scaler_sw_reset(hw_ip->regs, hw_ip->id, 0, 0);
+	if (hw_ip0) {
+		sinfo_hw("hw_mcsc_reset: out_en[0x%lx]\n", hw_ip0, hw_mcsc->out_en);
+		ret = fimc_is_scaler_sw_reset(hw_ip0->regs, hw_ip0->id, 0, 0);
 		if (ret != 0) {
-			serr_hw("sw reset fail", hw_ip);
+			serr_hw("sw reset fail", hw_ip0);
 			return -ENODEV;
 		}
 
 		/* shadow ctrl register clear */
-		fimc_is_scaler_clear_shadow_ctrl(hw_ip->regs, hw_ip->id);
+		fimc_is_scaler_clear_shadow_ctrl(hw_ip0->regs, hw_ip0->id);
 	}
 
-	hw_ip_ = get_mcsc_hw_ip(hw_ip);
-	if (hw_ip_) {
-		sinfo_hw("hw_mcsc_reset: out_en[0x%lx]\n", hw_ip_, hw_mcsc->out_en);
-		ret = fimc_is_scaler_sw_reset(hw_ip_->regs, hw_ip_->id, 0, 0);
+	if (hw_ip1) {
+		sinfo_hw("hw_mcsc_reset: out_en[0x%lx]\n", hw_ip1, hw_mcsc->out_en);
+		ret = fimc_is_scaler_sw_reset(hw_ip1->regs, hw_ip1->id, 0, 0);
 		if (ret != 0) {
-			serr_hw("sw reset fail", hw_ip_);
+			serr_hw("sw reset fail", hw_ip1);
 			return -ENODEV;
 		}
 
 		/* shadow ctrl register clear */
-		fimc_is_scaler_clear_shadow_ctrl(hw_ip_->regs, hw_ip_->id);
+		fimc_is_scaler_clear_shadow_ctrl(hw_ip1->regs, hw_ip1->id);
 	}
 
 	for (output_id = MCSC_OUTPUT0; output_id < cap->max_output; output_id++) {
-		if (cap->enable_shared_output == false || test_bit(output_id, &mcsc_out_st)) {
+		if (cap->enable_shared_output == false || test_bit(output_id, &hw_mcsc_out_configured)) {
 			sinfo_hw("[OUT:%d]set output clear\n", hw_ip, output_id);
 			fimc_is_scaler_set_poly_scaler_enable(hw_ip->regs, hw_ip->id, output_id, 0);
 			fimc_is_scaler_set_post_scaler_enable(hw_ip->regs, output_id, 0);
@@ -1050,7 +1079,7 @@ int fimc_is_hw_mcsc_reset(struct fimc_is_hw_ip *hw_ip)
 			fimc_is_scaler_set_wdma_pri(hw_ip->regs, output_id, 0);	/* FIXME: */
 			fimc_is_scaler_set_wdma_axi_pri(hw_ip->regs);		/* FIXME: */
 			fimc_is_scaler_set_wdma_sram_base(hw_ip->regs, output_id);
-			clear_bit(output_id, &mcsc_out_st);
+			clear_bit(output_id, &hw_mcsc_out_configured);
 		}
 	}
 	fimc_is_scaler_set_wdma_sram_base(hw_ip->regs, MCSC_OUTPUT_SSB);	/* FIXME: */
@@ -1059,14 +1088,15 @@ int fimc_is_hw_mcsc_reset(struct fimc_is_hw_ip *hw_ip)
 	if (cap->tdnr == MCSC_CAP_SUPPORT)
 		fimc_is_scaler_set_tdnr_wdma_sram_base(hw_ip->regs, TDNR_WEIGHT);
 
-	set_bit(MCSC_RST_CHK, &mcsc_out_st);
+	set_bit(HW_MCSC_OUT_CLEARED_ALL, &hw_mcsc_out_configured);
+	clear_bit(ALL_BLOCK_SET_DONE, &hw_mcsc->blk_set_ctrl);
 
 	if (cap->in_otf == MCSC_CAP_SUPPORT) {
-		if (hw_ip)
-			fimc_is_scaler_set_stop_req_post_en_ctrl(hw_ip->regs, hw_ip->id, 0);
+		if (hw_ip0)
+			fimc_is_scaler_set_stop_req_post_en_ctrl(hw_ip0->regs, hw_ip0->id, 0);
 
-		if (hw_ip_)
-			fimc_is_scaler_set_stop_req_post_en_ctrl(hw_ip_->regs, hw_ip_->id, 0);
+		if (hw_ip1)
+			fimc_is_scaler_set_stop_req_post_en_ctrl(hw_ip1->regs, hw_ip1->id, 0);
 	}
 
 	return ret;
@@ -1076,7 +1106,7 @@ int fimc_is_hw_mcsc_clear_interrupt(struct fimc_is_hw_ip *hw_ip)
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	sinfo_hw("hw_mcsc_clear_interrupt\n", hw_ip);
 
@@ -1091,12 +1121,12 @@ static int fimc_is_hw_mcsc_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instanc
 {
 	int ret = 0;
 	struct fimc_is_hw_ip_setfile *setfile;
-	struct hw_mcsc_setfile *setfile_addr;
+	struct hw_api_scaler_setfile *setfile_addr;
 	enum exynos_sensor_position sensor_position;
 	struct fimc_is_hw_mcsc *hw_mcsc = NULL;
 	int setfile_index = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
 		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
@@ -1128,15 +1158,15 @@ static int fimc_is_hw_mcsc_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instanc
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 
-	if (setfile->table[0].size != sizeof(struct hw_mcsc_setfile))
+	if (setfile->table[0].size != sizeof(struct hw_api_scaler_setfile))
 		mswarn_hw("tuneset size(%x) is not matched to setfile structure size(%lx)",
 			instance, hw_ip, setfile->table[0].size,
-			sizeof(struct hw_mcsc_setfile));
+			sizeof(struct hw_api_scaler_setfile));
 
 	/* copy MCSC setfile set */
-	setfile_addr = (struct hw_mcsc_setfile *)setfile->table[0].addr;
+	setfile_addr = (struct hw_api_scaler_setfile *)setfile->table[0].addr;
 	memcpy(hw_mcsc->setfile[sensor_position], setfile_addr,
-		sizeof(struct hw_mcsc_setfile) * setfile->using_count);
+			sizeof(struct hw_api_scaler_setfile) * setfile->using_count);
 
 	/* check each setfile Magic numbers */
 	for (setfile_index = 0; setfile_index < setfile->using_count; setfile_index++) {
@@ -1149,10 +1179,6 @@ static int fimc_is_hw_mcsc_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instanc
 			return -EINVAL;
 		}
 	}
-#if defined(USE_UVSP_CAC)
-	hw_mcsc->uvsp_ctrl.biquad_a = hw_ip->hardware->cal_info[sensor_position].data[2];
-	hw_mcsc->uvsp_ctrl.biquad_b = hw_ip->hardware->cal_info[sensor_position].data[3];
-#endif
 
 	set_bit(HW_TUNESET, &hw_ip->state);
 
@@ -1169,8 +1195,8 @@ static int fimc_is_hw_mcsc_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenar
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
 	u32 setfile_index = 0;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!cap);
+	BUG_ON(!hw_ip);
+	BUG_ON(!cap);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
 		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
@@ -1199,8 +1225,38 @@ static int fimc_is_hw_mcsc_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenar
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 
-	hw_mcsc->cur_setfile[sensor_position][instance] =
+	if (!hw_mcsc->setfile[sensor_position]) {
+		mserr_hw("hw_mcsc->setfile(null)", instance, hw_ip);
+		return -ENOMEM;
+	}
+
+	hw_mcsc->applied_setfile[sensor_position][instance] =
 		&hw_mcsc->setfile[sensor_position][setfile_index];
+
+	if (cap->djag) {
+		if ((setfile_index == FIMC_IS_SN_FRONT_CAMCORDING)
+			|| (setfile_index == FIMC_IS_SN_FRONT_CAMCORDING_WHD)
+			|| (setfile_index == FIMC_IS_SN_FRONT_CAMCORDING_CAPTURE)
+			|| (setfile_index == FIMC_IS_SN_FRONT_CAMCORDING_WHD_CAPTURE)
+			|| (setfile_index == FIMC_IS_SN_FRONT2_CAMCORDING)
+			|| (setfile_index == FIMC_IS_SN_FRONT2_CAMCORDING_CAPTURE)
+			|| (setfile_index == FIMC_IS_SN_REAR2_CAMCORDING_FHD)
+			|| (setfile_index == FIMC_IS_SN_REAR2_CAMCORDING_FHD_CAPTURE)
+			|| (setfile_index == FIMC_IS_SN_REAR_CAMCORDING_FHD)
+			|| (setfile_index == FIMC_IS_SN_REAR_CAMCORDING_WHD)
+			|| (setfile_index == FIMC_IS_SN_REAR_CAMCORDING_UHD)
+			|| (setfile_index == FIMC_IS_SN_REAR_CAMCORDING_UHD_60FPS)
+			|| (setfile_index == FIMC_IS_SN_REAR_CAMCORDING_FHD_CAPTURE)
+			|| (setfile_index == FIMC_IS_SN_REAR_CAMCORDING_WHD_CAPTURE)
+			|| (setfile_index == FIMC_IS_SN_REAR_CAMCORDING_UHD_CAPTURE)
+			|| (setfile_index == FIMC_IS_SN_DUAL_CAMCORDING)
+			|| (setfile_index == FIMC_IS_SN_DUAL_CAMCORDING_CAPTURE)
+			|| (setfile_index == FIMC_IS_SN_PIP_CAMCORDING)
+			|| (setfile_index == FIMC_IS_SN_PIP_CAMCORDING_CAPTURE))
+			hw_mcsc->djag_input_source = 0;
+		else
+			hw_mcsc->djag_input_source = 1;
+	}
 
 	msinfo_hw("setfile (%d) scenario (%d)\n", instance, hw_ip,
 		setfile_index, scenario);
@@ -1211,8 +1267,7 @@ static int fimc_is_hw_mcsc_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenar
 static int fimc_is_hw_mcsc_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	ulong hw_map)
 {
-
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
 		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
@@ -1229,75 +1284,24 @@ static int fimc_is_hw_mcsc_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 insta
 	return 0;
 }
 
-int hw_mcsc_chk_frame_done(struct fimc_is_hw_ip *hw_ip,
-	u32 out_id, u32 *wq_id, u32 *out_f_id)
-{
-	switch (out_id) {
-	case MCSC_OUTPUT0:
-		*wq_id = WORK_M0P_FDONE;
-		*out_f_id = ENTRY_M0P;
-		break;
-	case MCSC_OUTPUT1:
-		*wq_id = WORK_M1P_FDONE;
-		*out_f_id = ENTRY_M1P;
-		break;
-	case MCSC_OUTPUT2:
-		*wq_id = WORK_M2P_FDONE;
-		*out_f_id = ENTRY_M2P;
-		break;
-	case MCSC_OUTPUT3:
-		*wq_id = WORK_M3P_FDONE;
-		*out_f_id = ENTRY_M3P;
-		break;
-	case MCSC_OUTPUT4:
-		*wq_id = WORK_M4P_FDONE;
-		*out_f_id = ENTRY_M4P;
-		break;
-	case MCSC_OUTPUT5:
-		*wq_id = WORK_M5P_FDONE;
-		*out_f_id = ENTRY_M5P;
-		break;
-	default:
-		swarn_hw("invalid output_id(%d)\n", hw_ip, out_id);
-		return -1;
-	}
-
-	return 0;
-}
-
 void fimc_is_hw_mcsc_frame_done(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
 	int done_type)
 {
 	int ret = 0;
+	bool fdone_flag = false;
 	struct fimc_is_framemgr *framemgr;
-	struct fimc_is_frame *hw_frame;
-	struct fimc_is_hw_mcsc *hw_mcsc;
-	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
-	u32 index, dbg_pt = DEBUG_POINT_FRAME_END, out_id;
-	u32 wq_id = WORK_MAX_MAP, out_f_id = ENTRY_END;
+	u32 index;
 	int instance = atomic_read(&hw_ip->instance);
-	bool flag_get_meta = true;
 	ulong flags = 0;
-
-	FIMC_BUG_VOID(!hw_ip->priv_info);
-	FIMC_BUG_VOID(!cap);
-
-	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
-
-	if (test_and_clear_bit(HW_MCS_DS_CFG, &hw_ip->state)) {
-		fimc_is_scaler_set_dma_out_enable(hw_ip->regs, MCSC_OUTPUT_DS, false);
-		fimc_is_scaler_set_ds_enable(hw_ip->regs, false);
-	}
-	if (test_and_clear_bit(HW_MCS_YSUM_CFG, &hw_ip->state))
-		fimc_is_scaler_set_ysum_enable(hw_ip->regs, false);
+	bool flag_get_meta = true;
 
 	switch (done_type) {
 	case IS_SHOT_SUCCESS:
 		framemgr = hw_ip->framemgr;
 		framemgr_e_barrier_common(framemgr, 0, flags);
-		hw_frame = peek_frame(framemgr, FS_HW_WAIT_DONE);
+		frame = peek_frame(framemgr, FS_HW_WAIT_DONE);
 		framemgr_x_barrier_common(framemgr, 0, flags);
-		if (hw_frame == NULL) {
+		if (frame == NULL) {
 			mserr_hw("[F:%d] frame(null) @FS_HW_WAIT_DONE!!", instance,
 				hw_ip, atomic_read(&hw_ip->fcount));
 			framemgr_e_barrier_common(framemgr, 0, flags);
@@ -1316,7 +1320,6 @@ void fimc_is_hw_mcsc_frame_done(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 				hw_ip, atomic_read(&hw_ip->fcount), done_type);
 			return;
 		}
-		hw_frame = frame;
 		break;
 	default:
 		mserr_hw("[F:%d] invalid done type(%d)\n", instance, hw_ip,
@@ -1325,36 +1328,69 @@ void fimc_is_hw_mcsc_frame_done(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 	}
 
 	msdbgs_hw(2, "frame done[F:%d][O:0x%lx]\n", instance, hw_ip,
-		hw_frame->fcount, hw_frame->out_flag);
+		frame->fcount, frame->out_flag);
 
-	for (out_id = MCSC_OUTPUT0; out_id < cap->max_output; out_id++) {
-		ret = hw_mcsc_chk_frame_done(hw_ip, out_id, &wq_id, &out_f_id);
-		if (ret)
-			continue;
-
-		if (test_bit(out_f_id, &hw_frame->out_flag)) {
-			ret = fimc_is_hardware_frame_done(hw_ip, frame,
-					wq_id, out_f_id, done_type, flag_get_meta);
-			clear_bit(out_id, &mcsc_out_st);
-			flag_get_meta = false;
-			dbg_pt = DEBUG_POINT_FRAME_DMA_END;
-		}
+	if (test_bit(ENTRY_M0P, &frame->out_flag)) {
+		ret = fimc_is_hardware_frame_done(hw_ip, frame,
+			WORK_M0P_FDONE, ENTRY_M0P, done_type, flag_get_meta);
+		fdone_flag = true;
+		flag_get_meta = false;
+		clear_bit(MCSC_OUTPUT0, &hw_mcsc_out_configured);
 	}
 
-	index = hw_ip->debug_index[1];
-	hw_ip->debug_info[index].cpuid[dbg_pt] = raw_smp_processor_id();
-	hw_ip->debug_info[index].time[dbg_pt] = cpu_clock(raw_smp_processor_id());
+	if (test_bit(ENTRY_M1P, &frame->out_flag)) {
+		ret = fimc_is_hardware_frame_done(hw_ip, frame,
+			WORK_M1P_FDONE, ENTRY_M1P, done_type, flag_get_meta);
+		fdone_flag = true;
+		flag_get_meta = false;
+		clear_bit(MCSC_OUTPUT1, &hw_mcsc_out_configured);
+	}
 
-	dbg_isr("[F:%d][S-E] %05llu us\n", hw_ip, atomic_read(&hw_ip->fcount),
-		(hw_ip->debug_info[index].time[dbg_pt] -
-		hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_START]) / 1000);
+	if (test_bit(ENTRY_M2P, &frame->out_flag)) {
+		ret = fimc_is_hardware_frame_done(hw_ip, frame,
+			WORK_M2P_FDONE, ENTRY_M2P, done_type, flag_get_meta);
+		fdone_flag = true;
+		flag_get_meta = false;
+		clear_bit(MCSC_OUTPUT2, &hw_mcsc_out_configured);
+	}
 
-	if (!flag_get_meta)
+	if (test_bit(ENTRY_M3P, &frame->out_flag)) {
+		ret = fimc_is_hardware_frame_done(hw_ip, frame,
+			WORK_M3P_FDONE, ENTRY_M3P, done_type, flag_get_meta);
+		fdone_flag = true;
+		flag_get_meta = false;
+		clear_bit(MCSC_OUTPUT3, &hw_mcsc_out_configured);
+	}
+
+	if (test_bit(ENTRY_M4P, &frame->out_flag)) {
+		ret = fimc_is_hardware_frame_done(hw_ip, frame,
+			WORK_M4P_FDONE, ENTRY_M4P, done_type, flag_get_meta);
+		fdone_flag = true;
+		flag_get_meta = false;
+		clear_bit(MCSC_OUTPUT4, &hw_mcsc_out_configured);
+	}
+
+	if (test_bit(ENTRY_M5P, &frame->out_flag)) {
+		ret = fimc_is_hardware_frame_done(hw_ip, frame,
+			WORK_M5P_FDONE, ENTRY_M5P, done_type, flag_get_meta);
+		fdone_flag = true;
+		flag_get_meta = false;
+		clear_bit(MCSC_OUTPUT5, &hw_mcsc_out_configured);
+	}
+
+	if (fdone_flag) {
+		index = hw_ip->debug_index[1];
+		hw_ip->debug_info[index].cpuid[DEBUG_POINT_FRAME_DMA_END] = raw_smp_processor_id();
+		hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_DMA_END] = cpu_clock(raw_smp_processor_id());
 		atomic_inc(&hw_ip->count.dma);
+	} else {
+		index = hw_ip->debug_index[1];
+		hw_ip->debug_info[index].cpuid[DEBUG_POINT_FRAME_END] = raw_smp_processor_id();
+		hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_END] = cpu_clock(raw_smp_processor_id());
 
-	if (flag_get_meta && done_type == IS_SHOT_SUCCESS)
 		fimc_is_hardware_frame_done(hw_ip, NULL, -1, FIMC_IS_HW_CORE_END,
 				IS_SHOT_SUCCESS, flag_get_meta);
+	}
 
 	return;
 }
@@ -1363,12 +1399,17 @@ static int fimc_is_hw_mcsc_frame_ndone(struct fimc_is_hw_ip *hw_ip, struct fimc_
 	u32 instance, enum ShotErrorType done_type)
 {
 	int ret = 0;
+	struct fimc_is_group *head;
 
 	fimc_is_hw_mcsc_frame_done(hw_ip, frame, done_type);
 
 	if (test_bit_variables(hw_ip->id, &frame->core_flag))
 		ret = fimc_is_hardware_frame_done(hw_ip, frame, -1, FIMC_IS_HW_CORE_END,
 				done_type, false);
+
+	head = GET_HEAD_GROUP_IN_DEVICE(FIMC_IS_DEVICE_ISCHAIN, hw_ip->group[instance]);
+	if (!test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state))
+		up(&hw_ip->smp_resource);
 
 	return ret;
 }
@@ -1382,9 +1423,9 @@ int fimc_is_hw_mcsc_otf_input(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inpu
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!input);
-	FIMC_BUG(!cap);
+	BUG_ON(!hw_ip);
+	BUG_ON(!input);
+	BUG_ON(!cap);
 
 	/* can't support this function */
 	if (cap->in_otf != MCSC_CAP_SUPPORT)
@@ -1409,10 +1450,8 @@ int fimc_is_hw_mcsc_otf_input(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inpu
 		return ret;
 	}
 
-	fimc_is_scaler_set_input_source(hw_ip->regs, hw_ip->id, !input->otf_cmd);
 	fimc_is_scaler_set_input_img_size(hw_ip->regs, hw_ip->id, width, height);
 	fimc_is_scaler_set_dither(hw_ip->regs, hw_ip->id, 0);
-	fimc_is_scaler_set_rdma_format(hw_ip->regs, hw_ip->id, format);
 
 	return ret;
 }
@@ -1424,15 +1463,15 @@ int fimc_is_hw_mcsc_dma_input(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inpu
 	u32 width, height;
 	u32 format, bit_width, plane, order;
 	u32 y_stride, uv_stride;
+	u32 y_2bit_stride, uv_2bit_stride;
 	u32 img_format;
-	u32 y_2bit_stride = 0, uv_2bit_stride = 0;
-	u32 img_10bit_type = 0;
+	u32 img_10bit_type;
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!input);
-	FIMC_BUG(!cap);
+	BUG_ON(!hw_ip);
+	BUG_ON(!input);
+	BUG_ON(!cap);
 
 	/* can't support this function */
 	if (cap->in_dma != MCSC_CAP_SUPPORT)
@@ -1449,6 +1488,9 @@ int fimc_is_hw_mcsc_dma_input(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inpu
 	order = input->dma_order;
 	y_stride = input->dma_stride_y;
 	uv_stride = input->dma_stride_c;
+	y_2bit_stride = 0;
+	uv_2bit_stride = 0;
+	img_10bit_type = 0;
 
 	if (input->dma_cmd == DMA_INPUT_COMMAND_DISABLE)
 		return ret;
@@ -1461,11 +1503,11 @@ int fimc_is_hw_mcsc_dma_input(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inpu
 		return ret;
 	}
 
-	fimc_is_scaler_set_input_source(hw_ip->regs, hw_ip->id, input->dma_cmd);
 	fimc_is_scaler_set_input_img_size(hw_ip->regs, hw_ip->id, width, height);
 	fimc_is_scaler_set_dither(hw_ip->regs, hw_ip->id, 0);
 
 	fimc_is_scaler_set_rdma_stride(hw_ip->regs, y_stride, uv_stride);
+	fimc_is_scaler_set_rdma_2bit_stride(hw_ip->regs, y_2bit_stride, uv_2bit_stride);
 
 	ret = fimc_is_hw_mcsc_adjust_input_img_fmt(format, plane, order, &img_format);
 	if (ret < 0) {
@@ -1476,24 +1518,8 @@ int fimc_is_hw_mcsc_dma_input(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inpu
 	}
 
 	fimc_is_scaler_set_rdma_size(hw_ip->regs, width, height);
-	fimc_is_scaler_set_rdma_format(hw_ip->regs, hw_ip->id, img_format);
-
-	if (bit_width == DMA_INPUT_BIT_WIDTH_16BIT)
-		img_10bit_type = 2;
-	else if (bit_width == DMA_INPUT_BIT_WIDTH_10BIT)
-		if (plane == DMA_INPUT_PLANE_4)
-			img_10bit_type = 1;
-		else
-			img_10bit_type = 3;
-	else
-		img_10bit_type = 0;
+	fimc_is_scaler_set_rdma_format(hw_ip->regs, img_format);
 	fimc_is_scaler_set_rdma_10bit_type(hw_ip->regs, img_10bit_type);
-
-	if (input->plane == DMA_OUTPUT_PLANE_4) {
-		y_2bit_stride = ALIGN(width / 4, 16);
-		uv_2bit_stride = ALIGN(width / 4, 16);
-		fimc_is_scaler_set_rdma_2bit_stride(hw_ip->regs, y_2bit_stride, uv_2bit_stride);
-	}
 
 	return ret;
 }
@@ -1514,14 +1540,11 @@ int fimc_is_hw_mcsc_poly_phase(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inp
 	bool round_mode_en = true;
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
-	enum exynos_sensor_position sensor_position;
-	struct hw_mcsc_setfile *setfile;
-	struct scaler_coef_cfg *sc_coef;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!input);
-	FIMC_BUG(!output);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!input);
+	BUG_ON(!output);
+	BUG_ON(!hw_ip->priv_info);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 
@@ -1537,7 +1560,7 @@ int fimc_is_hw_mcsc_poly_phase(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inp
 	if (output->otf_cmd == OTF_OUTPUT_COMMAND_DISABLE
 		&& output->dma_cmd == DMA_OUTPUT_COMMAND_DISABLE) {
 		if (cap->enable_shared_output == false
-			|| (config && !test_bit(output_id, &mcsc_out_st)))
+			|| (config && !test_bit(output_id, &hw_mcsc_out_configured)))
 			fimc_is_scaler_set_poly_scaler_enable(hw_ip->regs, hw_ip->id, output_id, 0);
 		return ret;
 	}
@@ -1549,39 +1572,51 @@ int fimc_is_hw_mcsc_poly_phase(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inp
 	src_width = output->crop_width;
 	src_height = output->crop_height;
 
-	fimc_is_hw_mcsc_adjust_size_with_djag(hw_ip, input, cap, &src_pos_x, &src_pos_y, &src_width, &src_height);
-
 	out_width = output->width;
 	out_height = output->height;
 
 	fimc_is_scaler_set_poly_src_size(hw_ip->regs, output_id, src_pos_x, src_pos_y,
 		src_width, src_height);
 
-	if ((src_width <= (out_width * MCSC_POLY_RATIO_DOWN))
-		&& (out_width <= (src_width * MCSC_POLY_RATIO_UP))) {
+	if (((src_width <= (out_width * MCSC_POLY_QUALITY_RATIO_DOWN))
+		&& (out_width <= (src_width * MCSC_POLY_RATIO_UP)))
+		|| (output_id == MCSC_OUTPUT3 || output_id == MCSC_OUTPUT4)) {
 		poly_dst_width = out_width;
 		post_en = false;
+	} else if ((src_width <= (out_width * MCSC_POLY_QUALITY_RATIO_DOWN * MCSC_POST_RATIO_DOWN))
+		&& ((out_width * MCSC_POLY_QUALITY_RATIO_DOWN) < src_width)) {
+		poly_dst_width = MCSC_ROUND_UP(src_width / MCSC_POLY_QUALITY_RATIO_DOWN, 2);
+		if (poly_dst_width > MCSC_POST_MAX_WIDTH)
+			poly_dst_width = MCSC_POST_MAX_WIDTH;
+		post_en = true;
 	} else if ((src_width <= (out_width * MCSC_POLY_RATIO_DOWN * MCSC_POST_RATIO_DOWN))
-		&& ((out_width * MCSC_POLY_RATIO_DOWN) < src_width)) {
-		poly_dst_width = MCSC_ROUND_UP(src_width / MCSC_POLY_RATIO_DOWN, 2);
+		&& ((out_width *  MCSC_POLY_QUALITY_RATIO_DOWN * MCSC_POST_RATIO_DOWN) < src_width)) {
+		poly_dst_width = MCSC_ROUND_UP(out_width * MCSC_POST_RATIO_DOWN, 2);
+		if (poly_dst_width > MCSC_POST_MAX_WIDTH)
+			poly_dst_width = MCSC_POST_MAX_WIDTH;
 		post_en = true;
 	} else {
-		mserr_hw("hw_mcsc_poly_phase: Unsupported W ratio, (%dx%d)->(%dx%d)\n",
+		mserr_hw("hw_mcsc_poly_phase: Unsupported H ratio, (%dx%d)->(%dx%d)\n",
 			instance, hw_ip, src_width, src_height, out_width, out_height);
 		poly_dst_width = MCSC_ROUND_UP(src_width / MCSC_POLY_RATIO_DOWN, 2);
 		post_en = true;
 	}
 
-	if ((src_height <= (out_height * MCSC_POLY_RATIO_DOWN))
-		&& (out_height <= (src_height * MCSC_POLY_RATIO_UP))) {
+	if (((src_height <= (out_height * MCSC_POLY_QUALITY_RATIO_DOWN))
+		&& (out_height <= (src_height * MCSC_POLY_RATIO_UP)))
+		|| (output_id == MCSC_OUTPUT3 || output_id == MCSC_OUTPUT4)) {
 		poly_dst_height = out_height;
 		post_en = false;
+	} else if ((src_height <= (out_height * MCSC_POLY_QUALITY_RATIO_DOWN * MCSC_POST_RATIO_DOWN))
+		&& ((out_height * MCSC_POLY_QUALITY_RATIO_DOWN) < src_height)) {
+		poly_dst_height = (src_height / MCSC_POLY_QUALITY_RATIO_DOWN);
+		post_en = true;
 	} else if ((src_height <= (out_height * MCSC_POLY_RATIO_DOWN * MCSC_POST_RATIO_DOWN))
-		&& ((out_height * MCSC_POLY_RATIO_DOWN) < src_height)) {
-		poly_dst_height = (src_height / MCSC_POLY_RATIO_DOWN);
+		&& ((out_height * MCSC_POLY_QUALITY_RATIO_DOWN * MCSC_POST_RATIO_DOWN) < src_height)) {
+		poly_dst_height = (out_height * MCSC_POST_RATIO_DOWN);
 		post_en = true;
 	} else {
-		mserr_hw("hw_mcsc_poly_phase: Unsupported H ratio, (%dx%d)->(%dx%d)\n",
+		mserr_hw("hw_mcsc_poly_phase: Unsupported V ratio, (%dx%d)->(%dx%d)\n",
 			instance, hw_ip, src_width, src_height, out_width, out_height);
 		poly_dst_height = (src_height / MCSC_POLY_RATIO_DOWN);
 		post_en = true;
@@ -1625,16 +1660,8 @@ int fimc_is_hw_mcsc_poly_phase(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inp
 	hratio = (u32)((temp_width  << MCSC_PRECISION) / poly_dst_width);
 	vratio = (u32)((temp_height << MCSC_PRECISION) / poly_dst_height);
 
-	sensor_position = hw_ip->hardware->sensor_position[instance];
-	setfile = hw_mcsc->cur_setfile[sensor_position][instance];
-#if defined(USE_UVSP_CAC)
-	sc_coef = &setfile->sc_coef;
-#else
-	sc_coef = NULL;
-#endif
 	fimc_is_scaler_set_poly_scaling_ratio(hw_ip->regs, output_id, hratio, vratio);
-	fimc_is_scaler_set_poly_scaler_coef(hw_ip->regs, output_id, hratio, vratio,
-		sc_coef, sensor_position);
+	fimc_is_scaler_set_poly_scaler_coef(hw_ip->regs, output_id, hratio, vratio);
 	fimc_is_scaler_set_poly_round_mode(hw_ip->regs, output_id, round_mode_en);
 
 	return ret;
@@ -1653,14 +1680,11 @@ int fimc_is_hw_mcsc_post_chain(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inp
 	bool round_mode_en = true;
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
-	enum exynos_sensor_position sensor_position;
-	struct hw_mcsc_setfile *setfile;
-	struct scaler_coef_cfg *sc_coef;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!input);
-	FIMC_BUG(!output);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!input);
+	BUG_ON(!output);
+	BUG_ON(!hw_ip->priv_info);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 
@@ -1676,7 +1700,7 @@ int fimc_is_hw_mcsc_post_chain(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inp
 	if (output->otf_cmd == OTF_OUTPUT_COMMAND_DISABLE
 		&& output->dma_cmd == DMA_OUTPUT_COMMAND_DISABLE) {
 		if (cap->enable_shared_output == false
-			|| (config && !test_bit(output_id, &mcsc_out_st)))
+			|| (config && !test_bit(output_id, &hw_mcsc_out_configured)))
 			fimc_is_scaler_set_post_scaler_enable(hw_ip->regs, output_id, 0);
 		return ret;
 	}
@@ -1701,15 +1725,8 @@ int fimc_is_hw_mcsc_post_chain(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inp
 	hratio = (u32)((temp_width  << MCSC_PRECISION) / dst_width);
 	vratio = (u32)((temp_height << MCSC_PRECISION) / dst_height);
 
-	sensor_position = hw_ip->hardware->sensor_position[instance];
-	setfile = hw_mcsc->cur_setfile[sensor_position][instance];
-#if defined(USE_UVSP_CAC)
-	sc_coef = &setfile->sc_coef;
-#else
-	sc_coef = NULL;
-#endif
 	fimc_is_scaler_set_post_scaling_ratio(hw_ip->regs, output_id, hratio, vratio);
-	fimc_is_scaler_set_post_scaler_coef(hw_ip->regs, output_id, hratio, vratio, sc_coef);
+	fimc_is_scaler_set_post_scaler_coef(hw_ip->regs, output_id, hratio, vratio);
 	fimc_is_scaler_set_post_round_mode(hw_ip->regs, output_id, round_mode_en);
 
 	return ret;
@@ -1721,9 +1738,9 @@ int fimc_is_hw_mcsc_flip(struct fimc_is_hw_ip *hw_ip, struct param_mcs_output *o
 	int ret = 0;
 	struct fimc_is_hw_mcsc *hw_mcsc;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!output);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!output);
+	BUG_ON(!hw_ip->priv_info);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 
@@ -1752,10 +1769,10 @@ int fimc_is_hw_mcsc_otf_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_out
 	bool config = true;
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!output);
-	FIMC_BUG(!cap);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!output);
+	BUG_ON(!cap);
+	BUG_ON(!hw_ip->priv_info);
 
 	/* can't support this function */
 	if (cap->out_otf[output_id] != MCSC_CAP_SUPPORT)
@@ -1774,7 +1791,7 @@ int fimc_is_hw_mcsc_otf_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_out
 
 	if (output->otf_cmd == OTF_OUTPUT_COMMAND_DISABLE) {
 		if (cap->enable_shared_output == false
-			|| (config && !test_bit(output_id, &mcsc_out_st)))
+			|| (config && !test_bit(output_id, &hw_mcsc_out_configured)))
 			fimc_is_scaler_set_otf_out_enable(hw_ip->regs, output_id, false);
 		return ret;
 	}
@@ -1807,24 +1824,23 @@ int fimc_is_hw_mcsc_dma_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_out
 	u32 y_stride, uv_stride;
 	u32 y_2bit_stride, uv_2bit_stride;
 	u32 img_format;
+	u32 img_10bit_type = 0;
 	u32 input_id = 0;
 	bool config = true;
 	bool conv420_en = false;
-	enum exynos_sensor_position sensor_position;
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!output);
-	FIMC_BUG(!cap);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!output);
+	BUG_ON(!cap);
+	BUG_ON(!hw_ip->priv_info);
 
 	/* can't support this function */
 	if (cap->out_dma[output_id] != MCSC_CAP_SUPPORT)
 		return ret;
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
-	sensor_position = hw_ip->hardware->sensor_position[instance];
 
 	if (!test_bit(output_id, &hw_mcsc->out_en))
 		return ret;
@@ -1837,7 +1853,7 @@ int fimc_is_hw_mcsc_dma_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_out
 
 	if (output->dma_cmd == DMA_OUTPUT_COMMAND_DISABLE) {
 		if (cap->enable_shared_output == false
-			|| (config && !test_bit(output_id, &mcsc_out_st)))
+			|| (config && !test_bit(output_id, &hw_mcsc_out_configured)))
 			fimc_is_scaler_set_dma_out_enable(hw_ip->regs, output_id, false);
 		return ret;
 	}
@@ -1850,6 +1866,8 @@ int fimc_is_hw_mcsc_dma_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_out
 	bitwidth   = output->dma_bitwidth;
 	y_stride   = output->dma_stride_y;
 	uv_stride  = output->dma_stride_c;
+	y_2bit_stride = 0;
+	uv_2bit_stride = 0;
 
 	ret = fimc_is_hw_mcsc_check_format(HW_MCSC_DMA_OUTPUT,
 		format, bitwidth, out_width, out_height);
@@ -1870,7 +1888,8 @@ int fimc_is_hw_mcsc_dma_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_out
 		hw_mcsc->conv420_en[output_id] = conv420_en;
 	}
 
-	fimc_is_scaler_set_wdma_format(hw_ip->regs, hw_ip->id, output_id, img_format);
+	fimc_is_scaler_set_wdma_format(hw_ip->regs, output_id, img_format);
+	fimc_is_scaler_set_wdma_10bit_type(hw_ip->regs, output_id, img_10bit_type);
 	fimc_is_scaler_set_420_conversion(hw_ip->regs, output_id, 0, conv420_en);
 
 	fimc_is_scaler_get_post_dst_size(hw_ip->regs, output_id, &scaled_width, &scaled_height);
@@ -1886,19 +1905,13 @@ int fimc_is_hw_mcsc_dma_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_out
 	fimc_is_scaler_set_wdma_size(hw_ip->regs, output_id, out_width, out_height);
 
 	fimc_is_scaler_set_wdma_stride(hw_ip->regs, output_id, y_stride, uv_stride);
+	fimc_is_scaler_set_wdma_2bit_stride(hw_ip->regs, output_id, y_2bit_stride, uv_2bit_stride);
 
-	fimc_is_scaler_set_wdma_10bit_type(hw_ip->regs, output_id, format, bitwidth, sensor_position);
-
-	if (output->plane == DMA_OUTPUT_PLANE_4) {
-		y_2bit_stride = ALIGN(out_width / 4, 16);
-		uv_2bit_stride = ALIGN(out_width / 4, 16);
-		fimc_is_scaler_set_wdma_2bit_stride(hw_ip->regs, output_id, y_2bit_stride, uv_2bit_stride);
-	}
 	return ret;
 }
 
 int fimc_is_hw_mcsc_hwfc_mode(struct fimc_is_hw_ip *hw_ip, struct param_mcs_input *input,
-	u32 hwfc_output_ids, u32 dma_output_ids, u32 instance)
+	u32 hwfc_output_ids, u32 instance)
 {
 	int ret = 0;
 	struct fimc_is_hw_mcsc *hw_mcsc;
@@ -1906,10 +1919,10 @@ int fimc_is_hw_mcsc_hwfc_mode(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inpu
 	u32 input_id = 0, output_id;
 	bool config = true;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!input);
-	FIMC_BUG(!cap);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!input);
+	BUG_ON(!cap);
+	BUG_ON(!hw_ip->priv_info);
 
 	/* can't support this function */
 	if (cap->hwfc != MCSC_CAP_SUPPORT)
@@ -1919,22 +1932,6 @@ int fimc_is_hw_mcsc_hwfc_mode(struct fimc_is_hw_ip *hw_ip, struct param_mcs_inpu
 
 	if (cap->enable_shared_output && !hwfc_output_ids)
 		return 0;
-
-	/* skip hwfc mode when..
-	 *  - one core share Preview, Reprocessing
-	 *  - at Preview stream, DMA output port shared to previous reprocessing port
-	 *  ex> at 1x3 scaler,
-	 *     1. preview - output 0 used, reprocessing - output 1, 2 used
-	 *        above output is not overlapped
-	 *        at this case, when CAPTURE -> PREVIEW, preview shot should not set hwfc_mode
-	 *        due to not set hwfc_mode off during JPEG is operating.
-	 *     2. preview - output 0, 1 used (1: preview callback), reprocessing - output 1, 2 used
-	 *        above output is overlapped "output 1"
-	 *        at this case, when CAPTURE -> PREVIEW, preview shot shuold set hwfc_mode to "0"
-	 *        for avoid operate at Preview stream.
-	 */
-	if (!hw_mcsc->rep_flag[instance] && !(hw_mcsc->prev_hwfc_output_ids & dma_output_ids))
-		return ret;
 
 	msdbg_hw(2, "hwfc_mode_setting output[0x%08X]\n", instance, hw_ip, hwfc_output_ids);
 
@@ -1967,10 +1964,10 @@ int fimc_is_hw_mcsc_hwfc_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_ou
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!output);
-	FIMC_BUG(!cap);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!output);
+	BUG_ON(!cap);
+	BUG_ON(!hw_ip->priv_info);
 
 	/* can't support this function */
 	if (cap->out_hwfc[output_id] != MCSC_CAP_SUPPORT)
@@ -1996,109 +1993,63 @@ int fimc_is_hw_mcsc_hwfc_output(struct fimc_is_hw_ip *hw_ip, struct param_mcs_ou
 	return ret;
 }
 
-void fimc_is_hw_bchs_range(void __iomem *base_addr, u32 output_id, int yuv)
+void fimc_is_hw_bchs_range(void __iomem *base_addr, u32 output_id, int yuv_range)
 {
-	u32 y_ofs, y_gain, c_gain00, c_gain01, c_gain10, c_gain11;
-
 #ifdef ENABLE_10BIT_MCSC
-	if (yuv == SCALER_OUTPUT_YUV_RANGE_FULL) {
+	if (yuv_range == SCALER_OUTPUT_YUV_RANGE_FULL) {
 		/* Y range - [0:1024], U/V range - [0:1024] */
-		y_ofs = 0;
-		y_gain = 1024;
-		c_gain00 = 1024;
-		c_gain01 = 0;
-		c_gain10 = 0;
-		c_gain11 = 1024;
-	} else {
-		/* YUV_RANGE_NARROW */
+		fimc_is_scaler_set_b_c(base_addr, output_id, 0, 1024);
+		fimc_is_scaler_set_h_s(base_addr, output_id, 1024, 0, 0, 1024);
+	} else {	/* YUV_RANGE_NARROW */
 		/* Y range - [64:940], U/V range - [64:960] */
-		y_ofs = 0;
-		y_gain = 1024;
-		c_gain00 = 1024;
-		c_gain01 = 0;
-		c_gain10 = 0;
-		c_gain11 = 1024;
+		fimc_is_scaler_set_b_c(base_addr, output_id, 0, 1024);
+		fimc_is_scaler_set_h_s(base_addr, output_id, 1024, 0, 0, 1024);
 	}
 #else
-	if (yuv == SCALER_OUTPUT_YUV_RANGE_FULL) {
+	if (yuv_range == SCALER_OUTPUT_YUV_RANGE_FULL) {
 		/* Y range - [0:255], U/V range - [0:255] */
-		y_ofs = 0;
-		y_gain = 256;
-		c_gain00 = 256;
-		c_gain01 = 0;
-		c_gain10 = 0;
-		c_gain11 = 256;
-	} else {
-		/* YUV_RANGE_NARROW */
+		fimc_is_scaler_set_b_c(base_addr, output_id, 0, 256);
+		fimc_is_scaler_set_h_s(base_addr, output_id, 256, 0, 0, 256);
+	} else {	/* YUV_RANGE_NARROW */
 		/* Y range - [16:235], U/V range - [16:239] */
-		y_ofs = 16;
-		y_gain = 220;
-		c_gain00 = 224;
-		c_gain01 = 0;
-		c_gain10 = 0;
-		c_gain11 = 224;
+		fimc_is_scaler_set_b_c(base_addr, output_id, 16, 220);
+		fimc_is_scaler_set_h_s(base_addr, output_id, 224, 0, 0, 224);
 	}
 #endif
-	fimc_is_scaler_set_b_c(base_addr, output_id, y_ofs, y_gain);
-	fimc_is_scaler_set_h_s(base_addr, output_id, c_gain00, c_gain01, c_gain10, c_gain11);
 }
 
-void fimc_is_hw_bchs_clamp(void __iomem *base_addr, u32 output_id, int yuv,
-	struct scaler_bchs_clamp_cfg *sc_bchs)
+void fimc_is_hw_bchs_clamp(void __iomem *base_addr, u32 output_id, int yuv_range)
 {
-	u32 y_max, y_min, c_max, c_min;
-
 #ifdef ENABLE_10BIT_MCSC
-	if (yuv == SCALER_OUTPUT_YUV_RANGE_FULL) {
-		y_max = 1023;
-		y_min = 0;
-		c_max = 1023;
-		c_min = 0;
-	} else {
-		/* YUV_RANGE_NARROW */
-		y_max = 940;
-		y_min = 64;
-		c_max = 960;
-		c_min = 64;
-	}
+	if (yuv_range == SCALER_OUTPUT_YUV_RANGE_FULL)
+		fimc_is_scaler_set_bchs_clamp(base_addr, output_id, 1023, 0, 1023, 0);
+	else	/* YUV_RANGE_NARROW */
+		fimc_is_scaler_set_bchs_clamp(base_addr, output_id, 940, 64, 960, 64);
 #else
-	if (yuv == SCALER_OUTPUT_YUV_RANGE_FULL) {
-		y_max = 255;
-		y_min = 0;
-		c_max = 255;
-		c_min = 0;
-	} else {
-		/* YUV_RANGE_NARROW */
-		y_max = 235;
-		y_min = 16;
-		c_max = 240;
-		c_min = 16;
-	}
+	if (yuv_range == SCALER_OUTPUT_YUV_RANGE_FULL)
+		fimc_is_scaler_set_bchs_clamp(base_addr, output_id, 255, 0, 255, 0);
+	else	/* YUV_RANGE_NARROW */
+		fimc_is_scaler_set_bchs_clamp(base_addr, output_id, 235, 16, 240, 16);
 #endif
-	if (sc_bchs)
-		fimc_is_scaler_set_bchs_clamp(base_addr, output_id,
-			sc_bchs->y_max, sc_bchs->y_min,
-			sc_bchs->c_max, sc_bchs->c_min);
-	else
-		fimc_is_scaler_set_bchs_clamp(base_addr, output_id, y_max, y_min, c_max, c_min);
 }
 
 int fimc_is_hw_mcsc_output_yuvrange(struct fimc_is_hw_ip *hw_ip, struct param_mcs_output *output,
 	u32 output_id, u32 instance)
 {
 	int ret = 0;
-	int yuv = 0;
+	int yuv_range = 0;
 	u32 input_id = 0;
 	bool config = true;
 	struct fimc_is_hw_mcsc *hw_mcsc = NULL;
-	struct hw_mcsc_setfile *setfile;
+#if !defined(USE_YUV_RANGE_BY_ISP)
 	enum exynos_sensor_position sensor_position;
+	scaler_setfile_contents contents;
+#endif
 	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
-	struct scaler_bchs_clamp_cfg *sc_bchs;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!output);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!output);
+	BUG_ON(!hw_ip->priv_info);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 
@@ -2110,46 +2061,41 @@ int fimc_is_hw_mcsc_output_yuvrange(struct fimc_is_hw_ip *hw_ip, struct param_mc
 
 	if (output->dma_cmd == DMA_OUTPUT_COMMAND_DISABLE) {
 		if (cap->enable_shared_output == false
-			|| (config && !test_bit(output_id, &mcsc_out_st)))
+			|| (config && !test_bit(output_id, &hw_mcsc_out_configured)))
 			fimc_is_scaler_set_bchs_enable(hw_ip->regs, output_id, 0);
 		return ret;
 	}
 
-	yuv = output->yuv_range;
-	hw_mcsc->yuv_range = yuv; /* save for ISP */
-
-	sensor_position = hw_ip->hardware->sensor_position[instance];
-	setfile = hw_mcsc->cur_setfile[sensor_position][instance];
-#if defined(USE_UVSP_CAC)
-	sc_bchs = &setfile->sc_bchs[yuv];
-#else
-	sc_bchs = NULL;
-#endif
+	yuv_range = output->yuv_range;
+	hw_mcsc->yuv_range = yuv_range; /* save for ISP */
 
 	fimc_is_scaler_set_bchs_enable(hw_ip->regs, output_id, 1);
 #if !defined(USE_YUV_RANGE_BY_ISP)
 	if (test_bit(HW_TUNESET, &hw_ip->state)) {
 		/* set yuv range config value by scaler_param yuv_range mode */
+		sensor_position = hw_ip->hardware->sensor_position[instance];
+		contents = hw_mcsc->applied_setfile[sensor_position][instance]->contents[yuv_range];
 		fimc_is_scaler_set_b_c(hw_ip->regs, output_id,
-			setfile->sc_base[yuv].y_offset, setfile->sc_base[yuv].y_gain);
+			contents.y_offset, contents.y_gain);
 		fimc_is_scaler_set_h_s(hw_ip->regs, output_id,
-			setfile->sc_base[yuv].c_gain00, setfile->sc_base[yuv].c_gain01,
-			setfile->sc_base[yuv].c_gain10, setfile->sc_base[yuv].c_gain11);
+			contents.c_gain00, contents.c_gain01,
+			contents.c_gain10, contents.c_gain11);
 		msdbg_hw(2, "set YUV range(%d) by setfile parameter\n",
-			instance, hw_ip, yuv);
-		msdbg_hw(2, "[OUT:%d]output_yuv_setting: yuv(%d), cmd(O:%d,D:%d)\n",
-			instance, hw_ip, output_id, yuv, output->otf_cmd, output->dma_cmd);
+			instance, hw_ip, yuv_range);
+		msdbg_hw(2, "[OUT:%d]output_yuv_setting: yuv_range(%d), cmd(O:%d,D:%d)\n",
+			instance, hw_ip, output_id, yuv_range, output->otf_cmd, output->dma_cmd);
 		dbg_hw(2, "[Y:offset(%d),gain(%d)][C:gain00(%d),01(%d),10(%d),11(%d)]\n",
-			setfile->sc_base[yuv].y_offset, setfile->sc_base[yuv].y_gain,
-			setfile->sc_base[yuv].c_gain00, setfile->sc_base[yuv].c_gain01,
-			setfile->sc_base[yuv].c_gain10, setfile->sc_base[yuv].c_gain11);
+			contents.y_offset, contents.y_gain,
+			contents.c_gain00, contents.c_gain01,
+			contents.c_gain10, contents.c_gain11);
 	} else {
-		fimc_is_hw_bchs_range(hw_ip->regs, output_id, yuv);
+		fimc_is_hw_bchs_range(hw_ip->regs, output_id, yuv_range);
 		msdbg_hw(2, "YUV range set default settings\n", instance, hw_ip);
 	}
+	fimc_is_hw_bchs_clamp(hw_ip->regs, output_id, yuv_range);
 #else
-	fimc_is_hw_bchs_range(hw_ip->regs, output_id, yuv);
-	fimc_is_hw_bchs_clamp(hw_ip->regs, output_id, yuv, sc_bchs);
+	fimc_is_hw_bchs_range(hw_ip->regs, output_id, yuv_range);
+	fimc_is_hw_bchs_clamp(hw_ip->regs, output_id, yuv_range);
 #endif
 	return ret;
 }
@@ -2162,7 +2108,6 @@ int fimc_is_hw_mcsc_adjust_input_img_fmt(u32 format, u32 plane, u32 order, u32 *
 	case DMA_INPUT_FORMAT_YUV420:
 		switch (plane) {
 		case 2:
-		case 4:
 			switch (order) {
 			case DMA_INPUT_ORDER_CbCr:
 				*img_format = MCSC_YUV420_2P_UFIRST;
@@ -2208,7 +2153,6 @@ int fimc_is_hw_mcsc_adjust_input_img_fmt(u32 format, u32 plane, u32 order, u32 *
 			}
 			break;
 		case 2:
-		case 4:
 			switch (order) {
 			case DMA_INPUT_ORDER_CbCr:
 				*img_format = MCSC_YUV422_2P_UFIRST;
@@ -2231,9 +2175,6 @@ int fimc_is_hw_mcsc_adjust_input_img_fmt(u32 format, u32 plane, u32 order, u32 *
 			break;
 		}
 		break;
-	case DMA_INPUT_FORMAT_Y:
-		*img_format = MCSC_MONO_Y8;
-		break;
 	default:
 		err_hw("img format error - (%d/%d/%d)", format, order, plane);
 		ret = -EINVAL;
@@ -2255,7 +2196,6 @@ int fimc_is_hw_mcsc_adjust_output_img_fmt(u32 format, u32 plane, u32 order, u32 
 			*conv420_flag = true;
 		switch (plane) {
 		case 2:
-		case 4:
 			switch (order) {
 			case DMA_OUTPUT_ORDER_CbCr:
 				*img_format = MCSC_YUV420_2P_UFIRST;
@@ -2303,7 +2243,6 @@ int fimc_is_hw_mcsc_adjust_output_img_fmt(u32 format, u32 plane, u32 order, u32 
 			}
 			break;
 		case 2:
-		case 4:
 			switch (order) {
 			case DMA_OUTPUT_ORDER_CbCr:
 				*img_format = MCSC_YUV422_2P_UFIRST;
@@ -2325,28 +2264,6 @@ int fimc_is_hw_mcsc_adjust_output_img_fmt(u32 format, u32 plane, u32 order, u32 
 			ret = -EINVAL;
 			break;
 		}
-		break;
-	case DMA_OUTPUT_FORMAT_RGB:
-		switch (order) {
-		case DMA_OUTPUT_ORDER_ARGB:
-			*img_format = MCSC_RGB_ARGB8888;
-			break;
-		case DMA_OUTPUT_ORDER_BGRA:
-			*img_format = MCSC_RGB_BGRA8888;
-			break;
-		case DMA_OUTPUT_ORDER_RGBA:
-			*img_format = MCSC_RGB_RGBA8888;
-			break;
-		case DMA_OUTPUT_ORDER_ABGR:
-			*img_format = MCSC_RGB_ABGR8888;
-			break;
-		default:
-			*img_format = MCSC_RGB_RGBA8888;
-			break;
-		}
-		break;
-	case DMA_OUTPUT_FORMAT_Y:
-		*img_format = MCSC_MONO_Y8;
 		break;
 	default:
 		err_hw("img format error - (%d/%d/%d)", format, order, plane);
@@ -2375,8 +2292,7 @@ int fimc_is_hw_mcsc_check_format(enum mcsc_io_type type, u32 format, u32 bit_wid
 			err_hw("Invalid MCSC OTF Input height(%d)", height);
 		}
 
-		if (!(format == OTF_INPUT_FORMAT_YUV422
-			|| format == OTF_INPUT_FORMAT_Y)) {
+		if (format != OTF_INPUT_FORMAT_YUV422) {
 			ret = -EINVAL;
 			err_hw("Invalid MCSC OTF Input format(%d)", format);
 		}
@@ -2420,15 +2336,12 @@ int fimc_is_hw_mcsc_check_format(enum mcsc_io_type type, u32 format, u32 bit_wid
 			err_hw("Invalid MCSC DMA Input height(%d)", height);
 		}
 
-		if (!(format == DMA_INPUT_FORMAT_YUV422
-			|| format == DMA_INPUT_FORMAT_Y)) {
+		if (format != DMA_INPUT_FORMAT_YUV422) {
 			ret = -EINVAL;
 			err_hw("Invalid MCSC DMA Input format(%d)", format);
 		}
 
-		if (!(bit_width == DMA_INPUT_BIT_WIDTH_8BIT ||
-			bit_width == DMA_INPUT_BIT_WIDTH_10BIT ||
-			bit_width == DMA_INPUT_BIT_WIDTH_16BIT)) {
+		if (bit_width != DMA_INPUT_BIT_WIDTH_8BIT) {
 			ret = -EINVAL;
 			err_hw("Invalid MCSC DMA Input format(%d)", bit_width);
 		}
@@ -2445,20 +2358,15 @@ int fimc_is_hw_mcsc_check_format(enum mcsc_io_type type, u32 format, u32 bit_wid
 			err_hw("Invalid MCSC DMA Output height(%d)", height);
 		}
 
-		if (!(format == DMA_OUTPUT_FORMAT_YUV422
-			|| format == DMA_OUTPUT_FORMAT_YUV420
-			|| format == DMA_OUTPUT_FORMAT_Y
-			|| format == DMA_OUTPUT_FORMAT_RGB)) {
+		if (!(format == DMA_OUTPUT_FORMAT_YUV422 ||
+			format == DMA_OUTPUT_FORMAT_YUV420)) {
 			ret = -EINVAL;
 			err_hw("Invalid MCSC DMA Output format(%d)", format);
 		}
 
-		if (!(bit_width == DMA_OUTPUT_BIT_WIDTH_8BIT ||
-			bit_width == DMA_OUTPUT_BIT_WIDTH_10BIT ||
-			bit_width == DMA_OUTPUT_BIT_WIDTH_16BIT ||
-			bit_width == DMA_OUTPUT_BIT_WIDTH_32BIT)) {
+		if (bit_width != DMA_OUTPUT_BIT_WIDTH_8BIT) {
 			ret = -EINVAL;
-			err_hw("Invalid MCSC DMA Output bit_width(%d)", bit_width);
+			err_hw("Invalid MCSC DMA Output format(%d)", bit_width);
 		}
 		break;
 	default:
@@ -2469,81 +2377,176 @@ int fimc_is_hw_mcsc_check_format(enum mcsc_io_type type, u32 format, u32 bit_wid
 	return ret;
 }
 
+void fimc_is_hw_mcsc_djag_init(struct fimc_is_hw_ip *hw_ip)
+{
+#ifdef ENABLE_DJAG_IN_MCSC
+	struct fimc_is_hw_mcsc *hw_mcsc;
+	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
+
+	BUG_ON(!hw_ip->priv_info);
+	BUG_ON(!cap);
+
+	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
+	if (cap->djag == MCSC_CAP_SUPPORT) {
+		hw_mcsc->djag_input_source = DEV_HW_MCSC0;
+		hw_mcsc->djag_prescale_ratio = MCSC_DJAG_PRESCALE_INDEX_1;
+	}
+
+	/* djag config init */
+	memcpy(&hw_mcsc->djag_tunecfg, &init_djag_cfgs, sizeof(struct djag_setfile_contents));
+
+#endif
+}
+
+int fimc_is_hw_mcsc_update_djag_register(struct fimc_is_hw_ip *hw_ip,
+		struct mcs_param *param,
+		u32 instance)
+{
+	int ret = 0;
+#ifdef ENABLE_DJAG_IN_MCSC
+	struct fimc_is_hw_mcsc *hw_mcsc = NULL;
+	struct fimc_is_hw_mcsc_cap *cap;
+	u32 in_width, in_height;
+	u32 out_width = 0, out_height = 0;
+	ulong temp_width, temp_height;
+	struct djag_setfile_contents djag_tuneset;
+	u32 hratio, vratio, min_ratio;
+	u32 scale_index = MCSC_DJAG_PRESCALE_INDEX_1;
+	enum exynos_sensor_position sensor_position;
+	int output_id = 0;
+
+	BUG_ON(!hw_ip);
+	BUG_ON(!hw_ip->priv_info);
+	BUG_ON(!param);
+
+	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
+	cap = GET_MCSC_HW_CAP(hw_ip);
+	sensor_position = hw_ip->hardware->sensor_position[instance];
+
+	if (test_bit(DJAG_SET_DONE, &hw_mcsc->blk_set_ctrl))
+		return ret;
+
+	fimc_is_scaler_set_djag_input_source(hw_ip->regs, hw_mcsc->djag_input_source);
+
+	if (hw_mcsc->djag_input_source != (hw_ip->id - DEV_HW_MCSC0)) {
+		sdbg_hw(2, "this instance does not use DJAG.\n", hw_ip);
+		return ret;
+	}
+
+	djag_tuneset = hw_mcsc->djag_tunecfg;
+
+	in_width = param->input.width;
+	in_height = param->input.height;
+
+	/* select compare output_port : select max output size */
+	for (output_id = MCSC_OUTPUT0; output_id < cap->max_output; output_id++) {
+		if (test_bit(output_id, &hw_mcsc->out_en)) {
+			if (out_width <= param->output[output_id].width) {
+				out_width = param->output[output_id].width;
+				out_height = param->output[output_id].height;
+			}
+		}
+	}
+
+	if (param->input.width > out_width) {
+		sdbg_hw(2, "DJAG is not applied still.\n", hw_ip);
+		return ret;
+	}
+
+	/* check scale ratio if over 2.5 times */
+	if ((out_width * 10 > in_width * 25) || (out_height * 10 > in_height * 25)) {
+		out_width = round_down(in_width * 25 / 10, 2);
+		out_height = round_down(in_height * 25 / 10, 2);
+	}
+
+	hratio = GET_DJAG_ZOOM_RATIO(in_width, out_width);
+	vratio = GET_DJAG_ZOOM_RATIO(in_height, out_height);
+	min_ratio = min(hratio, vratio);
+	if (min_ratio >= GET_DJAG_ZOOM_RATIO(10, 10)) /* Zoom Ratio = 1.0 */
+		scale_index = MCSC_DJAG_PRESCALE_INDEX_1;
+	else if (min_ratio >= GET_DJAG_ZOOM_RATIO(10, 14)) /* Zoom Ratio = 1.4 */
+		scale_index = MCSC_DJAG_PRESCALE_INDEX_2;
+	else if (min_ratio >= GET_DJAG_ZOOM_RATIO(10, 20)) /* Zoom Ratio = 2.0 */
+		scale_index = MCSC_DJAG_PRESCALE_INDEX_3;
+	else
+		scale_index = MCSC_DJAG_PRESCALE_INDEX_4;
+
+	/* overwrite mcsc param for poly-phase */
+	for (output_id = MCSC_OUTPUT0; output_id < cap->max_output; output_id++) {
+		if (test_bit(output_id, &hw_mcsc->out_en)) {
+			if ((param->output[output_id].crop_offset_x != 0) || (param->output[output_id].crop_offset_y != 0)) {
+				temp_width = (ulong)in_width;
+				temp_height = (ulong)in_height;
+				out_width = (u32)round_down((temp_width << MCSC_PRECISION) / min_ratio, 2);
+				out_height = (u32)round_down((temp_height << MCSC_PRECISION) / min_ratio, 2);
+				hratio = GET_DJAG_ZOOM_RATIO(in_width, out_width);
+				vratio = GET_DJAG_ZOOM_RATIO(in_height, out_height);
+				param->output[output_id].crop_offset_x =
+					ALIGN(CONVRES(param->output[output_id].crop_offset_x, in_width, out_width), 2);
+				param->output[output_id].crop_offset_y =
+					ALIGN(CONVRES(param->output[output_id].crop_offset_y, in_height, out_height), 2);
+			}
+			param->output[output_id].crop_width = ALIGN(out_width - param->output[output_id].crop_offset_x * 2, 2);
+			param->output[output_id].crop_height = ALIGN(out_height - param->output[output_id].crop_offset_y * 2, 2);
+		}
+	}
+
+	/* djag image size setting */
+	fimc_is_scaler_set_djag_src_size(hw_ip->regs, in_width, in_height);
+	fimc_is_scaler_set_djag_dst_size(hw_ip->regs, out_width, out_height);
+	fimc_is_scaler_set_djag_scaling_ratio(hw_ip->regs, hratio, vratio);
+	fimc_is_scaler_set_djag_init_phase_offset(hw_ip->regs, 0, 0);
+	fimc_is_scaler_set_djag_round_mode(hw_ip->regs, 1);
+
+#ifdef MCSC_USE_DEJAG_TUNING_PARAM
+	djag_tuneset = hw_mcsc->applied_setfile[sensor_position][instance]->djag_contents[scale_index];
+#endif
+	fimc_is_scaler_set_djag_tunning_param(hw_ip->regs, djag_tuneset);
+
+	fimc_is_scaler_set_djag_enable(hw_ip->regs, 1);
+
+	set_bit(DJAG_SET_DONE, &hw_mcsc->blk_set_ctrl);
+#endif
+	return ret;
+}
+
 int fimc_is_hw_mcsc_update_dsvra_register(struct fimc_is_hw_ip *hw_ip,
-	struct fimc_is_group *head, struct mcs_param *mcs_param,
-	u32 instance, struct camera2_shot *shot)
+	struct is_param_region *param, u32 instance, enum mcsc_port dsvra_inport)
 {
 	int ret = 0;
 	struct fimc_is_hw_mcsc *hw_mcsc = NULL;
-	struct fimc_is_hw_mcsc_cap *cap = GET_MCSC_HW_CAP(hw_ip);
-	u32 img_width, img_height;
-	u32 src_width, src_height, src_x_pos, src_y_pos;
+	struct mcs_param *mcs_param;
+	struct fimc_is_hw_mcsc_cap *cap;
+	u32 in_width, in_height;
 	u32 out_width, out_height;
 	u32 hratio, vratio;
 	ulong temp_width, temp_height;
-	enum mcsc_port dsvra_inport;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!hw_ip->priv_info);
-	FIMC_BUG(!mcs_param);
+	BUG_ON(!hw_ip);
+	BUG_ON(!hw_ip->priv_info);
+	BUG_ON(!param);
 
-	if (cap->ds_vra != MCSC_CAP_SUPPORT)
-		return ret;
+	mcs_param = &param->mcs;
+	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
+	cap = GET_MCSC_HW_CAP(hw_ip);
 
-	if (!test_bit(MCSC_OUTPUT_DS, &mcsc_out_st))
+	if (!test_bit(MCSC_OUTPUT_DS, &hw_mcsc_out_configured))
 		return -EINVAL;
-
-	dsvra_inport = shot ? shot->uctl.scalerUd.mcsc_sub_blk_port[INTERFACE_TYPE_DS] : MCSC_PORT_NONE;
 
 	if (dsvra_inport == MCSC_PORT_NONE)
 		return -EINVAL;
 
-	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
-
-	/* DS input image size */
-	img_width = mcs_param->output[dsvra_inport].width;
-	img_height = mcs_param->output[dsvra_inport].height;
-
-	/* DS input src size (src_size + src_pos <= img_size) */
-	src_width = mcs_param->output[MCSC_OUTPUT_DS].crop_width;
-	src_height = mcs_param->output[MCSC_OUTPUT_DS].crop_height;
-	src_x_pos = mcs_param->output[MCSC_OUTPUT_DS].crop_offset_x;
-	src_y_pos = mcs_param->output[MCSC_OUTPUT_DS].crop_offset_y;
-
+	in_width = mcs_param->output[dsvra_inport].width;
+	in_height = mcs_param->output[dsvra_inport].height;
 	out_width = mcs_param->output[MCSC_OUTPUT_DS].width;
 	out_height = mcs_param->output[MCSC_OUTPUT_DS].height;
 
-	if (src_width == 0 || src_height == 0) {
-		src_x_pos = 0;
-		src_y_pos = 0;
-		src_width = img_width;
-		src_height = img_height;
-	}
-
-	if ((int)src_x_pos < 0 || (int)src_y_pos < 0)
-		panic("%s: wrong DS crop position (x:%d, y:%d)", __func__, src_x_pos, src_y_pos);
-
-	if (src_width + src_x_pos > img_width) {
-		warn_hw("%s: Out of crop width region of DS (%d < (%d + %d))",
-			__func__, img_width, src_width, src_x_pos);
-		src_x_pos = 0;
-		src_width = img_width;
-	}
-
-	if (src_height + src_y_pos > img_height) {
-		warn_hw("%s: Out of crop height region of DS (%d < (%d + %d))",
-			__func__, img_height, src_height, src_y_pos);
-		src_y_pos = 0;
-		src_height = img_height;
-	}
-
-	temp_width = (ulong)src_width;
-	temp_height = (ulong)src_height;
+	temp_width = (ulong)in_width;
+	temp_height = (ulong)in_height;
 	hratio = (u32)((temp_width << MCSC_PRECISION) / out_width);
 	vratio = (u32)((temp_height << MCSC_PRECISION) / out_height);
 
-	fimc_is_scaler_set_ds_img_size(hw_ip->regs, img_width, img_height);
-	fimc_is_scaler_set_ds_src_size(hw_ip->regs, src_width, src_height, src_x_pos, src_y_pos);
+	fimc_is_scaler_set_ds_src_size(hw_ip->regs, in_width, in_height);
 	fimc_is_scaler_set_ds_dst_size(hw_ip->regs, out_width, out_height);
 	fimc_is_scaler_set_ds_scaling_ratio(hw_ip->regs, hratio, vratio);
 	fimc_is_scaler_set_ds_init_phase_offset(hw_ip->regs, 0, 0);
@@ -2552,44 +2555,37 @@ int fimc_is_hw_mcsc_update_dsvra_register(struct fimc_is_hw_ip *hw_ip,
 
 	fimc_is_scaler_set_otf_out_path(hw_ip->regs, dsvra_inport);
 	fimc_is_scaler_set_ds_enable(hw_ip->regs, true);
-	fimc_is_scaler_set_dma_out_enable(hw_ip->regs, MCSC_OUTPUT_DS, true);
-
-	if (!test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state))
-		set_bit(HW_MCS_DS_CFG, &hw_ip->state);
-
-	msdbg_hw(2, "%s: dsvra_inport(%d) configured\n", instance, hw_ip, __func__, dsvra_inport);
+	msdbg_hw(2, "%s: dsvra_inport(%d)\n", instance, hw_ip, __func__, dsvra_inport);
 
 	return ret;
 }
 
 int fimc_is_hw_mcsc_update_ysum_register(struct fimc_is_hw_ip *hw_ip,
-	struct fimc_is_group *head, struct mcs_param *mcs_param,
-	u32 instance, struct camera2_shot *shot)
+	struct is_param_region *param, enum mcsc_port ysumport)
 {
 	int ret = 0;
 	struct fimc_is_hw_mcsc *hw_mcsc = NULL;
+	struct mcs_param *mcs_param;
 	struct fimc_is_hw_mcsc_cap *cap;
 	u32 width, height;
 	u32 start_x = 0, start_y = 0;
-	enum mcsc_port ysumport;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!hw_ip->priv_info);
-	FIMC_BUG(!mcs_param);
+	BUG_ON(!hw_ip);
+	BUG_ON(!hw_ip->priv_info);
+	BUG_ON(!param);
 
+	mcs_param = &param->mcs;
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 	cap = GET_MCSC_HW_CAP(hw_ip);
 
-	if (cap->ysum != MCSC_CAP_SUPPORT)
+	if (test_bit(YSUM_SET_DONE, &hw_mcsc->blk_set_ctrl))
 		return ret;
 
-	ysumport = shot ? shot->uctl.scalerUd.mcsc_sub_blk_port[INTERFACE_TYPE_YSUM] : MCSC_PORT_NONE;
-
 	if (ysumport == MCSC_PORT_NONE)
-		return -EINVAL;
+		return ret;
 
 	if (!fimc_is_scaler_get_dma_out_enable(hw_ip->regs, ysumport))
-		return -EINVAL;
+		return ret;
 
 	switch (ysumport) {
 	case MCSC_PORT_0:
@@ -2616,14 +2612,11 @@ int fimc_is_hw_mcsc_update_ysum_register(struct fimc_is_hw_ip *hw_ip,
 		goto no_setting_ysum;
 		break;
 	}
-
 	fimc_is_scaler_set_ysum_image_size(hw_ip->regs, width, height, start_x, start_y);
+
 	fimc_is_scaler_set_ysum_input_sourece_enable(hw_ip->regs, ysumport, true);
 
-	if (!test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state))
-		set_bit(HW_MCS_YSUM_CFG, &hw_ip->state);
-
-	msdbg_hw(2, "%s: ysum_port(%d) configured\n", instance, hw_ip, __func__, ysumport);
+	set_bit(YSUM_SET_DONE, &hw_mcsc->blk_set_ctrl);
 
 no_setting_ysum:
 	return ret;
@@ -2645,7 +2638,7 @@ static void fimc_is_hw_mcsc_size_dump(struct fimc_is_hw_ip *hw_ip)
 	u32 wdma_y_stride, wdma_uv_stride = 0;
 	struct fimc_is_hw_mcsc_cap *cap;
 
-	FIMC_BUG_VOID(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	/* skip size dump, if hw_ip wasn't opened */
 	if (!test_bit(HW_OPEN, &hw_ip->state))
@@ -2689,148 +2682,11 @@ static void fimc_is_hw_mcsc_size_dump(struct fimc_is_hw_ip *hw_ip)
 	return;
 }
 
-void fimc_is_hw_mcsc_set_size_for_uvsp(struct fimc_is_hardware *hardware,
-	struct fimc_is_frame *frame, ulong hw_map)
-{
-	u32 hw_id;
-	int hw_slot = -1;
-	struct fimc_is_hw_ip *hw_ip;
-	struct fimc_is_hw_mcsc *hw_mcsc;
-	struct is_region *region;
-	struct taa_param *param;
-	struct camera2_shot_ext *shot_ext;
-	u32 input_w, input_h, crop_x, crop_y, output_w = 0, output_h = 0;
-
-	FIMC_BUG_VOID(!frame);
-
-	hw_id = DEV_HW_MCSC0;
-	if (test_bit_variables(hw_id, &hw_map))
-		hw_slot = fimc_is_hw_slot_id(hw_id);
-
-	hw_id = DEV_HW_MCSC1;
-	if (!valid_hw_slot_id(hw_slot) && test_bit_variables(hw_id, &hw_map))
-		hw_slot = fimc_is_hw_slot_id(hw_id);
-
-	if (!valid_hw_slot_id(hw_slot)) {
-		err_hw("[%d]Can't find proper hw_slot for MCSC", frame->instance);
-		return;
-	}
-
-	hw_ip = &hardware->hw_ip[hw_slot];
-	FIMC_BUG_VOID(!hw_ip->priv_info);
-	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
-	region = hw_ip->region[frame->instance];
-	FIMC_BUG_VOID(!region);
-
-	shot_ext = frame->shot_ext;
-	if (!frame->shot_ext) {
-		sdbg_hw(2, "[F:%d] shot_ext(NULL)\n", hw_ip, frame->fcount);
-		return;
-	}
-
-	msdbg_hw(2, "[F:%d]: set_size_for_uvsp: binning_r(%d,%d), crop_taa(%d,%d), bds(%d,%d)\n",
-		frame->instance, hw_ip, frame->fcount,
-		shot_ext->binning_ratio_x, shot_ext->binning_ratio_y,
-		shot_ext->crop_taa_x, shot_ext->crop_taa_y,
-		shot_ext->bds_ratio_x, shot_ext->bds_ratio_y);
-
-	param = &region->parameter.taa;
-
-	input_w = param->otf_input.bayer_crop_width;
-	input_h = param->otf_input.bayer_crop_height;
-	crop_x = param->otf_input.bayer_crop_offset_x;
-	crop_y = param->otf_input.bayer_crop_offset_y;
-	if (param->vdma1_input.cmd != DMA_INPUT_COMMAND_DISABLE) {
-		input_w = param->vdma1_input.bayer_crop_width;
-		input_h = param->vdma1_input.bayer_crop_height;
-		if (param->otf_output.crop_enable) {
-			crop_x = param->otf_output.crop_offset_x;
-			crop_y = param->otf_output.crop_offset_y;
-		} else {
-			crop_x = param->vdma1_input.bayer_crop_offset_x;
-			crop_y = param->vdma1_input.bayer_crop_offset_y;
-		}
-	}
-	if (param->vdma2_output.cmd != DMA_OUTPUT_COMMAND_DISABLE) {
-		output_w = param->vdma2_output.width;
-		output_h = param->vdma2_output.height;
-	} else {
-		output_w = param->vdma1_input.bayer_crop_width;
-		output_h = param->vdma1_input.bayer_crop_height;
-	}
-	frame->shot_ext->binning_ratio_x = (u16)region->parameter.sensor.config.sensor_binning_ratio_x;
-	frame->shot_ext->binning_ratio_y = (u16)region->parameter.sensor.config.sensor_binning_ratio_y;
-	frame->shot_ext->crop_taa_x = crop_x;
-	frame->shot_ext->crop_taa_y = crop_y;
-	if (output_w && output_h) {
-		frame->shot_ext->bds_ratio_x = (input_w / output_w);
-		frame->shot_ext->bds_ratio_y = (input_h / output_h);
-	} else {
-		frame->shot_ext->bds_ratio_x = 1;
-		frame->shot_ext->bds_ratio_y = 1;
-	}
-
-	msdbg_hw(2, "[F:%d]: set_size_for_uvsp: in(%d,%d, %dx%d), out(%dx%d), bin_r(%d,%d), crop(%d,%d), bds(%d,%d)\n",
-		frame->instance, hw_ip, frame->fcount,
-		crop_x, crop_y, input_w, input_h, output_w, output_h,
-		shot_ext->binning_ratio_x, shot_ext->binning_ratio_y,
-		shot_ext->crop_taa_x, shot_ext->crop_taa_y,
-		shot_ext->bds_ratio_x, shot_ext->bds_ratio_y);
-}
-
-void fimc_is_hw_mcsc_set_ni(struct fimc_is_hardware *hardware, struct fimc_is_frame *frame,
-	u32 instance)
-{
-	u32 hw_id, index;
-	int hw_slot = -1;
-	struct fimc_is_hw_ip *hw_ip;
-	struct fimc_is_hw_mcsc *hw_mcsc;
-
-	FIMC_BUG_VOID(!frame);
-
-	index = frame->fcount % NI_BACKUP_MAX;
-	hw_id = DEV_HW_MCSC0;
-	hw_slot = fimc_is_hw_slot_id(hw_id);
-	if (valid_hw_slot_id(hw_slot)) {
-		hw_ip = &hardware->hw_ip[hw_slot];
-		hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
-		if (hw_mcsc && frame->shot) {
-			hw_mcsc->ni_udm[index] = frame->shot->udm.ni;
-			msdbg_hw(2, "set_ni: [F:%d], %d,%d,%d -> %d,%d,%d\n", instance, hw_ip, frame->fcount,
-				frame->shot->udm.ni.currentFrameNoiseIndex,
-				frame->shot->udm.ni.nextFrameNoiseIndex,
-				frame->shot->udm.ni.nextNextFrameNoiseIndex,
-				hw_mcsc->ni_udm[index].currentFrameNoiseIndex,
-				hw_mcsc->ni_udm[index].nextFrameNoiseIndex,
-				hw_mcsc->ni_udm[index].nextNextFrameNoiseIndex);
-		}
-	}
-
-	hw_id = DEV_HW_MCSC1;
-	hw_slot = fimc_is_hw_slot_id(hw_id);
-	if (valid_hw_slot_id(hw_slot)) {
-		hw_ip = &hardware->hw_ip[hw_slot];
-		hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
-		if (hw_mcsc && frame->shot) {
-			hw_mcsc->ni_udm[index] = frame->shot->udm.ni;
-			msdbg_hw(2, "set_ni: [F:%d], %d,%d,%d -> %d,%d,%d\n", instance, hw_ip, frame->fcount,
-				frame->shot->udm.ni.currentFrameNoiseIndex,
-				frame->shot->udm.ni.nextFrameNoiseIndex,
-				frame->shot->udm.ni.nextNextFrameNoiseIndex,
-				hw_mcsc->ni_udm[index].currentFrameNoiseIndex,
-				hw_mcsc->ni_udm[index].nextFrameNoiseIndex,
-				hw_mcsc->ni_udm[index].nextNextFrameNoiseIndex);
-		}
-	}
-}
-
 static int fimc_is_hw_mcsc_get_meta(struct fimc_is_hw_ip *hw_ip,
 		struct fimc_is_frame *frame, unsigned long hw_map)
 {
 	int ret = 0;
 	struct fimc_is_hw_mcsc *hw_mcsc;
-	struct fimc_is_hw_mcsc_cap *cap;
-	int i;
 
 	if (unlikely(!frame)) {
 		mserr_hw("get_meta: frame is null", atomic_read(&hw_ip->instance), hw_ip);
@@ -2846,19 +2702,9 @@ static int fimc_is_hw_mcsc_get_meta(struct fimc_is_hw_ip *hw_ip,
 		return -EINVAL;
 	}
 
-	cap = GET_MCSC_HW_CAP(hw_ip);
-	if (!cap) {
-		err_hw("failed to get hw_mcsc_cap(%p)", cap);
-		return -EINVAL;
-	}
-
 	fimc_is_scaler_get_ysum_result(hw_ip->regs,
 		&frame->shot->udm.scaler.ysumdata.higher_ysum_value,
 		&frame->shot->udm.scaler.ysumdata.lower_ysum_value);
-
-	for (i = MCSC_OUTPUT0; i < cap->max_output; i++)
-		fimc_is_scaler_get_flip_mode(hw_ip->regs, i,
-			&frame->shot_ext->mcsc_flip_result[i]);
 
 	return ret;
 }
@@ -2868,22 +2714,20 @@ int fimc_is_hw_mcsc_restore(struct fimc_is_hw_ip *hw_ip, u32 instance)
 	int ret = 0;
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct is_param_region *param;
-	u32 lindex, hindex;
+	struct fimc_is_group *head;
 
 	BUG_ON(!hw_ip);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
+	head = GET_HEAD_GROUP_IN_DEVICE(FIMC_IS_DEVICE_ISCHAIN, hw_ip->group[instance]);
 
 	fimc_is_hw_mcsc_reset(hw_ip);
 
 	param = hw_mcsc->back_param;
-	lindex = hw_mcsc->back_lindex;
-	hindex = hw_mcsc->back_hindex;
 	param->tpu.config.tdnr_bypass = true;
 
 	/* setting for MCSC */
-	fimc_is_hw_mcsc_update_param(hw_ip, &param->mcs,
-			lindex, hindex, instance);
+	fimc_is_hw_mcsc_update_param(hw_ip, &param->mcs, instance);
 	info_hw("[RECOVERY]: mcsc update param\n");
 
 	/* setting for TDNR */
@@ -2891,7 +2735,11 @@ int fimc_is_hw_mcsc_restore(struct fimc_is_hw_ip *hw_ip, u32 instance)
 	info_hw("[RECOVERY]: tdnr update param\n");
 
 	fimc_is_hw_mcsc_clear_interrupt(hw_ip);
-	fimc_is_scaler_start(hw_ip->regs, hw_ip->id);
+
+	if (!test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state))
+		up(&hw_ip->smp_resource);
+	else
+		fimc_is_scaler_start(hw_ip->regs, hw_ip->id);
 
 	return ret;
 }
@@ -2899,7 +2747,6 @@ int fimc_is_hw_mcsc_restore(struct fimc_is_hw_ip *hw_ip, u32 instance)
 const struct fimc_is_hw_ip_ops fimc_is_hw_mcsc_ops = {
 	.open			= fimc_is_hw_mcsc_open,
 	.init			= fimc_is_hw_mcsc_init,
-	.deinit			= fimc_is_hw_mcsc_deinit,
 	.close			= fimc_is_hw_mcsc_close,
 	.enable			= fimc_is_hw_mcsc_enable,
 	.disable		= fimc_is_hw_mcsc_disable,
@@ -2921,9 +2768,9 @@ int fimc_is_hw_mcsc_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface 
 	int ret = 0;
 	int hw_slot = -1;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!itf);
-	FIMC_BUG(!itfc);
+	BUG_ON(!hw_ip);
+	BUG_ON(!itf);
+	BUG_ON(!itfc);
 
 	/* initialize device hardware */
 	hw_ip->id   = id;
@@ -2936,7 +2783,6 @@ int fimc_is_hw_mcsc_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface 
 	hw_ip->is_leader = true;
 	atomic_set(&hw_ip->status.Vvalid, V_BLANK);
 	atomic_set(&hw_ip->rsccount, 0);
-	atomic_set(&hw_ip->run_rsccount, 0);
 	init_waitqueue_head(&hw_ip->status.wait_queue);
 
 	/* set mcsc sfr base address */
@@ -2954,39 +2800,9 @@ int fimc_is_hw_mcsc_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface 
 	clear_bit(HW_CONFIG, &hw_ip->state);
 	clear_bit(HW_RUN, &hw_ip->state);
 	clear_bit(HW_TUNESET, &hw_ip->state);
-	clear_bit(HW_MCS_YSUM_CFG, &hw_ip->state);
-	clear_bit(HW_MCS_DS_CFG, &hw_ip->state);
-
-	spin_lock_init(&mcsc_out_slock);
+	spin_lock_init(&shared_output_slock);
 
 	sinfo_hw("probe done\n", hw_ip);
 
 	return ret;
-}
-
-void fimc_is_hw_mcsc_get_force_block_control(struct fimc_is_hw_ip *hw_ip, u32 ip_offset, u32 num_of_block,
-	u32 *input_sel, bool *en)
-{
-	u32 value = hw_ip->subblk_ctrl;
-
-	if (!GET_SUBBLK_CTRL_BIT(value, ip_offset, SUBBLK_CTRL_SYSFS))
-		return;
-
-	switch (num_of_block) {
-	case 1:
-		*input_sel = GET_SUBBLK_CTRL_BIT(value, ip_offset, SUBBLK_CTRL_INPUT) + DEV_HW_MCSC0;
-		*en = GET_SUBBLK_CTRL_BIT(value, ip_offset, SUBBLK_CTRL_EN);
-		sinfo_hw("force control single sub block: value(0x%08X), ip(%u) input_sel(%u), en(%u)\n",
-			hw_ip, value, ip_offset, *input_sel, *en);
-		break;
-	case 2:
-		*en = GET_SUBBLK_CTRL_BIT(value, ip_offset,
-			SUBBLK_CTRL_EN + GET_CORE_NUM(hw_ip->id));
-		sinfo_hw("force control dual sub block: value(0x%08X), ip(%u), en(%u)\n",
-			hw_ip, value, ip_offset, *en);
-		break;
-	default:
-		serr_hw("num_of_block(%u) of ip(%u) is wrong\n", hw_ip, num_of_block, ip_offset);
-		break;
-	}
 }

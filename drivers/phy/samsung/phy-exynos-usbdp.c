@@ -84,12 +84,6 @@ void phy_exynos_usbdp_tune(struct exynos_usbphy_info *info)
 		phy_exynos_usbdp_tune_each(info, para_name, val);
 	}
 }
-
-void phy_exynos_usbdp_ilbk(struct exynos_usbphy_info *info)
-{
-
-}
-
 void phy_exynos_usbdp_enable(struct exynos_usbphy_info *info)
 {
 	void __iomem *regs_base = info->regs_base;
@@ -157,16 +151,24 @@ void phy_exynos_usbdp_enable(struct exynos_usbphy_info *info)
 	reg_dp_b3 = readl(regs_base + EXYNOS_USBDP_COM_DP_RB3);
 	if (info->used_phy_port == 0) {
 		reg_2c |= USBDP_CMN2C_MAN_USBDP_MODE_SET(0x3);
+#if !defined(CONFIG_BOARD_ZEBU)
 		reg_2d |= USBDP_CMN2D_USB_TX1_SEL;
 		reg_2d &= ~USBDP_CMN2D_USB_TX3_SEL;
+#else
+		reg_2d |= USBDP_CMN2D_USB_TX3_SEL;
+#endif
 		reg_dp_b3 &= ~USBDP_DPB3_CMN_DUMMY_CTRL_7;
 		reg_dp_b3 |= USBDP_DPB3_CMN_DUMMY_CTRL_6;
 		reg_dp_b3 |= USBDP_DPB3_CMN_DUMMY_CTRL_1;
 		reg_dp_b3 |= USBDP_DPB3_CMN_DUMMY_CTRL_0;
 	} else {
 		reg_2c &= ~USBDP_CMN2C_MAN_USBDP_MODE_MASK;
+#if !defined(CONFIG_BOARD_ZEBU)
 		reg_2d &= ~USBDP_CMN2D_USB_TX1_SEL;
 		reg_2d |= USBDP_CMN2D_USB_TX3_SEL;
+#else
+		reg_2d |= USBDP_CMN2D_USB_TX3_SEL;
+#endif
 		reg_dp_b3 |= USBDP_DPB3_CMN_DUMMY_CTRL_7;
 		reg_dp_b3 &= ~USBDP_DPB3_CMN_DUMMY_CTRL_6;
 		reg_dp_b3 &= ~USBDP_DPB3_CMN_DUMMY_CTRL_1;
@@ -209,14 +211,47 @@ void phy_exynos_usbdp_enable(struct exynos_usbphy_info *info)
 	reg |= USBDP_TRSV34_SIGVAL_FILT_DLY_CODE_SET(0x3);
 	writel(reg, regs_base + EXYNOS_USBDP_COM_TRSV_R34);
 
+#if defined(CONFIG_BOARD_ZEBU)
 	reg = readl(regs_base + EXYNOS_USBDP_COM_TRSV_R27);
 	reg |= USBDP_TRSV27_MAN_RSTN_EN;
 	writel(reg, regs_base + EXYNOS_USBDP_COM_TRSV_R27);
-
+#endif
 	/* Recevier Detection On */
 	reg = readl(regs_base + EXYNOS_USBDP_COM_TRSV_R24);
 	reg &= ~USBDP_TRSV24_MAN_TX_RCV_DET_EN;
 	writel(reg, regs_base + EXYNOS_USBDP_COM_TRSV_R24);
+
+	/* Tune RX CTLE */
+//	reg = USBDP_TRSV02_RXAFE_LEQ_CSEL_GEN2_SET(0x2);
+//	reg |= USBDP_TRSV02_RXAFE_LEQ_CSEL_GEN1_SET(0x7);
+//	writel(reg, regs_base + EXYNOS_USBDP_COM_TRSV_R02);
+//
+//	reg = USBDP_TRSV03_RXAFE_TERM_MODE;
+//	reg &= ~USBDP_TRSV03_RXAFE_LEQ_RSEL_GEN2_MASK;
+//	reg |= USBDP_TRSV03_RXAFE_LEQ_RSEL_GEN2_SET(0x7);
+//	reg &= ~USBDP_TRSV03_RXAFE_LEQ_RSEL_GEN1_MASK;
+//	writel(reg, regs_base + EXYNOS_USBDP_COM_TRSV_R03);
+//
+//	reg = USBDP_TRSV04_RXAFE_TUNE_SET(0x5);
+//	reg |= USBDP_TRSV04_RXAFE_SQ_VFFSET_CTRL_SET(0x5);
+//	writel(reg, regs_base + EXYNOS_USBDP_COM_TRSV_R04);
+
+	/* Tune LOS Level */
+//	reg = readl(regs_base + EXYNOS_USBDP_COM_TRSV_R0A);
+//	reg &= ~USBDP_TRSV0A_APB_CAL_OFFSET_DIFP_MASK;
+//	reg |= USBDP_TRSV0A_APB_CAL_OFFSET_DIFP_SET(0x4);
+//	writel(reg, regs_base + EXYNOS_USBDP_COM_TRSV_R0A);
+//
+//	reg = readl(regs_base + EXYNOS_USBDP_COM_TRSV_R0B);
+//	reg &= ~USBDP_TRSV0B_APB_CAL_OFFSET_DIFN_MASK;
+//	reg |= USBDP_TRSV0B_APB_CAL_OFFSET_DIFN_SET(0x4);
+//	writel(reg, regs_base + EXYNOS_USBDP_COM_TRSV_R0B);
+
+//	/* Tune TX EQ */
+//	reg = readl(regs_base + EXYNOS_USBDP_COM_TRSV_R0C);
+//	reg &= ~USBDP_TRSV0C_MAN_TX_DE_EMP_LVL_MASK;
+//	reg |= USBDP_TRSV0C_MAN_TX_DE_EMP_LVL_SET(0x9);
+//	writel(reg, regs_base + EXYNOS_USBDP_COM_TRSV_R0C);
 
 	/* Set Tune Value */
 	phy_exynos_usbdp_tune(info);
@@ -228,14 +263,14 @@ int phy_exynos_usbdp_check_pll_lock(struct exynos_usbphy_info *info)
 	u32 reg;
 
 	reg = readl(regs_base + EXYNOS_USBDP_COM_CMN_R2F);
-	printk("CMN_2F(0x%p) : 0x%x\n",
+	pr_err("CMN_2F(0x%p) : 0x%x\n",
 		regs_base + EXYNOS_USBDP_COM_CMN_R2F,
 		reg);
 	if (!(reg & USBDP_CMN2F_PLL_LOCK_DONE))
 		return -1;
 
 	reg = readl(regs_base + EXYNOS_USBDP_COM_TRSV_R4B);
-	printk("TRSV_4B(0x%p) : 0x%x\n",
+	pr_err("TRSV_4B(0x%p) : 0x%x\n",
 		regs_base + EXYNOS_USBDP_COM_TRSV_R4B,
 		reg);
 	if (!(reg & USBDP_TRSV4B_CDR_FLD_PLL_MODE_DONE))

@@ -133,19 +133,26 @@ enum api_vra_type {
 	/* MaxDsImage.Width and MaxDsImage.Height must be at least 16 */
 	VRA_ERR_ALLOC_DS_WIDTH_BIGGER_THAN_MAX	= 0x1D,
 	/* MaxDsImage.Width must not be bigger than VRA_MAX_DS_WIDTH */
-	VRA_ERR_ALLOC_CHAIN0_NOT_EXIST			= 0x1E,
-	/*!< Ch0 not exist so can't allocate memory for Ch0 input.*/
-	VRA_ERR_INIT_ONLY_DRAM_INPUT			= 0x1F,
-	/*!< No CIN so input must be sent throgh DRAM */
-	VRA_ERR_INIT_ZERO_MEMORY_SIZE			= 0x20,
-	VRA_ERR_INIT_SENSOR_NOT_EXIST			= 0x21,
-	/*!< Input errors. Some of them might happen also on initialization */
+	VRA_Err_InitCh0MemNotAllocated		= 0x1E,
+	/*
+	 * No allocated memory for Ch0 input but
+	 * FrameWork initializion describes C0 input.
+	 */
+	VRA_Err_InitDramInputForCh0			= 0x1F,
+	/*
+	 * Input that is read from DRAM should be sent to Ch0 -
+	 * not supported by HW
+	 */
+	VRA_ERR_ALLOC_PAD_SIZE_BIGGER_THAN_MAX	= 0x1E,
+	/* Pad size must not be bigger than VRA_MAX_PAD_SIZE */
+
+	/* Input errors. Some of them might happen also on initialization */
 	VRA_ERR_BAD_INPUT_FORMAT		= 0x30,
 	/*
 	 * Not supported combination of input Planes number,
 	 * DRAM input, YUV format and packing
 	 */
-	VRA_ERR_PADDING_NOT_ALLOWED		= 0x31,
+	VRA_Err_PaddingNotAllowed		= 0x31,
 	/*
 	 * When UsePad isn't set on memory allocation
 	 * on initalization padding can't be invoked
@@ -179,22 +186,19 @@ enum api_vra_type {
 	/* The value of the working point isn't in 0-1000 range */
 	VRA_ERR_WRONGSMOOTHLEVEL		= 0x3E,
 	/* The value of the smooth level isn't in 0-20 range */
-	VRA_ERR_WRONG_PADDING_VALUE		= 0x3F,
+	VRA_Err_WrongPaddingValue		= 0x3F,
 	/* The value of the padding size isn't in 0-8 range */
 	VRA_ERR_WRONGLOADBALANCEVALUES		= 0x40,
 	/*
 	 * At least one of the requested indices is too big
 	 * or BestInd > WorstInd
 	 */
-	VRA_ERR_WRONG_INPUT_SIZES_FOR_ALLOC		= 0x41,
+	VRA_Err_WrongInputSizesForAlloc		= 0x41,
 	/*
 	 * The input sizes for frame allocation are bigger than
 	 * maximal input sizes
 	 */
-	VRA_ERR_WRONG_HYBRID_MAX_FACES			= 0x42,
-	/*!< The actual Hybrid max faces must be <= allocated hybrid faces */
-	VRA_ERR_WRONG_HYBRID_FREQUENCY		= 0x43,
-	/*!< The Hybrid frequency must not be set to 0 */
+
 	/* General errors */
 	VRA_ERR_INTR_INDEX_NOT_VALID		= 0x51,
 	/* The input interrupt index isn't valid */
@@ -233,46 +237,34 @@ enum api_vra_type {
 	/* VRA_ActivateSensor not allowed when more than 1 sensor is set */
 	VRA_ERR_NOT_ALLOWED_FOR_DRAM_INPUT	= 0x67,
 	/* VRA_ActivateSensor not allowed when DRAM input is used */
-	VRA_ERR_NOT_ALLOWED_FOR_CH0_INPUT	= 0x68,
+	VRA_Err_NotAllowedForCh0Input		= 0x68,
 	/*!< VRA_GetFrWorkFrameAllocation not allowed when Ch0 input is used */
-	VRA_ERR_NOT_ALLOWED_FOR_HW_CFGID	= 0x69,
+	VRA_Err_NotAllowedForHwCfgId		= 0x69,
 	/*!< Operation not allowed for current VRA_HW_CFG_ID */
-	VRA_ERR_NO_FREE_SLOT				= 0x6A,
+	VRA_Err_NoFreeSlot					= 0x6A,
 	/*!< no free pyramid slot */
-	VRA_ERR_SLOT_ALREADY_ALLOCATED		= 0x6B,
+	VRA_Err_SlotAlreadyAllocated		= 0x6B,
 	/*!< A pyramid slot was already allocated and not used */
-	VRA_ERR_SLOT_NOT_ALLOCATED			= 0x6C,
+	VRA_Err_SlotNotAllocated			= 0x6C,
 	/*!< No pyramid slot was allocated */
-	VRA_ERR_WRONG_SLOT_INDEX			= 0x6D,
+	VRA_Err_WrongSlotIndex				= 0x6D,
 	/*!< The input slot index wasn't allocated for HOST */
-	VRA_ERR_WRONG_INPUT_FORMAT_FOR_ALLOC	= 0x6E,
+	VRA_Err_WrongInputFormatForAlloc	= 0x6E,
 	/*!< Current frame input format isn't allowed for allocated frame */
-	VRA_ERR_WRONG_ALLOC_LINE_OFS			= 0x6F,
+	VRA_Err_WrongAllocLineOfs			= 0x6F,
 	/*!< The allocated UV line offset or Y line offsert not match the sizes of current frame */
-	VRA_ERR_WRONG_ALLOC_UV_ADR				= 0x70,
+	VRA_Err_WrongAllocUVAdr				= 0x70,
 	/*!< The allocated UV address don't match to the allocated slot */
-	VRA_ERR_WRONG_ALLOC_Y_ADR				= 0x71,
+	VRA_Err_WrongAllocYAdr				= 0x71,
 	/*!< The allocated Y address don't match to the allocated slot */
-	VRA_ERR_ALLOC_PAD_TOP_PYR				= 0x72,
+	VRA_Err_AllocPadTopPyr				= 0x72,
 	/*!< Y top pyramid padding is required - not allowed for allocated input */
-	VRA_ERR_TASK_ACTIVE					= 0x73,
+	VRA_Err_TaskActive					= 0x73,
 	/*!< Can't be done while Framework task is active */
-	VRA_ERR_HW_CLOCKS_IN_REQUIRED_EN_STATE	= 0x74,
+	VRA_Err_HwClocksInRequiredEnState	= 0x74,
 	/*!< VRA_FrameWorkEnableHwClocks with EnableClocks that is already set */
-	VRA_ERR_HW_CLOCKS_DISABLED			= 0x75,
+	VRA_Err_HwClocksDisabled			= 0x75,
 	/*!< Must enable clocks before new input */
-	VRA_ERR_HYBRID_DISABLED				= 0x76,
-	/*!< Hybrid mode is disabled */
-	VRA_ERR_HYBRID_RES_NOT_EXPECTED		= 0x77,
-	/*!< Not waiting to Hybrid results */
-	VRA_ERR_HYBRID_RES_TOO_SMALL_INDEX		= 0x78,
-	/*!< The Hybrid results index is < expected index => old frame results */
-	VRA_ERR_HYBRID_RES_TOO_BIG_INDEX		= 0x79,
-	/*!< The Hybrid results index is > expected index => some results were lost */
-	VRA_ERR_HYBRID_RES_WRONG_FACES_NUM		= 0x7A,
-	/*!< The Hybrid results number of faces is not different from the expected */
-	VRA_ERR_HYBRID_PREV_RES_NOT_HANDLED		= 0x7B,
-	/*!< The Hybrid results can't be handled since previous results weren't handled yet */
 
 	/* SetGet errors */
 	VRA_ERR_INPUT_ACTIVE			= 0x81,
@@ -390,7 +382,12 @@ enum api_vra_yaw_type {
 	VRA_YAW_FRONT = 0,
 	/* for right profile => Yaw Angle = 90. 270 stands for left profile */
 	VRA_YAW_RIGHT_PROFILE = 1,
+#ifdef VRA_OLD_POSES
 	VRA_YAW_ALL = 2
+#else
+	VRA_YAW_RIGHT_SEMI_PROFILE = 2, /*!< for right semi profile => Yaw Angle = 45. 315 stands for left semi profile */
+	VRA_YAW_All = 3
+#endif
 };
 
 /* brief The Image orientation */
@@ -446,9 +443,7 @@ enum api_vra_sen_err {
 	/* Some of the faces lost during HW processing */
 	VRA_ERR_HW_FACES_LOST = 1,
 	/* Corrupted data cause Frame lost */
-	VRA_ERR_CORRUPTED_DATA = 2,
-	/*!< Hybrid request was lost due to process overload */
-	VRA_ERR_HYB_REQ_LOST = 3,
+	VRA_ERR_CORRUPTED_DATA = 2
 };
 
 /* brief HW errors */
@@ -480,9 +475,7 @@ enum api_vra_hw_err_bit_type {
 	/* Chain1 Watchdog interrupt occurs - HW reset */
 	VRA_HW_ERR_CH1_WATCHDOG_BIT = 0x1000,
 	/* Chain0 interrupt called only once while 2 interrupts occured. */
-	VRA_HW_ERR_CH0_INTR_LOST = 0x2000,
-	/*!< Chain0 output self flush invoked - buffer is full and InvokeHwFlushOnBufferFull is set */
-	VRA_HW_ERR_CH0_OUT_SELF_FLUSH = 0x4000,
+	VRA_HW_ERR_CH0_INTR_LOST = 0x2000
 };
 
 /* Following masks defines the different HW errors types */
@@ -499,8 +492,8 @@ enum api_vra_hw_err_bit_type {
 #define VRA_MASK_ERR_RESULTS_LOST	\
 	(VRA_HW_ERR_RES_VDMA_OVERFLOW_BIT | VRA_HW_ERR_RES_VDMA_MAX_RES_BIT)
 
-/* Each bit in mask stands for 45 degrees */
-#define VRA_DIS_ROT_UNIT	45
+#ifdef VRA_OLD_POSES
+#define VRA_DIS_ROT_UNIT	45  /* Each bit in mask stands for 45 degrees */
 #define VRA_DIS_ROT_0_BIT	(1 << 0)
 #define VRA_DIS_ROT_45_BIT	(1 << 1)
 #define VRA_DIS_ROT_90_BIT	(1 << 2)
@@ -509,6 +502,21 @@ enum api_vra_hw_err_bit_type {
 #define VRA_DIS_ROT_225_BIT	(1 << 5)
 #define VRA_DIS_ROT_270_BIT	(1 << 6)
 #define VRA_DIS_ROT_315_BIT	(1 << 7)
+#else
+#define VRA_DIS_ROT_UNIT	30  /* Each bit in mask stands for 30 degrees */
+#define VRA_DIS_ROT_0_BIT	(1 << 0)
+#define VRA_DIS_ROT_30_BIT	(1 << 1)
+#define VRA_DIS_ROT_60_BIT	(1 << 2)
+#define VRA_DIS_ROT_90_BIT	(1 << 3)
+#define VRA_DIS_ROT_120_BIT	(1 << 4)
+#define VRA_DIS_ROT_150_BIT	(1 << 5)
+#define VRA_DIS_ROT_180_BIT	(1 << 6)
+#define VRA_DIS_ROT_210_BIT	(1 << 7)
+#define VRA_DIS_ROT_240_BIT	(1 << 8)
+#define VRA_DIS_ROT_270_BIT	(1 << 9)
+#define VRA_DIS_ROT_300_BIT	(1 << 10)
+#define VRA_DIS_ROT_330_BIT	(1 << 11)
+#endif
 
 struct api_vra_sizes {
 	unsigned short width;
@@ -646,10 +654,15 @@ struct api_vra_pdt_rect {
 
 struct api_vra_pdt_face_extra {
 	unsigned char	is_rot: 1;	/* assuming VRA_ROT_ALL == 2 */
+#ifdef VRA_OLD_POSES
 	unsigned char	is_yaw: 1;	/* assuming VRA_YAW_ALL == 2 */
+#endif
 	unsigned char	rot: 2;
 	unsigned char	mirror_x: 1;	/* Required for facial features + set ROI commands */
 	unsigned char	hw_rot_and_mirror: 3;	/* Required for facial features + set ROI commands */
+#ifndef VRA_OLD_POSES
+	enum api_vra_yaw_type     yaw_type;
+#endif
 };
 
 struct api_vra_pdt_out_face {
@@ -676,30 +689,6 @@ struct api_vra_out_list_info {
 	 * (it is not in case of corrupted frame)
 	 */
 	vra_boolean				valid_output;
-};
-
-struct api_vra_face_hybrid_str {
-	/*!< Start from 1. Might be reset on Reset Output list */
-	vra_uint32					unique_id;
-	/*!< The face coordinates where full image is the input image */
-	struct api_vra_rect_str		rect;
-	/*!< The HW rotation of the face - combination of face rotation and image orientation */
-	unsigned short				hw_rotation;
-	/*!< Whether face found by the HW is Frontal (0), Right profile (90) or left profile (270) */
-	unsigned short				hw_yaw;
-};
-
-struct api_vra_hybrid_hdr_str {
-	/*!< The input sizes of this frame. The Rects are described related to these coordiantes */
-	struct api_vra_sizes		in_sizes;
-	vra_dram_adr_type			y_baseaddr;
-	vra_dram_adr_type			u_baseaddr;
-	vra_dram_adr_type			v_baseaddr;
-	/*!< The offset in bytes between each 2 couple of lines in Y Map */
-	unsigned short				y_linebyte_offset;
-	/*!< VRA_YUV_FMT_422 /  VRA_YUV_FMT_420 / VRA_YUV_FMT_400 */
-	enum api_vra_yuv_format			yuv_format;
-	vra_boolean					is_uv_interleaved;
 };
 
 /*
@@ -729,19 +718,7 @@ typedef void (*on_frw_hw_err_ptr)(unsigned int ch_idx, unsigned int err_mask);
  * The function that is called when hybrid FD is used.
  * TODO: need to implement
  */
-/*! \brief The function that is called when external hybrid process should be invoked. If function pointer is set to NULL
- * - Hybrid process is disabled
- * \param FrameIndex - The unique internal frame index that its input is sent to hybrid process
- * \param NumHybridFaces - The number of faces sent to the hybrid process
- * \param FacesPtr - Pointer to list of faces information (its length is NumHybridFaces)
- * \param HybridHdrPtr - Pointer to hybrid list header
- */
-typedef void (*on_frw_invoke_hybrid_pr_ptr)(vra_uint32 frame_index,
-		unsigned int num_hybrid_faces,
-		const struct api_vra_face_hybrid_str *hybrid_faces_ptr,
-		const struct api_vra_hybrid_hdr_str *hybrid_hdr_ptr);
-
-/*! \brief The function that is called after Abort request in order to abort the Hybrid process in case previous requests exist */
+typedef void (*on_frw_invoke_hybrid_pr_ptr)(void);
 typedef void (*on_frw_abort_hybrid_pr_ptr)(void);
 
 /*
@@ -755,6 +732,7 @@ typedef void (*on_frw_abort_hybrid_pr_ptr)(void);
  *		(its length is NumAllFaces)
  * param OutListInfoPtr - Pointer to output list header
  */
+#ifdef ENABLE_VRA_LIBRARY_IMPROVE
 typedef void (*on_sen_final_output_ready_ptr)(vra_uint32 sensor_handle,
 		unsigned int num_all_faces,
 		const struct api_vra_out_face *faces_ptr,
@@ -789,7 +767,12 @@ typedef void (*on_sen_post_detect_ready_ptr) (vra_uint32 sensor_handle,
 		unsigned int num_pdt_faces,
 		const struct api_vra_pdt_out_face *faces_ptr,
 		const struct api_vra_out_list_info *out_list_info_ptr);
-
+#else
+typedef void (*on_sen_output_ready_ptr)(vra_uint32 sensor_handle,
+		unsigned int num_all_faces,
+		const struct api_vra_out_face *faces_ptr,
+		const struct api_vra_out_list_info *out_list_info_ptr);
+#endif
 /*
  * The function that is called when the entire frame input is finished.
  * In case of DRAM input the caller may now free the area
@@ -834,15 +817,20 @@ typedef void (*on_sen_stat_collected_ptr)(vra_uint32 sensor_handle,
 		unsigned int stat_num_of_longs,
 		unsigned int stat_type);
 
+
 /* Framework callbacks */
 struct vra_call_backs_str {
 	on_frw_abort_ptr		frw_abort_func_ptr;
 	on_frw_hw_err_ptr		frw_hw_err_func_ptr;
 	on_frw_invoke_hybrid_pr_ptr	frw_invoke_hybrid_pr_ptr;
 	on_frw_abort_hybrid_pr_ptr	frw_abort_hybrid_pr_ptr;
+#ifdef ENABLE_VRA_LIBRARY_IMPROVE
 	on_sen_final_output_ready_ptr	sen_final_output_ready_ptr; /* HFD off(legacy VRA only) */
 	on_sen_crnt_fr_output_ready_ptr	sen_crnt_fr_output_ready_ptr; /* unfilterd data for FDAF */
 	on_sen_post_detect_ready_ptr	sen_post_detect_ready_ptr; /* HFD on */
+#else
+	on_sen_output_ready_ptr		sen_out_ready_func_ptr;
+#endif
 	on_sen_end_input_proc_ptr	sen_end_input_proc_ptr;
 	on_sen_error_ptr		sen_error_ptr;
 	on_sen_stat_collected_ptr	sen_stat_collected_ptr;

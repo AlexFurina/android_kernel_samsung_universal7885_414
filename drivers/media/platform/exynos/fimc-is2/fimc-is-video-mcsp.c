@@ -41,7 +41,7 @@ int fimc_is_m0p_video_probe(void *data)
 	struct fimc_is_core *core;
 	struct fimc_is_video *video;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	core = (struct fimc_is_core *)data;
 	video = &core->video_m0p;
@@ -74,7 +74,7 @@ int fimc_is_m1p_video_probe(void *data)
 	struct fimc_is_core *core;
 	struct fimc_is_video *video;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	core = (struct fimc_is_core *)data;
 	video = &core->video_m1p;
@@ -107,7 +107,7 @@ int fimc_is_m2p_video_probe(void *data)
 	struct fimc_is_core *core;
 	struct fimc_is_video *video;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	core = (struct fimc_is_core *)data;
 	video = &core->video_m2p;
@@ -140,7 +140,7 @@ int fimc_is_m3p_video_probe(void *data)
 	struct fimc_is_core *core;
 	struct fimc_is_video *video;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	core = (struct fimc_is_core *)data;
 	video = &core->video_m3p;
@@ -173,7 +173,7 @@ int fimc_is_m4p_video_probe(void *data)
 	struct fimc_is_core *core;
 	struct fimc_is_video *video;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	core = (struct fimc_is_core *)data;
 	video = &core->video_m4p;
@@ -206,7 +206,7 @@ int fimc_is_m5p_video_probe(void *data)
 	struct fimc_is_core *core;
 	struct fimc_is_video *video;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	core = (struct fimc_is_core *)data;
 	video = &core->video_m5p;
@@ -322,10 +322,10 @@ static int fimc_is_mxp_video_close(struct file *file)
 	struct fimc_is_video *video;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!file);
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_VIDEO(vctx));
-	FIMC_BUG(!GET_DEVICE(vctx));
+	BUG_ON(!file);
+	BUG_ON(!vctx);
+	BUG_ON(!GET_VIDEO(vctx));
+	BUG_ON(!GET_DEVICE(vctx));
 
 	video = GET_VIDEO(vctx);
 	device = GET_DEVICE(vctx);
@@ -389,7 +389,18 @@ const struct v4l2_file_operations fimc_is_mxp_video_fops = {
 static int fimc_is_mxp_video_querycap(struct file *file, void *fh,
 	struct v4l2_capability *cap)
 {
-	/* Todo : add to query capability code */
+	struct fimc_is_video *video = video_drvdata(file);
+
+	FIMC_BUG(!cap);
+	FIMC_BUG(!video);
+
+	snprintf(cap->driver, sizeof(cap->driver), "%s", video->vd.name);
+	snprintf(cap->card, sizeof(cap->card), "%s", video->vd.name);
+	cap->capabilities |= V4L2_CAP_STREAMING
+			| V4L2_CAP_VIDEO_CAPTURE
+			| V4L2_CAP_VIDEO_CAPTURE_MPLANE;
+	cap->device_caps |= cap->capabilities;
+
 	return 0;
 }
 
@@ -413,8 +424,8 @@ static int fimc_is_mxp_video_set_format_mplane(struct file *file, void *fh,
 		int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!format);
+	BUG_ON(!vctx);
+	BUG_ON(!format);
 
 	mdbgv_mxp("%s\n", vctx, __func__);
 
@@ -464,9 +475,9 @@ static int fimc_is_mxp_video_reqbufs(struct file *file, void *priv,
 	struct fimc_is_device_ischain *device;
 	struct fimc_is_subdev *leader, *subdev;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_DEVICE(vctx));
-	FIMC_BUG(!GET_VIDEO(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
+	BUG_ON(!GET_VIDEO(vctx));
 
 	mdbgv_mxp("%s(buffers : %d)\n", vctx, __func__, buf->count);
 
@@ -517,9 +528,6 @@ static int fimc_is_mxp_video_qbuf(struct file *file, void *priv,
 	if (ret)
 		merr("qbuf is fail(%d)", vctx, ret);
 
-	/* hwfc reset during qbuf timing */
-	fimc_is_hw_s_ctrl(vctx, vctx->video->id, HW_S_CTRL_HWFC_IDX_RESET, (void *)1);
-
 	return ret;
 }
 
@@ -535,6 +543,9 @@ static int fimc_is_mxp_video_dqbuf(struct file *file, void *priv,
 	ret = CALL_VOPS(vctx, dqbuf, buf, blocking);
 	if (ret)
 		merr("dqbuf is fail(%d)", vctx, ret);
+
+	/* hwfc reset during dqbuf timing */
+	fimc_is_hw_s_ctrl(vctx, vctx->video->id, HW_S_CTRL_HWFC_IDX_RESET, (void *)1);
 
 	return ret;
 }
@@ -589,7 +600,7 @@ static int fimc_is_mxp_video_s_input(struct file *file, void *priv,
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	FIMC_BUG(!vctx);
+	BUG_ON(!vctx);
 
 	ret = fimc_is_video_s_input(file, vctx);
 	if (ret) {
@@ -608,8 +619,8 @@ static int fimc_is_mxp_video_g_ctrl(struct file *file, void *priv,
 	struct fimc_is_video_ctx *vctx = file->private_data;
 	struct fimc_is_framemgr *framemgr;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!ctrl);
+	BUG_ON(!vctx);
+	BUG_ON(!ctrl);
 
 	mdbgv_mxp("%s\n", vctx, __func__);
 
@@ -640,8 +651,8 @@ static int fimc_is_mxp_video_s_ctrl(struct file *file, void *priv,
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!ctrl);
+	BUG_ON(!vctx);
+	BUG_ON(!ctrl);
 
 	mdbgv_mxp("%s\n", vctx, __func__);
 
@@ -693,8 +704,8 @@ static int fimc_is_mxp_queue_setup(struct vb2_queue *vbq,
 	struct fimc_is_video *video;
 	struct fimc_is_queue *queue;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!vctx->video);
+	BUG_ON(!vctx);
+	BUG_ON(!vctx->video);
 
 	mdbgv_mxp("%s\n", vctx, __func__);
 
@@ -712,6 +723,21 @@ static int fimc_is_mxp_queue_setup(struct vb2_queue *vbq,
 	return ret;
 }
 
+static int fimc_is_mxp_buffer_prepare(struct vb2_buffer *vb)
+{
+	return fimc_is_queue_prepare(vb);
+}
+
+static inline void fimc_is_mxp_wait_prepare(struct vb2_queue *vbq)
+{
+	fimc_is_queue_wait_prepare(vbq);
+}
+
+static inline void fimc_is_mxp_wait_finish(struct vb2_queue *vbq)
+{
+	fimc_is_queue_wait_finish(vbq);
+}
+
 static int fimc_is_mxp_start_streaming(struct vb2_queue *vbq,
 	unsigned int count)
 {
@@ -720,8 +746,8 @@ static int fimc_is_mxp_start_streaming(struct vb2_queue *vbq,
 	struct fimc_is_queue *queue;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_DEVICE(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
 
 	mdbgv_mxp("%s\n", vctx, __func__);
 
@@ -745,8 +771,8 @@ static void fimc_is_mxp_stop_streaming(struct vb2_queue *vbq)
 	struct fimc_is_queue *queue;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG_VOID(!vctx);
-	FIMC_BUG_VOID(!GET_DEVICE(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
 
 	mdbgv_mxp("%s\n", vctx, __func__);
 
@@ -769,9 +795,9 @@ static void fimc_is_mxp_buffer_queue(struct vb2_buffer *vb)
 	struct fimc_is_device_ischain *device;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG_VOID(!vctx);
-	FIMC_BUG_VOID(!GET_DEVICE(vctx));
-	FIMC_BUG_VOID(!GET_VIDEO(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
+	BUG_ON(!GET_VIDEO(vctx));
 
 	mvdbgs(3, "%s(%d)\n", vctx, &vctx->queue, __func__, vb->index);
 
@@ -800,15 +826,13 @@ static void fimc_is_mxp_buffer_finish(struct vb2_buffer *vb)
 	struct fimc_is_device_ischain *device;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG_VOID(!vctx);
-	FIMC_BUG_VOID(!GET_DEVICE(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
 
 	mvdbgs(3, "%s(%d)\n", vctx, &vctx->queue, __func__, vb->index);
 
 	device = GET_DEVICE(vctx);
 	subdev = vctx->subdev;
-
-	fimc_is_queue_buffer_finish(vb);
 
 	ret = fimc_is_subdev_buffer_finish(subdev, vb);
 	if (ret) {
@@ -819,13 +843,12 @@ static void fimc_is_mxp_buffer_finish(struct vb2_buffer *vb)
 
 const struct vb2_ops fimc_is_mxp_qops = {
 	.queue_setup		= fimc_is_mxp_queue_setup,
-	.buf_init		= fimc_is_queue_buffer_init,
-	.buf_cleanup		= fimc_is_queue_buffer_cleanup,
-	.buf_prepare		= fimc_is_queue_buffer_prepare,
+	.buf_init		= fimc_is_buffer_init,
+	.buf_prepare		= fimc_is_mxp_buffer_prepare,
 	.buf_queue		= fimc_is_mxp_buffer_queue,
 	.buf_finish		= fimc_is_mxp_buffer_finish,
-	.wait_prepare		= fimc_is_queue_wait_prepare,
-	.wait_finish		= fimc_is_queue_wait_finish,
+	.wait_prepare		= fimc_is_mxp_wait_prepare,
+	.wait_finish		= fimc_is_mxp_wait_finish,
 	.start_streaming	= fimc_is_mxp_start_streaming,
 	.stop_streaming		= fimc_is_mxp_stop_streaming,
 };

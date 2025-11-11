@@ -39,11 +39,15 @@ struct fimc_is_hw_vra_setfile{
 
 struct fimc_is_hw_vra {
 	struct fimc_is_lib_vra		lib_vra;
-	struct fimc_is_hw_vra_setfile	setfile;
+	struct fimc_is_hw_vra_setfile	setfile[SENSOR_POSITION_MAX][FIMC_IS_MAX_SETFILE];
+	struct fimc_is_hw_vra_setfile	*applied_setfile[SENSOR_POSITION_MAX];
 	u32				orientation;
 	atomic_t			ch1_count;
 };
 
 int fimc_is_hw_vra_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface *itf,
 	struct fimc_is_interface_ischain *itfc, int id, const char *name);
+int fimc_is_hw_vra_update_param(struct fimc_is_hw_ip *hw_ip,
+	struct vra_param *param, u32 lindex, u32 hindex, u32 instance, u32 fcount);
+void fimc_is_hw_vra_reset(struct fimc_is_hw_ip *hw_ip);
 #endif

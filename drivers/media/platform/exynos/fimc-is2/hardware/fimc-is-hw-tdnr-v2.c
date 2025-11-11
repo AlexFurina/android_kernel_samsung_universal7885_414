@@ -85,23 +85,18 @@ static const struct tdnr_configs init_tdnr_cfgs = {
 void fimc_is_hw_mcsc_tdnr_init(struct fimc_is_hw_ip *hw_ip,
 	struct mcs_param *mcs_param, u32 instance)
 {
+#ifdef ENABLE_DNR_IN_MCSC
 	struct fimc_is_hw_mcsc *hw_mcsc;
-	struct fimc_is_hw_mcsc_cap *cap;
 
 	BUG_ON(!hw_ip->priv_info);
 	BUG_ON(!mcs_param);
 
-	cap = GET_MCSC_HW_CAP(hw_ip);
-	if (cap->tdnr != MCSC_CAP_SUPPORT)
-		return;
-
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
-#ifdef ENABLE_DNR_IN_MCSC
+
 	hw_mcsc->tdnr_first = MCSC_DNR_USE_FIRST;
 	hw_mcsc->tdnr_output = MCSC_DNR_OUTPUT_INDEX;
 	hw_mcsc->tdnr_internal_buf = MCSC_DNR_USE_INTERNAL_BUF;
 	hw_mcsc->cur_tdnr_mode = TDNR_MODE_BYPASS;
-	hw_mcsc->yic_en = TDNR_YIC_ENABLE;
 
 	if (hw_mcsc->tdnr_internal_buf && mcs_param->control.buffer_address) {
 		hw_mcsc->dvaddr_tdnr[0] = mcs_param->control.buffer_address;
@@ -111,35 +106,12 @@ void fimc_is_hw_mcsc_tdnr_init(struct fimc_is_hw_ip *hw_ip,
 
 	fimc_is_scaler_clear_tdnr_rdma_addr(hw_ip->regs, TDNR_IMAGE);
 	fimc_is_scaler_clear_tdnr_wdma_addr(hw_ip->regs, TDNR_IMAGE);
+	fimc_is_scaler_set_yic_ctrl(hw_ip->regs, MCSC_TDNR_YIC_MODE, MCSC_TDNR_YIC_MODE);
 
 	memcpy(&hw_mcsc->tdnr_cfgs, &init_tdnr_cfgs, sizeof(struct tdnr_configs));
+
+	msdbg_hw(2, "tdnr_init: done\n", instance, hw_ip);
 #endif
-}
-
-void fimc_is_hw_mcsc_tdnr_deinit(struct fimc_is_hw_ip *hw_ip,
-	struct mcs_param *mcs_param, u32 instance)
-{
-	struct fimc_is_hw_mcsc *hw_mcsc;
-	struct fimc_is_hw_mcsc_cap *cap;
-
-	BUG_ON(!hw_ip->priv_info);
-	BUG_ON(!mcs_param);
-
-	cap = GET_MCSC_HW_CAP(hw_ip);
-	if (cap->tdnr != MCSC_CAP_SUPPORT)
-		return;
-
-	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
-
-	fimc_is_scaler_set_tdnr_mode_select(hw_ip->regs, TDNR_MODE_BYPASS);
-
-	fimc_is_scaler_clear_tdnr_rdma_addr(hw_ip->regs, TDNR_IMAGE);
-	fimc_is_scaler_clear_tdnr_rdma_addr(hw_ip->regs, TDNR_WEIGHT);
-
-	fimc_is_scaler_set_tdnr_wdma_enable(hw_ip->regs, TDNR_WEIGHT, false);
-	fimc_is_scaler_clear_tdnr_wdma_addr(hw_ip->regs, TDNR_WEIGHT);
-
-	hw_mcsc->cur_tdnr_mode = TDNR_MODE_BYPASS;
 }
 
 static int fimc_is_hw_mcsc_check_tdnr_mode_pre(struct fimc_is_hw_ip *hw_ip,
@@ -155,7 +127,7 @@ static int fimc_is_hw_mcsc_check_tdnr_mode_pre(struct fimc_is_hw_ip *hw_ip,
 	u32 lindex, hindex;
 #ifdef MCSC_DNR_USE_TUNING
 	enum exynos_sensor_position sensor_position;
-	struct tdnr_setfile_contents *tdnr_tuneset;
+	tdnr_setfile_contents *tdnr_tuneset;
 #endif
 	bool setfile_tdnr_enable = true;
 
@@ -171,7 +143,7 @@ static int fimc_is_hw_mcsc_check_tdnr_mode_pre(struct fimc_is_hw_ip *hw_ip,
 	 */
 #ifdef MCSC_DNR_USE_TUNING
 	sensor_position = hw_ip->hardware->sensor_position[atomic_read(&hw_ip->instance)];
-	tdnr_tuneset = &hw_mcsc->cur_setfile[sensor_position][frame->instance]->tdnr_contents;
+	tdnr_tuneset = &hw_mcsc->applied_setfile[sensor_position][frame->instance]->tdnr_contents;
 	setfile_tdnr_enable = tdnr_tuneset->tdnr_enable;
 #endif
 
@@ -201,6 +173,8 @@ static int fimc_is_hw_mcsc_check_tdnr_mode_pre(struct fimc_is_hw_ip *hw_ip,
 			/* set to 3DNR mode */
 			tdnr_mode = TDNR_MODE_3DNR;
 	}
+
+	msdbg_hw(2, "tdnr_mode_pre: mode(%d)\n", atomic_read(&hw_ip->instance), hw_ip, tdnr_mode);
 
 	return tdnr_mode;
 }
@@ -245,8 +219,7 @@ static int fimc_is_hw_mcsc_cfg_tdnr_rdma(struct fimc_is_hw_ip *hw_ip,
 	/* buffer addr setting
 	 * at OTF, RDMA[n+1] = WDMA[n]
 	 *
-	 * image buffer
-	 */
+	 * image buffer */
 	if (tdnr_mode == TDNR_MODE_2DNR) {
 		fimc_is_scaler_clear_tdnr_rdma_addr(hw_ip->regs, TDNR_IMAGE);
 		fimc_is_scaler_clear_tdnr_rdma_addr(hw_ip->regs, TDNR_WEIGHT);
@@ -254,9 +227,9 @@ static int fimc_is_hw_mcsc_cfg_tdnr_rdma(struct fimc_is_hw_ip *hw_ip,
 	}
 
 	fimc_is_scaler_get_tdnr_wdma_addr(hw_ip->regs, TDNR_IMAGE,
-			&prev_wdma_addr, NULL, NULL, USE_DMA_BUFFER_INDEX);
+			&prev_wdma_addr, NULL, NULL);
 	fimc_is_scaler_set_tdnr_rdma_addr(hw_ip->regs, TDNR_IMAGE,
-			prev_wdma_addr, 0, 0, USE_DMA_BUFFER_INDEX);
+			prev_wdma_addr, 0, 0);
 
 	if (hw_mcsc->cur_tdnr_mode == TDNR_MODE_3DNR && tdnr_mode == TDNR_MODE_3DNR)
 		return ret;
@@ -278,6 +251,8 @@ static int fimc_is_hw_mcsc_cfg_tdnr_rdma(struct fimc_is_hw_ip *hw_ip,
 			TDNR_IMAGE, prev_width, prev_height);
 	fimc_is_scaler_set_tdnr_rdma_stride(hw_ip->regs,
 			TDNR_IMAGE, prev_y_stride, 0);
+
+	msdbg_hw(2, "cfg_tdnr_rdma: (%dx%d)\n", atomic_read(&hw_ip->instance), hw_ip, prev_width, prev_height);
 
 	return ret;
 }
@@ -307,7 +282,7 @@ static int fimc_is_hw_mcsc_cfg_tdnr_wdma(struct fimc_is_hw_ip *hw_ip,
 		break;
 	case TDNR_MODE_3DNR:
 		fimc_is_scaler_get_tdnr_wdma_addr(hw_ip->regs, TDNR_IMAGE,
-				&prev_wdma_addr, NULL, NULL, USE_DMA_BUFFER_INDEX);
+				&prev_wdma_addr, NULL, NULL);
 		wdma_addr = (prev_wdma_addr == hw_mcsc->dvaddr_tdnr[0]) ?
 			hw_mcsc->dvaddr_tdnr[1] : hw_mcsc->dvaddr_tdnr[0];
 		break;
@@ -317,7 +292,7 @@ static int fimc_is_hw_mcsc_cfg_tdnr_wdma(struct fimc_is_hw_ip *hw_ip,
 	}
 
 	fimc_is_scaler_set_tdnr_wdma_addr(hw_ip->regs, TDNR_IMAGE,
-			wdma_addr, 0, 0, USE_DMA_BUFFER_INDEX);
+			wdma_addr, 0, 0);
 
 	if (hw_mcsc->cur_tdnr_mode == TDNR_MODE_3DNR && tdnr_mode == TDNR_MODE_3DNR)
 		return ret;
@@ -328,20 +303,17 @@ static int fimc_is_hw_mcsc_cfg_tdnr_wdma(struct fimc_is_hw_ip *hw_ip,
 		img_width = mcs_param->input.width;
 		img_height = mcs_param->input.height;
 		break;
-	case TDNR_MODE_BYPASS:
 	default:
 		return -EINVAL;
 	}
 
-	if (hw_mcsc->yic_en == TDNR_YIC_ENABLE) {
-		/* Compression */
-		wdma_width = ((((int)((img_width * 2 + 31) / 32)) + (int)(img_width / 2 )) * 2);
-		wdma_height = (int)(img_height / 2);
-	} else {
-		/* No Compression */
-		wdma_width = img_width;
-		wdma_height = img_height;
-	}
+#if defined(ENABLE_DNR_COMPRESSOR_IN_MCSC) && (MCSC_TDNR_YIC_MODE == 0)
+	wdma_width = ((((int)((img_width * 2 + 31) / 32)) + (int)(img_width / 2 )) * 2);
+	wdma_height = (int)(img_height / 2);
+#else
+	wdma_width = img_width;
+	wdma_height = img_height;
+#endif
 	fimc_is_scaler_set_tdnr_wdma_size(hw_ip->regs,
 			TDNR_IMAGE, wdma_width, wdma_height);
 
@@ -349,6 +321,8 @@ static int fimc_is_hw_mcsc_cfg_tdnr_wdma(struct fimc_is_hw_ip *hw_ip,
 	img_y_stride = wdma_width * 2;
 	fimc_is_scaler_set_tdnr_wdma_stride(hw_ip->regs,
 			TDNR_IMAGE, img_y_stride, 0);
+
+	msdbg_hw(2, "cfg_tdnr_wdma: (%dx%d)\n", atomic_read(&hw_ip->instance), hw_ip, wdma_width, wdma_height);
 
 	return ret;
 }
@@ -791,7 +765,7 @@ static void interpolate_yuv_table_factor(struct ni_dep_factors *interpolated_fac
 			diff_ni_actual_to_bottom);
 }
 
-static void reconfigure_ni_depended_tuneset(struct tdnr_setfile_contents *tdnr_tuneset,
+static void reconfigure_ni_depended_tuneset(tdnr_setfile_contents *tdnr_tuneset,
 	struct tdnr_configs *tdnr_cfgs,
 	u32 noise_index,
 	u32 bottom_ni_index,
@@ -841,7 +815,7 @@ static int fimc_is_hw_mcsc_cfg_tdnr_tuning_param(struct fimc_is_hw_ip *hw_ip,
 	int ret = 0;
 	int ni_idx, arr_idx;
 	struct fimc_is_hw_mcsc *hw_mcsc = NULL;
-	struct tdnr_setfile_contents *tdnr_tuneset;
+	tdnr_setfile_contents *tdnr_tuneset;
 	struct tdnr_configs tdnr_cfgs;
 	u32 max_ref_ni = 0, min_ref_ni = 0;
 	u32 bottom_ni_index = 0, top_ni_index = 0;
@@ -863,7 +837,7 @@ static int fimc_is_hw_mcsc_cfg_tdnr_tuning_param(struct fimc_is_hw_ip *hw_ip,
 #ifdef MCSC_DNR_USE_TUNING
 	instance = atomic_read(&hw_ip->instance);
 	sensor_position = hw_ip->hardware->sensor_position[instance];
-	tdnr_tuneset = &hw_mcsc->cur_setfile[sensor_position][frame->instance]->tdnr_contents;
+	tdnr_tuneset = &hw_mcsc->applied_setfile[sensor_position][frame->instance]->tdnr_contents;
 	use_tdnr_tuning = true;
 #endif
 
@@ -885,7 +859,7 @@ static int fimc_is_hw_mcsc_cfg_tdnr_tuning_param(struct fimc_is_hw_ip *hw_ip,
 	noise_index = frame->noise_idx; /* get applying NI from frame */
 #endif
 
-	if (!start_flag && hw_mcsc->cur_ni[SUBBLK_TDNR] == noise_index)
+	if (!start_flag && hw_mcsc->cur_noise_index == noise_index)
 		goto exit;
 
 	/* find ref NI arry index for re-configure NI depended settings */
@@ -949,7 +923,7 @@ config:
 		tdnr_cfgs.spatial_dep_cfg, tdnr_cfgs.spatial_indep_cfg);
 
 exit:
-	hw_mcsc->cur_ni[SUBBLK_TDNR] = noise_index;
+	hw_mcsc->cur_noise_index = noise_index;
 
 	return ret;
 }
@@ -977,21 +951,14 @@ int fimc_is_hw_mcsc_update_tdnr_register(struct fimc_is_hw_ip *hw_ip,
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 	cap = GET_MCSC_HW_CAP(hw_ip);
 
-	if (cap->tdnr != MCSC_CAP_SUPPORT)
-		return ret;
+#if !defined(ENABLE_DNR_COMPRESSOR_IN_MCSC)
+	if (start_flag)
+		fimc_is_hw_mcsc_tdnr_init(hw_ip, mcs_param, frame->instance);
+#endif
 
 	head = hw_ip->group[frame->instance]->head;
-
 	tdnr_mode = fimc_is_hw_mcsc_check_tdnr_mode_pre(hw_ip, head,
 			frame, tpu_param, mcs_param, hw_mcsc->cur_tdnr_mode);
-
-#if !defined(USE_DNR_YIC_MODE_ALWAYS)
-	if (test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state))
-		hw_mcsc->yic_en = TDNR_YIC_DISABLE;
-	else
-		hw_mcsc->yic_en = TDNR_YIC_ENABLE;
-#endif
-	fimc_is_scaler_set_tdnr_yic_ctrl(hw_ip->regs, hw_mcsc->yic_en);
 
 	fimc_is_scaler_set_tdnr_image_size(hw_ip->regs,
 			mcs_param->input.width, mcs_param->input.height);
@@ -1035,11 +1002,13 @@ tdnr_mode_select:
 	fimc_is_scaler_set_tdnr_mode_select(hw_ip->regs, tdnr_mode);
 	hw_mcsc->cur_tdnr_mode = tdnr_mode;
 
+	msdbg_hw(2, "update_tdnr_register: done\n", atomic_read(&hw_ip->instance), hw_ip);
+
 	return 0;
 }
 
 int fimc_is_hw_mcsc_recovery_tdnr_register(struct fimc_is_hw_ip *hw_ip,
-		struct is_param_region *param, u32 instance)
+			struct is_param_region *param, u32 instance)
 {
 	int ret = 0;
 	struct fimc_is_hw_mcsc *hw_mcsc = NULL;
@@ -1063,3 +1032,4 @@ int fimc_is_hw_mcsc_recovery_tdnr_register(struct fimc_is_hw_ip *hw_ip,
 
 	return ret;
 }
+

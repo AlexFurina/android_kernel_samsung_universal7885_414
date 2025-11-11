@@ -57,7 +57,7 @@ int fimc_is_hw_group_cfg(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	device = group->device;
@@ -197,7 +197,7 @@ int fimc_is_hw_group_open(void *group_data)
 	struct fimc_is_group *group;
 	struct fimc_is_device_ischain *device;
 
-	FIMC_BUG(!group_data);
+	BUG_ON(!group_data);
 
 	group = group_data;
 	leader = &group->leader;
@@ -232,7 +232,7 @@ int fimc_is_hw_camif_cfg(void *sensor_data)
 	void __iomem *isp_mipiphy_con;
 	u32 val;
 
-	FIMC_BUG(!sensor_data);
+	BUG_ON(!sensor_data);
 
 	sensor = sensor_data;
 	ischain = sensor->ischain;
@@ -274,7 +274,7 @@ int fimc_is_hw_camif_open(void *sensor_data)
 	struct fimc_is_device_flite *flite;
 	struct fimc_is_device_csi *csi;
 
-	FIMC_BUG(!sensor_data);
+	BUG_ON(!sensor_data);
 
 	sensor = sensor_data;
 	flite = (struct fimc_is_device_flite *)v4l2_get_subdevdata(sensor->subdev_flite);
@@ -303,7 +303,7 @@ int fimc_is_hw_ischain_cfg(void *ischain_data)
 	struct fimc_is_device_ischain *device;
 	u32 val;
 
-	FIMC_BUG(!ischain_data);
+	BUG_ON(!ischain_data);
 
 	device = (struct fimc_is_device_ischain *)ischain_data;
 	if (test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state))
@@ -499,8 +499,8 @@ int fimc_is_hw_get_address(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	struct fimc_is_interface_hwip *itf_hwip = NULL;
 
-	FIMC_BUG(!itfc_data);
-	FIMC_BUG(!pdev_data);
+	BUG_ON(!itfc_data);
+	BUG_ON(!pdev_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -605,7 +605,7 @@ int fimc_is_hw_get_irq(void *itfc_data, void *pdev_data, int hw_id)
 	struct platform_device *pdev = NULL;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;
 	pdev = (struct platform_device *)pdev_data;
@@ -670,7 +670,7 @@ int fimc_is_hw_request_irq(void *itfc_data, int hw_id)
 	u32 name_len = 0;
 	int ret = 0;
 
-	FIMC_BUG(!itfc_data);
+	BUG_ON(!itfc_data);
 
 
 	itf_hwip = (struct fimc_is_interface_hwip *)itfc_data;

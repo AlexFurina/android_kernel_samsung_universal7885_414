@@ -61,6 +61,8 @@ static bool oom_skip_task(struct task_struct *p, int selected_adj)
 		return true;
 	if (in_vfork(p))
 		return true;
+	if (p->state & TASK_UNINTERRUPTIBLE)
+		return true;
 	return false;
 }
 
@@ -116,7 +118,7 @@ static int hpa_killer(void)
 		return -ESRCH;
 	}
 
-	pr_info("HPA: Killing '%s' (%d), adj %hd to free %lukB\n",
+	pr_info("HPA: Killing '%s' (%d), adj %d to free %lukB\n",
 		selected->comm, task_pid_nr(selected), selected_adj,
 		selected_tasksize * (PAGE_SIZE / SZ_1K));
 

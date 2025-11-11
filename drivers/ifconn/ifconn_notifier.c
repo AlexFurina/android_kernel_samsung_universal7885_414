@@ -31,7 +31,9 @@ static struct ifconn_notifier pnoti[IFCONN_NOTIFY_MAX];
 
 void _ifconn_show_attr(struct ifconn_notifier_template *t)
 {
-	if (t == NULL) return;
+	if (t == NULL)
+		return;
+
 	pr_info("%s, src:%s, dest:%s, id:%d, event:%d, data:0x%p\n",
 		__func__, IFCONN_NOTI_DEV_Print[t->src], IFCONN_NOTI_DEV_Print[t->dest], t->id, t->event, t->data);
 }
@@ -147,24 +149,24 @@ int ifconn_notifier_notify(ifconn_notifier_t src,
 				memcpy(&(pnoti[src].ifconn_template[listener]), template,
 					   sizeof(struct ifconn_notifier_template));
 			}
-			ret = NOTIFY_BAD;
-		} else {
-			nb = pnoti[src].nb[listener];
-			ret = nb->notifier_call(nb, (unsigned long)noti_id, template);
+			return -1;
 		}
+
+		nb = pnoti[src].nb[listener];
+		ret = nb->notifier_call(nb, (unsigned long)noti_id, template);
 	}
 
 	switch (ret) {
 	case NOTIFY_STOP_MASK:
 	case NOTIFY_BAD:
-		pr_err("%s: src(%d) notify error occur(0x%x)\n", __func__, src, ret);
+		pr_err("%s: notify error occur(0x%x)\n", __func__, ret);
 		break;
 	case NOTIFY_DONE:
 	case NOTIFY_OK:
-		pr_info("%s: src(%d) notify done(0x%x)\n", __func__, src, ret);
+		pr_info("%s: notify done(0x%x)\n", __func__, ret);
 		break;
 	default:
-		pr_info("%s: src(%d) notify status unknown(0x%x)\n", __func__, src, ret);
+		pr_info("%s: notify status unknown(0x%x)\n", __func__, ret);
 		break;
 	}
 

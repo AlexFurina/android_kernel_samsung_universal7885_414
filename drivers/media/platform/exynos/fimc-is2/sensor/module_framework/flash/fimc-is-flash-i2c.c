@@ -85,8 +85,8 @@ static int flash_torch_set_init(struct i2c_client *client)
 static void attach_cable_check(muic_attached_dev_t attached_dev,
 	int *attach_ta, int *attach_sdp)
 {
-	FIMC_BUG(!attach_ta);
-	FIMC_BUG(!attach_sdp);
+	BUG_ON(!attach_ta);
+	BUG_ON(!attach_sdp);
 
 	if (attached_dev == ATTACHED_DEV_USB_MUIC)
 		*attach_sdp = 1;
@@ -116,12 +116,12 @@ static int flash_ta_notification(struct notifier_block *nb,
 	struct fimc_is_flash *flash;
 	muic_attached_dev_t attached_dev;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	attached_dev = *(muic_attached_dev_t *)data;
 
 	flash = container_of(nb, struct fimc_is_flash, flash_noti_ta);
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	switch (action) {
 	case MUIC_NOTIFY_CMD_DETACH:
@@ -202,11 +202,11 @@ static int flash_i2c_init(struct v4l2_subdev *subdev, u32 val)
 	int ret = 0;
 	struct fimc_is_flash *flash;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flash = (struct fimc_is_flash *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	/* TODO: init flash driver */
 	flash->flash_data.mode = CAM2_FLASH_MODE_OFF;
@@ -225,10 +225,10 @@ static int sensor_i2c_flash_control(struct v4l2_subdev *subdev, enum flash_mode 
 	int ret = 0;
 	struct fimc_is_flash *flash = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flash = (struct fimc_is_flash *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	dbg_flash("%s : mode = %s, intensity = %d\n", __func__,
 		mode == CAM2_FLASH_MODE_OFF ? "OFF" :
@@ -269,10 +269,10 @@ int flash_i2c_s_ctrl(struct v4l2_subdev *subdev, struct v4l2_control *ctrl)
 	int ret = 0;
 	struct fimc_is_flash *flash = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flash = (struct fimc_is_flash *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	switch(ctrl->id) {
 	case V4L2_CID_FLASH_SET_INTENSITY:
@@ -403,7 +403,7 @@ static const struct v4l2_subdev_ops subdev_ops = {
 	.core = &core_ops,
 };
 
-static int __init flash_probe(struct device *dev, struct i2c_client *client)
+int flash_probe(struct device *dev, struct i2c_client *client)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -414,8 +414,8 @@ static int __init flash_probe(struct device *dev, struct i2c_client *client)
 	u32 sensor_id = 0;
 	struct device_node *dnode;
 
-	FIMC_BUG(!fimc_is_dev);
-	FIMC_BUG(!dev);
+	BUG_ON(!fimc_is_dev);
+	BUG_ON(!dev);
 
 	dnode = dev->of_node;
 
@@ -503,7 +503,7 @@ p_err:
 	return ret;
 }
 
-static int flash_i2c_probe(struct i2c_client *client,
+int flash_i2c_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -529,6 +529,15 @@ p_err:
     return ret;
 }
 
+static int flash_i2c_remove(struct i2c_client *client)
+{
+	int ret = 0;
+
+	info("%s\n", __func__);
+
+	return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_flash_i2c_match[] = {
 	{
 		.compatible = "samsung,sensor-flash-i2c",
@@ -543,26 +552,14 @@ static const struct i2c_device_id flash_i2c_idt[] = {
 	{},
 };
 
-static struct i2c_driver sensor_flash_i2c_driver = {
-	.probe  = flash_i2c_probe,
+static struct i2c_driver sensor_flash_gpio_i2c_driver = {
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-FLASH-I2C",
 		.owner  = THIS_MODULE,
 		.of_match_table = exynos_fimc_is_sensor_flash_i2c_match
-		.suppress_bind_attrs = true,
 	},
+	.probe  = flash_i2c_probe,
+	.remove = flash_i2c_remove,
 	.id_table = flash_i2c_idt
 };
-
-static int __init sensor_flash_i2c_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&sensor_flash_i2c_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_flash_i2c_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(sensor_flash_i2c_init);
+module_i2c_driver(sensor_flash_gpio_i2c_driver);

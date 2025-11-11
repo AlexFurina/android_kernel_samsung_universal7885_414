@@ -169,6 +169,9 @@ __setup("psi=", setup_psi);
 #define WINDOW_MAX_US 10000000	/* Max window size is 10s */
 #define UPDATES_PER_WINDOW 10	/* 10 updates per window */
 
+#define MONITOR_WINDOW_MIN_NS 1000000000 /* 1s */
+#define MONITOR_THRESHOLD_MIN_NS 100000000 /* 100ms */
+
 /* Sampling frequency in nanoseconds */
 static u64 psi_period __read_mostly;
 
@@ -186,7 +189,8 @@ static void group_init(struct psi_group *group)
 
 	for_each_possible_cpu(cpu)
 		seqcount_init(&per_cpu_ptr(group->pcpu, cpu)->seq);
-	group->avg_next_update = sched_clock() + psi_period;
+	group->avg_last_update = sched_clock();
+	group->avg_next_update = group->avg_last_update + psi_period;
 	INIT_DELAYED_WORK(&group->avgs_work, psi_avgs_work);
 	mutex_init(&group->avgs_lock);
 	/* Init trigger-related members */
@@ -482,7 +486,7 @@ static u64 window_update(struct psi_window *win, u64 now, u64 value)
 		u32 remaining;
 
 		remaining = win->size - elapsed;
-		growth += div_u64(win->prev_growth * remaining, win->size);
+		growth += div64_u64(win->prev_growth * remaining, win->size);
 	}
 
 	return growth;
@@ -533,6 +537,11 @@ static u64 update_triggers(struct psi_group *group, u64 now)
 		/* Limit event signaling to once per window */
 		if (now < t->last_event_time + t->win.size)
 			continue;
+
+		if ((t->win.size >= MONITOR_WINDOW_MIN_NS) &&
+		    (t->threshold >= MONITOR_THRESHOLD_MIN_NS))
+			printk_deferred("psi: %s %llu %llu %d %llu %llu\n", __func__, now,
+			       t->last_event_time, t->state, t->threshold, growth);
 
 		/* Generate an event */
 		if (cmpxchg(&t->event, 0, 1) == 0)
@@ -1191,7 +1200,10 @@ static ssize_t psi_write(struct file *file, const char __user *user_buf,
 	if (static_branch_likely(&psi_disabled))
 		return -EOPNOTSUPP;
 
-	buf_size = min(nbytes, (sizeof(buf) - 1));
+	if (!nbytes)
+		return -EINVAL;
+
+	buf_size = min(nbytes, sizeof(buf));
 	if (copy_from_user(buf, user_buf, buf_size))
 		return -EFAULT;
 

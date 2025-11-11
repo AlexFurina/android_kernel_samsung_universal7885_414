@@ -12,35 +12,27 @@
 #include "fimc-is-hw-control.h"
 #include "sfr/fimc-is-sfr-isp-v310.h"
 #include "fimc-is-err.h"
-#include <soc/samsung/exynos-bcm_dbg.h>
-
-int debug_irq_ddk;
-module_param(debug_irq_ddk, int, 0644);
-int debug_time_hw;
-module_param(debug_time_hw, int, 0644);
+#include <soc/samsung/bcm.h>
 
 bool check_dma_done(struct fimc_is_hw_ip *hw_ip, u32 instance_id, u32 fcount)
 {
 	bool ret = false;
+	int expected_fcount;
 	struct fimc_is_frame *frame;
 	struct fimc_is_frame *list_frame;
 	struct fimc_is_framemgr *framemgr;
 	int wq_id0 = WORK_MAX_MAP, wq_id1 = WORK_MAX_MAP;
-	int wq_id2 = WORK_MAX_MAP, wq_id3 = WORK_MAX_MAP;
-	int wq_id4 = WORK_MAX_MAP, wq_id5 = WORK_MAX_MAP;
 	int output_id0 = ENTRY_END, output_id1 = ENTRY_END;
-	int output_id2 = ENTRY_END, output_id3 = ENTRY_END;
-	int output_id4 = ENTRY_END, output_id5 = ENTRY_END;
 	u32 hw_fcount;
 	bool flag_get_meta = true;
 	ulong flags = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	framemgr = hw_ip->framemgr;
 	hw_fcount = atomic_read(&hw_ip->fcount);
 
-	FIMC_BUG(!framemgr);
+	BUG_ON(!framemgr);
 
 	framemgr_e_barrier_common(framemgr, 0, flags);
 	frame = peek_frame(framemgr, FS_HW_WAIT_DONE);
@@ -69,40 +61,35 @@ flush_config_frame:
 	}
 
 	/*
-	 * fcount: This value should be same value that is notified by host at shot time.
-	 * In case of FRO or batch mode, this value also should be same between start and end.
+	 * The expected_fcount in which num_buffers is considered.
+	 * It would be matched with frame->fcount which has "HW_WAIT_DONE" state.
+	 *  ex. frame->fcount : 1, num_buffer : 4, fcount : 4 => expected_fcount : 1
 	 */
-	msdbg_hw(1, "check_dma [ddk:%d,hw:%d] frame(F:%d,idx:%d,num_buffers:%d)\n",
-			instance_id, hw_ip,
-			fcount, hw_fcount,
+	expected_fcount = fcount - (frame->num_buffers - 1);
+
+	msdbg_hw(1, "check_dma [F:%d,exp:%d,hw:%d], frame(F:%d,idx:%d,num_buffers:%d)\n",
+			instance_id, hw_ip, fcount, expected_fcount, hw_fcount,
 			frame->fcount, frame->cur_buf_index, frame->num_buffers);
 
-	if (((frame->num_buffers > 1) && (fcount != frame->fcount))
-		|| ((frame->num_buffers == 1) && (fcount != (frame->fcount + frame->cur_buf_index)))) {
+	if (((frame->num_buffers > 1) && (expected_fcount != frame->fcount))
+		|| ((frame->num_buffers == 1) && (expected_fcount != (frame->fcount + frame->cur_buf_index)))) {
 		framemgr_e_barrier_common(framemgr, 0, flags);
 		list_frame = find_frame(framemgr, FS_HW_WAIT_DONE, frame_fcount,
-					(void *)(ulong)fcount);
+					(void *)(ulong)expected_fcount);
 		framemgr_x_barrier_common(framemgr, 0, flags);
 		if (list_frame == NULL) {
-			mswarn_hw("queued_count(%d) [ddk:%d,hw:%d] invalid frame(F:%d,idx:%d)",
-				instance_id, hw_ip,
+			mswarn_hw("[F:%d,exp:%d,hw:%d]queued_count(%d) invalid frame(F:%d,idx:%d)",
+				instance_id, hw_ip, fcount, expected_fcount, hw_fcount,
 				framemgr->queued_count[FS_HW_WAIT_DONE],
-				fcount, hw_fcount,
 				frame->fcount, frame->cur_buf_index);
 flush_wait_done_frame:
 			framemgr_e_barrier_common(framemgr, 0, flags);
 			frame = peek_frame(framemgr, FS_HW_WAIT_DONE);
 			if (frame) {
-				if (unlikely(frame->fcount < fcount)) {
+				if (unlikely(frame->fcount < expected_fcount)) {
 					framemgr_x_barrier_common(framemgr, 0, flags);
 					fimc_is_hardware_frame_ndone(hw_ip, frame, frame->instance, IS_SHOT_INVALID_FRAMENUMBER);
 					goto flush_wait_done_frame;
-				} else if (unlikely(frame->fcount > fcount)) {
-					mswarn_hw("%s:[F%d] Too early frame. Skip it.",
-							instance_id, hw_ip,
-							__func__, frame->fcount);
-					framemgr_x_barrier_common(framemgr, 0, flags);
-					return true;
 				}
 			} else {
 				framemgr_x_barrier_common(framemgr, 0, flags);
@@ -120,40 +107,24 @@ flush_wait_done_frame:
 		output_id0 = ENTRY_3AP;
 		wq_id1 = WORK_30C_FDONE; /* before BDS */
 		output_id1 = ENTRY_3AC;
-		wq_id2 = WORK_30F_FDONE; /* efd output */
-		output_id2 = ENTRY_3AF;
-		wq_id3 = WORK_30G_FDONE; /* mrg output */
-		output_id3 = ENTRY_3AG;
-		wq_id4 = WORK_ME0C_FDONE; /* me output */
-		output_id4 = ENTRY_MEXC;
 		break;
 	case DEV_HW_3AA1:
 		wq_id0 = WORK_31P_FDONE;
 		output_id0 = ENTRY_3AP;
 		wq_id1 = WORK_31C_FDONE;
 		output_id1 = ENTRY_3AC;
-		wq_id2 = WORK_31F_FDONE; /* efd output */
-		output_id2 = ENTRY_3AF;
-		wq_id3 = WORK_31G_FDONE; /* mrg output */
-		output_id3 = ENTRY_3AG;
-		wq_id4 = WORK_ME1C_FDONE; /* me output */
-		output_id4 = ENTRY_MEXC;
 		break;
 	case DEV_HW_ISP0:
 		wq_id0 = WORK_I0P_FDONE; /* chunk output */
 		output_id0 = ENTRY_IXP;
 		wq_id1 = WORK_I0C_FDONE; /* yuv output */
 		output_id1 = ENTRY_IXC;
-		wq_id2 = WORK_ME0C_FDONE; /* me output */
-		output_id2 = ENTRY_MEXC;
 		break;
 	case DEV_HW_ISP1:
 		wq_id0 = WORK_I1P_FDONE;
 		output_id0 = ENTRY_IXP;
 		wq_id1 = WORK_I1C_FDONE;
 		output_id1 = ENTRY_IXC;
-		wq_id2 = WORK_ME1C_FDONE; /* me output */
-		output_id2 = ENTRY_MEXC;
 		break;
 	case DEV_HW_TPU0:
 		wq_id1 = WORK_D0C_FDONE;
@@ -162,26 +133,6 @@ flush_wait_done_frame:
 	case DEV_HW_TPU1:
 		wq_id1 = WORK_D1C_FDONE;
 		output_id1 = ENTRY_DXC;
-		break;
-	case DEV_HW_DCP:
-		wq_id0 = WORK_DC0C_FDONE; /* Master Capture */
-		output_id0 = ENTRY_DC0C;
-
-		wq_id1 = WORK_DC1C_FDONE; /* Slave Capture */
-		output_id1 = ENTRY_DC1C;
-
-		wq_id2 = WORK_DC2C_FDONE; /* Disparity */
-		output_id2 = ENTRY_DC2C;
-
-		wq_id3 = WORK_DC3C_FDONE; /* Master Sub Capture */
-		output_id3 = ENTRY_DC3C;
-
-		wq_id4 = WORK_DC4C_FDONE; /* Slave Sub Capture */
-		output_id4 = ENTRY_DC4C;
-
-		wq_id5 = WORK_DC1S_FDONE; /* Slave Input */
-		output_id5 = ENTRY_DC1S;
-
 		break;
 	default:
 		mserr_hw("[F:%d] invalid hw ID(%d)!!", instance_id, hw_ip, fcount, hw_ip->id);
@@ -207,42 +158,6 @@ flush_wait_done_frame:
 		flag_get_meta = false;
 	}
 
-	if (test_bit(output_id2, &frame->out_flag)) {
-		msdbg_hw(1, "[F:%d]output_id[0x%x],wq_id[0x%x]\n",
-			instance_id, hw_ip, frame->fcount, output_id2, wq_id2);
-		fimc_is_hardware_frame_done(hw_ip, NULL, wq_id2, output_id2,
-			IS_SHOT_SUCCESS, flag_get_meta);
-		ret = true;
-		flag_get_meta = false;
-	}
-
-	if (test_bit(output_id3, &frame->out_flag)) {
-		msdbg_hw(1, "[F:%d]output_id[0x%x],wq_id[0x%x]\n",
-			instance_id, hw_ip, frame->fcount, output_id3, wq_id3);
-		fimc_is_hardware_frame_done(hw_ip, NULL, wq_id3, output_id3,
-			IS_SHOT_SUCCESS, flag_get_meta);
-		ret = true;
-		flag_get_meta = false;
-	}
-
-	if (test_bit(output_id4, &frame->out_flag)) {
-		msdbg_hw(1, "[F:%d]output_id[0x%x],wq_id[0x%x]\n",
-			instance_id, hw_ip, frame->fcount, output_id4, wq_id4);
-		fimc_is_hardware_frame_done(hw_ip, NULL, wq_id4, output_id4,
-			IS_SHOT_SUCCESS, flag_get_meta);
-		ret = true;
-		flag_get_meta = false;
-	}
-
-	if (test_bit(output_id5, &frame->out_flag)) {
-		msdbg_hw(1, "[F:%d]output_id[0x%x],wq_id[0x%x]\n",
-			instance_id, hw_ip, frame->fcount, output_id5, wq_id5);
-		fimc_is_hardware_frame_done(hw_ip, NULL, wq_id5, output_id5,
-			IS_SHOT_SUCCESS, flag_get_meta);
-		ret = true;
-		flag_get_meta = false;
-	}
-
 	return ret;
 }
 
@@ -258,13 +173,13 @@ static void fimc_is_lib_io_callback(void *this, enum lib_cb_event_type event_id,
 	int ret = 0;
 #endif
 
-	FIMC_BUG_VOID(!this);
+	BUG_ON(!this);
 
 	hw_ip = (struct fimc_is_hw_ip *)this;
 	hardware = hw_ip->hardware;
 	hw_fcount = atomic_read(&hw_ip->fcount);
 
-	FIMC_BUG_VOID(!hw_ip->hardware);
+	BUG_ON(!hw_ip->hardware);
 
 	switch (event_id) {
 	case LIB_EVENT_DMA_A_OUT_DONE:
@@ -340,7 +255,7 @@ static void fimc_is_lib_io_callback(void *this, enum lib_cb_event_type event_id,
 		break;
 	case LIB_EVENT_ERROR_CIN_OVERFLOW:
 		fimc_is_debug_event_count(FIMC_IS_EVENT_OVERFLOW_3AA);
-		exynos_bcm_dbg_stop(CAMERA_DRIVER);
+		bcm_stop(NULL);
 		msinfo_hw("LIB_EVENT_ERROR_CIN_OVERFLOW\n", instance_id, hw_ip);
 		fimc_is_hardware_flush_frame(hw_ip, FS_HW_CONFIGURE, IS_SHOT_OVERFLOW);
 
@@ -366,6 +281,7 @@ static void fimc_is_lib_camera_callback(void *this, enum lib_cb_event_type event
 {
 	struct fimc_is_hardware *hardware;
 	struct fimc_is_hw_ip *hw_ip;
+	struct fimc_is_group *head;
 	ulong fcount;
 	u32 hw_fcount, index;
 	bool ret = false;
@@ -374,24 +290,19 @@ static void fimc_is_lib_camera_callback(void *this, enum lib_cb_event_type event
 	struct fimc_is_frame *frame;
 	ulong flags = 0;
 
-	FIMC_BUG_VOID(!this);
+	BUG_ON(!this);
 
 	hw_ip = (struct fimc_is_hw_ip *)this;
 	hardware = hw_ip->hardware;
 	hw_fcount = atomic_read(&hw_ip->fcount);
 
-	FIMC_BUG_VOID(!hw_ip->hardware);
-
-	if (test_bit(HW_OVERFLOW_RECOVERY, &hardware->hw_recovery_flag)) {
-		err_hw("[ID:%d] During recovery : invalid interrupt", hw_ip->id);
-		return;
-	}
+	BUG_ON(!hw_ip->hardware);
 
 	switch (event_id) {
 	case LIB_EVENT_CONFIG_LOCK:
 		fcount = (ulong)data;
 		atomic_add(hw_ip->num_buffers, &hw_ip->count.cl);
-		if (unlikely(!atomic_read(&hardware->streaming[hardware->sensor_position[instance_id]])))
+		if (!atomic_read(&hardware->streaming[hardware->sensor_position[instance_id]]))
 			msinfo_hw("[F:%d]C.L %d\n", instance_id, hw_ip,
 				hw_fcount, (u32)fcount);
 
@@ -399,49 +310,12 @@ static void fimc_is_lib_camera_callback(void *this, enum lib_cb_event_type event
 		fimc_is_hardware_config_lock(hw_ip, instance_id, (u32)fcount);
 		break;
 	case LIB_EVENT_FRAME_START_ISR:
-		if (sysfs_debug.pattern_en && (hw_ip->id == DEV_HW_3AA0 || hw_ip->id == DEV_HW_3AA1)) {
-			struct fimc_is_group *group;
-			struct v4l2_subdev *subdev;
-			struct fimc_is_device_csi *csi;
-
-			group = hw_ip->group[instance_id];
-			if (IS_ERR_OR_NULL(group)) {
-				mserr_hw("group is NULL", instance_id, hw_ip);
-				return;
-			}
-
-			if (IS_ERR_OR_NULL(group->device)) {
-				mserr_hw("device is NULL", instance_id, hw_ip);
-				return;
-			}
-
-			if (IS_ERR_OR_NULL(group->device->sensor)) {
-				mserr_hw("sensor is NULL", instance_id, hw_ip);
-				return;
-			}
-
-			if (IS_ERR_OR_NULL(group->device->sensor->subdev_csi)) {
-				mserr_hw("subdev_csi is NULL", instance_id, hw_ip);
-				return;
-			}
-
-			subdev = group->device->sensor->subdev_csi;
-			csi = v4l2_get_subdevdata(subdev);
-			if (IS_ERR_OR_NULL(csi)) {
-				mserr_hw("csi is NULL", instance_id, hw_ip);
-				return;
-			}
-
-			csi_frame_start_inline(csi);
-		}
-
 		hw_ip->debug_index[1] = hw_ip->debug_index[0] % DEBUG_FRAME_COUNT;
 		index = hw_ip->debug_index[1];
 		hw_ip->debug_info[index].fcount = hw_ip->debug_index[0];
 		hw_ip->debug_info[index].cpuid[DEBUG_POINT_FRAME_START] = raw_smp_processor_id();
 		hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_START] = local_clock();
-		if (unlikely(!atomic_read(&hardware->streaming[hardware->sensor_position[instance_id]])
-			|| debug_irq_ddk))
+		if (!atomic_read(&hardware->streaming[hardware->sensor_position[instance_id]]))
 			msinfo_hw("[F:%d]F.S\n", instance_id, hw_ip,
 				hw_fcount);
 
@@ -453,16 +327,9 @@ static void fimc_is_lib_camera_callback(void *this, enum lib_cb_event_type event
 		hw_ip->debug_info[index].cpuid[DEBUG_POINT_FRAME_END] = raw_smp_processor_id();
 		hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_END] = local_clock();
 		atomic_add(hw_ip->num_buffers, &hw_ip->count.fe);
-		if (unlikely(!atomic_read(&hardware->streaming[hardware->sensor_position[instance_id]])
-			|| debug_irq_ddk))
+		if (!atomic_read(&hardware->streaming[hardware->sensor_position[instance_id]]))
 			msinfo_hw("[F:%d]F.E\n", instance_id, hw_ip,
 				hw_fcount);
-
-		if (unlikely(debug_time_hw)) {
-			msinfo_hw("[TIM] S-E %05llu us\n", instance_id, hw_ip,
-				(hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_END] -
-				hw_ip->debug_info[index].time[DEBUG_POINT_FRAME_START]) / 1000);
-		}
 
 		fcount = (ulong)data;
 		fimc_is_hw_g_ctrl(hw_ip, hw_ip->id, HW_G_CTRL_FRM_DONE_WITH_DMA, (void *)&frame_done);
@@ -477,6 +344,10 @@ static void fimc_is_lib_camera_callback(void *this, enum lib_cb_event_type event
 		}
 		atomic_set(&hw_ip->status.Vvalid, V_BLANK);
 		wake_up(&hw_ip->status.wait_queue);
+
+		head = GET_HEAD_GROUP_IN_DEVICE(FIMC_IS_DEVICE_ISCHAIN, hw_ip->group[instance_id]);
+		if (!test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state))
+			up(&hw_ip->smp_resource);
 
 		CALL_HW_OPS(hw_ip, clk_gate, instance_id, false, false);
 		break;
@@ -519,7 +390,7 @@ struct lib_callback_func fimc_is_lib_cb_func = {
 	.io_callback		= fimc_is_lib_io_callback,
 };
 
-int __nocfi fimc_is_lib_isp_chain_create(struct fimc_is_hw_ip *hw_ip,
+int fimc_is_lib_isp_chain_create(struct fimc_is_hw_ip *hw_ip,
 	struct fimc_is_lib_isp *this, u32 instance_id)
 {
 	int ret = 0;
@@ -527,19 +398,26 @@ int __nocfi fimc_is_lib_isp_chain_create(struct fimc_is_hw_ip *hw_ip,
 	ulong base_addr, base_addr_b, set_b_offset;
 	struct lib_system_config config;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!this);
-	FIMC_BUG(!this->func);
+	BUG_ON(!hw_ip);
+	BUG_ON(!this);
+	BUG_ON(!this->func);
 
 	switch (hw_ip->id) {
 	case DEV_HW_3AA0:
-	case DEV_HW_ISP0:
-	case DEV_HW_TPU0:
-	case DEV_HW_DCP:
 		chain_id = 0;
 		break;
 	case DEV_HW_3AA1:
+		chain_id = 1;
+		break;
+	case DEV_HW_ISP0:
+		chain_id = 0;
+		break;
 	case DEV_HW_ISP1:
+		chain_id = 1;
+		break;
+	case DEV_HW_TPU0:
+		chain_id = 0;
+		break;
 	case DEV_HW_TPU1:
 		chain_id = 1;
 		break;
@@ -576,26 +454,34 @@ int __nocfi fimc_is_lib_isp_chain_create(struct fimc_is_hw_ip *hw_ip,
 	return ret;
 }
 
-int __nocfi fimc_is_lib_isp_object_create(struct fimc_is_hw_ip *hw_ip,
+int fimc_is_lib_isp_object_create(struct fimc_is_hw_ip *hw_ip,
 	struct fimc_is_lib_isp *this, u32 instance_id, u32 rep_flag, u32 module_id)
 {
 	int ret = 0;
 	u32 chain_id, input_type, obj_info = 0;
+	struct fimc_is_group *head;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!this);
-	FIMC_BUG(!this->func);
-	FIMC_BUG(!hw_ip->group[instance_id]);
+	BUG_ON(!hw_ip);
+	BUG_ON(!this);
+	BUG_ON(!this->func);
+	BUG_ON(!hw_ip->group[instance_id]);
 
 	switch (hw_ip->id) {
 	case DEV_HW_3AA0:
-	case DEV_HW_ISP0:
-	case DEV_HW_TPU0:
-	case DEV_HW_DCP:
 		chain_id = 0;
 		break;
 	case DEV_HW_3AA1:
+		chain_id = 1;
+		break;
+	case DEV_HW_ISP0:
+		chain_id = 0;
+		break;
 	case DEV_HW_ISP1:
+		chain_id = 1;
+		break;
+	case DEV_HW_TPU0:
+		chain_id = 0;
+		break;
 	case DEV_HW_TPU1:
 		chain_id = 1;
 		break;
@@ -605,8 +491,11 @@ int __nocfi fimc_is_lib_isp_object_create(struct fimc_is_hw_ip *hw_ip,
 		break;
 	}
 
-	/* input_type : use only in 3AA (guide by DDK) */
-	if (test_bit(FIMC_IS_GROUP_OTF_INPUT, &hw_ip->group[instance_id]->state))
+	head = GET_HEAD_GROUP_IN_DEVICE(FIMC_IS_DEVICE_ISCHAIN, hw_ip->group[instance_id]);
+
+	BUG_ON(!head);
+
+	if (test_bit(FIMC_IS_GROUP_OTF_INPUT, &head->state))
 		input_type = 0; /* default */
 	else
 		input_type = 1;
@@ -632,24 +521,31 @@ int __nocfi fimc_is_lib_isp_object_create(struct fimc_is_hw_ip *hw_ip,
 	return ret;
 }
 
-void __nocfi fimc_is_lib_isp_chain_destroy(struct fimc_is_hw_ip *hw_ip,
+void fimc_is_lib_isp_chain_destroy(struct fimc_is_hw_ip *hw_ip,
 	struct fimc_is_lib_isp *this, u32 instance_id)
 {
 	int ret = 0;
 	u32 chain_id;
 
-	FIMC_BUG_VOID(!hw_ip);
-	FIMC_BUG_VOID(!this->func);
+	BUG_ON(!hw_ip);
+	BUG_ON(!this->func);
 
 	switch (hw_ip->id) {
 	case DEV_HW_3AA0:
-	case DEV_HW_ISP0:
-	case DEV_HW_TPU0:
-	case DEV_HW_DCP:
 		chain_id = 0;
 		break;
 	case DEV_HW_3AA1:
+		chain_id = 1;
+		break;
+	case DEV_HW_ISP0:
+		chain_id = 0;
+		break;
 	case DEV_HW_ISP1:
+		chain_id = 1;
+		break;
+	case DEV_HW_TPU0:
+		chain_id = 0;
+		break;
 	case DEV_HW_TPU1:
 		chain_id = 1;
 		break;
@@ -669,14 +565,14 @@ void __nocfi fimc_is_lib_isp_chain_destroy(struct fimc_is_hw_ip *hw_ip,
 	return;
 }
 
-void __nocfi fimc_is_lib_isp_object_destroy(struct fimc_is_hw_ip *hw_ip,
+void fimc_is_lib_isp_object_destroy(struct fimc_is_hw_ip *hw_ip,
 	struct fimc_is_lib_isp *this, u32 instance_id)
 {
 	int ret = 0;
 
-	FIMC_BUG_VOID(!hw_ip);
-	FIMC_BUG_VOID(!this);
-	FIMC_BUG_VOID(!this->func);
+	BUG_ON(!hw_ip);
+	BUG_ON(!this);
+	BUG_ON(!this->func);
 
 	if (!this->object) {
 		err_lib("object(NULL) destroy fail (%d)", hw_ip->id);
@@ -694,52 +590,95 @@ void __nocfi fimc_is_lib_isp_object_destroy(struct fimc_is_hw_ip *hw_ip,
 	return;
 }
 
-int __nocfi fimc_is_lib_isp_set_param(struct fimc_is_hw_ip *hw_ip,
+int fimc_is_lib_isp_set_param(struct fimc_is_hw_ip *hw_ip,
 	struct fimc_is_lib_isp *this, void *param)
 {
 	int ret;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!this);
-	FIMC_BUG(!this->func);
-	FIMC_BUG(!this->object);
+	BUG_ON(!hw_ip);
+	BUG_ON(!this);
+	BUG_ON(!this->func);
+	BUG_ON(!this->object);
 
-	ret = CALL_LIBOP(this, set_param, this->object, param);
-	if (ret)
-		mserr_lib("set_param fail", atomic_read(&hw_ip->instance), hw_ip);
+	switch (hw_ip->id) {
+	case DEV_HW_3AA0:
+	case DEV_HW_3AA1:
+		ret = CALL_LIBOP(this, set_param, this->object, param);
+		if (ret)
+			err_lib("3aa set_param fail (%d)", hw_ip->id);
+		break;
+	case DEV_HW_ISP0:
+	case DEV_HW_ISP1:
+		ret = CALL_LIBOP(this, set_param, this->object, param);
+		if (ret)
+			err_lib("isp set_param fail (%d)", hw_ip->id);
+		break;
+	case DEV_HW_TPU0:
+	case DEV_HW_TPU1:
+		ret = CALL_LIBOP(this, set_param, this->object, param);
+		if (ret)
+			err_lib("tpu set_param fail (%d)", hw_ip->id);
+		break;
+	default:
+		ret = -EINVAL;
+		err_lib("invalid hw (%d)", hw_ip->id);
+		break;
+	}
 
 	return ret;
 }
 
-int __nocfi fimc_is_lib_isp_set_ctrl(struct fimc_is_hw_ip *hw_ip,
+int fimc_is_lib_isp_set_ctrl(struct fimc_is_hw_ip *hw_ip,
 	struct fimc_is_lib_isp *this, struct fimc_is_frame *frame)
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!this);
-	FIMC_BUG(!frame);
-	FIMC_BUG(!this->func);
-	FIMC_BUG(!this->object);
+	BUG_ON(!hw_ip);
+	BUG_ON(!this);
+	BUG_ON(!frame);
+	BUG_ON(!this->func);
+	BUG_ON(!this->object);
 
-	ret = CALL_LIBOP(this, set_ctrl, this->object, frame->instance,
-				frame->fcount, frame->shot);
-	if (ret)
-		mserr_lib("set_ctrl fail", atomic_read(&hw_ip->instance), hw_ip);
+	switch (hw_ip->id) {
+	case DEV_HW_3AA0:
+	case DEV_HW_3AA1:
+		ret = CALL_LIBOP(this, set_ctrl, this->object, frame->instance,
+					frame->fcount, frame->shot);
+		if (ret)
+			err_lib("3aa set_ctrl fail (%d)", hw_ip->id);
+		break;
+	case DEV_HW_ISP0:
+	case DEV_HW_ISP1:
+		ret = CALL_LIBOP(this, set_ctrl, this->object, frame->instance,
+					frame->fcount, frame->shot);
+		if (ret)
+			err_lib("isp set_ctrl fail (%d)", hw_ip->id);
+		break;
+	case DEV_HW_TPU0:
+	case DEV_HW_TPU1:
+		ret = CALL_LIBOP(this, set_ctrl, this->object, frame->instance,
+					frame->fcount, frame->shot);
+		if (ret)
+			err_lib("tpu set_ctrl fail (%d)", hw_ip->id);
+		break;
+	default:
+		err_lib("invalid hw (%d)", hw_ip->id);
+		break;
+	}
 
 	return 0;
 }
 
-int __nocfi fimc_is_lib_isp_shot(struct fimc_is_hw_ip *hw_ip,
+int fimc_is_lib_isp_shot(struct fimc_is_hw_ip *hw_ip,
 	struct fimc_is_lib_isp *this, void *param_set, struct camera2_shot *shot)
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!this);
-	FIMC_BUG(!param_set);
-	FIMC_BUG(!this->func);
-	FIMC_BUG(!this->object);
+	BUG_ON(!hw_ip);
+	BUG_ON(!this);
+	BUG_ON(!param_set);
+	BUG_ON(!this->func);
+	BUG_ON(!this->object);
 
 	switch (hw_ip->id) {
 	case DEV_HW_3AA0:
@@ -767,12 +706,48 @@ int __nocfi fimc_is_lib_isp_shot(struct fimc_is_hw_ip *hw_ip,
 		if (ret)
 			err_lib("tpu shot fail (%d)", hw_ip->id);
 		break;
-	case DEV_HW_DCP:
-		ret = CALL_LIBOP(this, shot, this->object,
-					(struct dcp_param_set *)param_set,
-					shot, hw_ip->num_buffers);
+	default:
+		err_lib("invalid hw (%d)", hw_ip->id);
+		break;
+	}
+
+	return ret;
+}
+
+int fimc_is_lib_isp_get_meta(struct fimc_is_hw_ip *hw_ip,
+	struct fimc_is_lib_isp *this, struct fimc_is_frame *frame)
+
+{
+	int ret = 0;
+
+	BUG_ON(!hw_ip);
+	BUG_ON(!this);
+	BUG_ON(!frame);
+	BUG_ON(!this->func);
+	BUG_ON(!this->object);
+	BUG_ON(!frame->shot);
+
+	switch (hw_ip->id) {
+	case DEV_HW_3AA0:
+	case DEV_HW_3AA1:
+		ret = CALL_LIBOP(this, get_meta, this->object, frame->instance,
+					frame->fcount, frame->shot);
 		if (ret)
-			err_lib("dcp shot fail (%d)", hw_ip->id);
+			err_lib("3aa get_meta fail (%d)", hw_ip->id);
+		break;
+	case DEV_HW_ISP0:
+	case DEV_HW_ISP1:
+		ret = CALL_LIBOP(this, get_meta, this->object, frame->instance,
+					frame->fcount, frame->shot);
+		if (ret)
+			err_lib("isp get_meta fail (%d)", hw_ip->id);
+		break;
+	case DEV_HW_TPU0:
+	case DEV_HW_TPU1:
+		ret = CALL_LIBOP(this, get_meta, this->object, frame->instance,
+					frame->fcount, frame->shot);
+		if (ret)
+			err_lib("tpu get_meta fail (%d)", hw_ip->id);
 		break;
 	default:
 		err_lib("invalid hw (%d)", hw_ip->id);
@@ -782,36 +757,15 @@ int __nocfi fimc_is_lib_isp_shot(struct fimc_is_hw_ip *hw_ip,
 	return ret;
 }
 
-int __nocfi fimc_is_lib_isp_get_meta(struct fimc_is_hw_ip *hw_ip,
-	struct fimc_is_lib_isp *this, struct fimc_is_frame *frame)
-
-{
-	int ret = 0;
-
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!this);
-	FIMC_BUG(!frame);
-	FIMC_BUG(!this->func);
-	FIMC_BUG(!this->object);
-	FIMC_BUG(!frame->shot);
-
-	ret = CALL_LIBOP(this, get_meta, this->object, frame->instance,
-				frame->fcount, frame->shot);
-	if (ret)
-		mserr_lib("get_meta fail", atomic_read(&hw_ip->instance), hw_ip);
-
-	return ret;
-}
-
-void __nocfi fimc_is_lib_isp_stop(struct fimc_is_hw_ip *hw_ip,
+void fimc_is_lib_isp_stop(struct fimc_is_hw_ip *hw_ip,
 	struct fimc_is_lib_isp *this, u32 instance_id)
 {
 	int ret = 0;
 
-	FIMC_BUG_VOID(!hw_ip);
-	FIMC_BUG_VOID(!this);
-	FIMC_BUG_VOID(!this->func);
-	FIMC_BUG_VOID(!this->object);
+	BUG_ON(!hw_ip);
+	BUG_ON(!this);
+	BUG_ON(!this->func);
+	BUG_ON(!this->object);
 
 	ret = CALL_LIBOP(this, stop, this->object, instance_id);
 	if (ret) {
@@ -823,15 +777,15 @@ void __nocfi fimc_is_lib_isp_stop(struct fimc_is_hw_ip *hw_ip,
 	return;
 }
 
-int __nocfi fimc_is_lib_isp_create_tune_set(struct fimc_is_lib_isp *this,
+int fimc_is_lib_isp_create_tune_set(struct fimc_is_lib_isp *this,
 	ulong addr, u32 size, u32 index, int flag, u32 instance_id)
 {
 	int ret = 0;
 	struct lib_tune_set tune_set;
 
-	FIMC_BUG(!this);
-	FIMC_BUG(!this->func);
-	FIMC_BUG(!this->object);
+	BUG_ON(!this);
+	BUG_ON(!this->func);
+	BUG_ON(!this->object);
 
 	tune_set.index = index;
 	tune_set.addr = addr;
@@ -850,14 +804,14 @@ int __nocfi fimc_is_lib_isp_create_tune_set(struct fimc_is_lib_isp *this,
 	return ret;
 }
 
-int __nocfi fimc_is_lib_isp_apply_tune_set(struct fimc_is_lib_isp *this,
+int fimc_is_lib_isp_apply_tune_set(struct fimc_is_lib_isp *this,
 	u32 index, u32 instance_id)
 {
 	int ret = 0;
 
-	FIMC_BUG(!this);
-	FIMC_BUG(!this->func);
-	FIMC_BUG(!this->object);
+	BUG_ON(!this);
+	BUG_ON(!this->func);
+	BUG_ON(!this->object);
 
 	ret = CALL_LIBOP(this, apply_tune_set, this->object, instance_id, index);
 	if (ret) {
@@ -868,14 +822,14 @@ int __nocfi fimc_is_lib_isp_apply_tune_set(struct fimc_is_lib_isp *this,
 	return ret;
 }
 
-int __nocfi fimc_is_lib_isp_delete_tune_set(struct fimc_is_lib_isp *this,
+int fimc_is_lib_isp_delete_tune_set(struct fimc_is_lib_isp *this,
 	u32 index, u32 instance_id)
 {
 	int ret = 0;
 
-	FIMC_BUG(!this);
-	FIMC_BUG(!this->func);
-	FIMC_BUG(!this->object);
+	BUG_ON(!this);
+	BUG_ON(!this->func);
+	BUG_ON(!this->object);
 
 	ret = CALL_LIBOP(this, delete_tune_set, this->object, instance_id, index);
 	if (ret) {
@@ -888,15 +842,15 @@ int __nocfi fimc_is_lib_isp_delete_tune_set(struct fimc_is_lib_isp *this,
 	return ret;
 }
 
-int __nocfi fimc_is_lib_isp_load_cal_data(struct fimc_is_lib_isp *this,
+int fimc_is_lib_isp_load_cal_data(struct fimc_is_lib_isp *this,
 	u32 instance_id, ulong addr)
 {
 	char version[32];
 	int ret = 0;
 
-	FIMC_BUG(!this);
-	FIMC_BUG(!this->func);
-	FIMC_BUG(!this->object);
+	BUG_ON(!this);
+	BUG_ON(!this->func);
+	BUG_ON(!this->object);
 
 	memcpy(version, (void *)(addr + 0x20), (FIMC_IS_CAL_VER_SIZE - 1));
 	version[FIMC_IS_CAL_VER_SIZE] = '\0';
@@ -911,36 +865,34 @@ int __nocfi fimc_is_lib_isp_load_cal_data(struct fimc_is_lib_isp *this,
 	return ret;
 }
 
-int __nocfi fimc_is_lib_isp_get_cal_data(struct fimc_is_lib_isp *this,
-	u32 instance_id, struct cal_info *c_info, int type)
+int fimc_is_lib_isp_get_cal_data(struct fimc_is_lib_isp *this,
+	u32 instance_id, struct cal_info *data, int type)
 {
 	int ret = 0;
 
-	FIMC_BUG(!this);
-	FIMC_BUG(!this->func);
-	FIMC_BUG(!this->object);
+	BUG_ON(!this);
+	BUG_ON(!this->func);
+	BUG_ON(!this->object);
 
 	ret = CALL_LIBOP(this, get_cal_data, this->object, instance_id,
-				c_info, type);
+				data, type);
 	if (ret) {
 		err_lib("apply_tune_set fail (%d)", ret);
 		return ret;
 	}
-	dbg_lib(3, "%s: data(%d,%d,%d,%d)\n",
-		__func__, c_info->data[0], c_info->data[1], c_info->data[2], c_info->data[3]);
 
 	return ret;
 }
 
-int __nocfi fimc_is_lib_isp_sensor_info_mode_chg(struct fimc_is_lib_isp *this,
+int fimc_is_lib_isp_sensor_info_mode_chg(struct fimc_is_lib_isp *this,
 	u32 instance_id, struct camera2_shot *shot)
 {
 	int ret = 0;
 
-	FIMC_BUG(!this);
-	FIMC_BUG(!shot);
-	FIMC_BUG(!this->func);
-	FIMC_BUG(!this->object);
+	BUG_ON(!this);
+	BUG_ON(!shot);
+	BUG_ON(!this->func);
+	BUG_ON(!this->object);
 
 	ret = CALL_LIBOP(this, sensor_info_mode_chg, this->object, instance_id,
 				shot);
@@ -952,14 +904,14 @@ int __nocfi fimc_is_lib_isp_sensor_info_mode_chg(struct fimc_is_lib_isp *this,
 	return ret;
 }
 
-int __nocfi fimc_is_lib_isp_sensor_update_control(struct fimc_is_lib_isp *this,
+int fimc_is_lib_isp_sensor_update_control(struct fimc_is_lib_isp *this,
 	u32 instance_id, u32 frame_count, struct camera2_shot *shot)
 {
 	int ret = 0;
 
-	FIMC_BUG(!this);
-	FIMC_BUG(!this->func);
-	FIMC_BUG(!this->object);
+	BUG_ON(!this);
+	BUG_ON(!this->func);
+	BUG_ON(!this->object);
 
 	ret = CALL_LIBOP(this, sensor_update_ctl, this->object, instance_id,
 				frame_count, shot);
@@ -1004,21 +956,24 @@ int fimc_is_lib_isp_convert_face_map(struct fimc_is_hardware *hardware,
 	struct param_otf_input *fd_otf_input;
 	struct param_dma_input *fd_dma_input;
 
-	FIMC_BUG(!hardware);
-	FIMC_BUG(!param_set);
-	FIMC_BUG(!frame);
+	BUG_ON(!hardware);
+	BUG_ON(!param_set);
+	BUG_ON(!frame);
 
 	shot = frame->shot;
-	FIMC_BUG(!shot);
+	BUG_ON(!shot);
 
 	group = (struct fimc_is_group *)frame->group;
-	FIMC_BUG(!group);
+	BUG_ON(!group);
 
 	device = group->device;
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
-	if (shot->uctl.fdUd.faceDetectMode == FACEDETECT_MODE_OFF)
-		return 0;
+	if (shot->uctl.fdUd.faceDetectMode == FACEDETECT_MODE_OFF) {
+		if(frame->shot_ext->fd_bypass) {
+			return 0;
+		}
+	}
 
 	/*
 	 * The face size which an algorithm uses is determined

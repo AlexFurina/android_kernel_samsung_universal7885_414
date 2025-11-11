@@ -58,10 +58,8 @@
 
 #define SENSOR_SCENARIO_SECURE      6
 
-bool is_final_cam_module_iris;
-bool is_iris_ver_read;
-bool is_iris_mtf_test_check;
-u8 is_iris_mtf_read_data[3];	/* 0:year 1:month 2:company */
+bool is_final_cam_module_iris  = false;
+bool is_iris_ver_read = false;
 
 static u16 setfile_vision_5e6[][2] = {
 	{0x3303, 0x02},
@@ -210,12 +208,18 @@ static u16 setfile_vision_5e6_fps_30[][2] = {
 };
 
 static struct fimc_is_sensor_cfg config_5e6[] = {
-			/* width, height, fps, settle, mode, lane, speed, interleave, pd_mode */
-	FIMC_IS_SENSOR_CFG(1920, 1920, 30, 0, 0, CSI_DATA_LANES_2, 1400, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW8, 1920, 1920), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(2, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
+	/* 1920x1920@30fps */
+	FIMC_IS_SENSOR_CFG(1920, 1920, 30, 14, 0, CSI_DATA_LANES_2),
+};
+
+static struct fimc_is_vci vci_5e6[] = {
+	{
+		.pixelformat = V4L2_PIX_FMT_SBGGR8,
+		.config = {{0, HW_FORMAT_RAW8, VCI_DMA_NORMAL},
+		{1, 0, VCI_DMA_NORMAL},
+		{2, 0, VCI_DMA_NORMAL},
+		{3, 0, VCI_DMA_NORMAL}}
+	}
 };
 
 static void sensor_5e6_vsync_work(struct work_struct *data)
@@ -276,16 +280,16 @@ static const struct v4l2_subdev_internal_ops internal_ops = {
 
 static int sensor_5e6_init(struct v4l2_subdev *subdev, u32 val)
 {
-	int ret = 0;
-	ulong i;
+	int i, ret = 0;
 	struct fimc_is_module_enum *module;
 	struct fimc_is_module_5e6 *module_5e6;
 	struct i2c_client *client;
+#ifdef USE_CAMERA_HW_BIG_DATA
+	struct cam_hw_param *iris_hw_param;
+#endif	
 	u8 sensor_ver = 0;
-	u8 sensor_otp = 0;
-	u8 page_select = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	module_5e6 = module->private_data;
@@ -299,6 +303,11 @@ static int sensor_5e6_init(struct v4l2_subdev *subdev, u32 val)
 		ret = fimc_is_sensor_write8(client, setfile_vision_5e6[i][0],
 				(u8)setfile_vision_5e6[i][1]);
 		if (ret) {
+#ifdef USE_CAMERA_HW_BIG_DATA
+			fimc_is_sec_get_iris_hw_param(&iris_hw_param);
+			if (iris_hw_param)
+				iris_hw_param->i2c_sensor_err_cnt++;
+#endif
 			err("i2c transfer failed.");
 			ret = -EINVAL;
 			goto exit;
@@ -308,111 +317,6 @@ static int sensor_5e6_init(struct v4l2_subdev *subdev, u32 val)
 
 	/* read sensor version */
 	if (!is_iris_ver_read) {
-		/* 1. read page_select */
-		/* make initial state */
-		ret = fimc_is_sensor_write8(client, 0x0A00, 0x04);
-		if (ret) {
-			err("[%s][%d] i2c transfer failed", __func__, __LINE__);
-			ret = -EINVAL;
-			goto exit;
-		}
-		/* set the PAGE of OTP */
-		ret = fimc_is_sensor_write8(client, 0x0A02, 0x04);
-		if (ret) {
-			err("[%s][%d] i2c transfer failed", __func__, __LINE__);
-			ret = -EINVAL;
-			goto exit;
-		}
-		/* set read mode of NVM controller Interface1 */
-		ret = fimc_is_sensor_write8(client, 0x0A00, 0x01);
-		if (ret) {
-			err("[%s][%d] i2c transfer failed", __func__, __LINE__);
-			ret = -EINVAL;
-			goto exit;
-		}
-		/* to wait Tmin = 47us(the time to transfer 1page data from OTP */
-		usleep_range(50, 50);
-
-		/* page select 0x01(4page), 0x03(5page) */
-		ret = fimc_is_sensor_read8(client, 0x0A12, &page_select);
-		if (ret) {
-			err("[%s][%d] i2c transfer failed", __func__, __LINE__);
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		/* 2. set page_select */
-		if (page_select == 0x01 || page_select == 0x00) {
-			page_select = 0x04;
-		} else if (page_select == 0x03) {
-			page_select = 0x05;
-		} else {
-			is_iris_mtf_test_check = false;
-			err("[%s][%d] page read fail read data=%d", __func__, __LINE__, page_select);
-			goto exit;
-		}
-
-		/* 3. read pass or fail /year/month/company information */
-		/* make initial state */
-		ret = fimc_is_sensor_write8(client, 0x0A00, 0x04);
-		if (ret) {
-			err("[%s][%d] i2c transfer failed", __func__, __LINE__);
-			ret = -EINVAL;
-			goto exit;
-		}
-		/* set the PAGE of OTP */
-		ret = fimc_is_sensor_write8(client, 0x0A02, page_select);
-		if (ret) {
-			err("[%s][%d] i2c transfer failed", __func__, __LINE__);
-			ret = -EINVAL;
-			goto exit;
-		}
-		/* set read mode of NVM controller Interface1 */
-		ret = fimc_is_sensor_write8(client, 0x0A00, 0x01);
-		if (ret) {
-			err("[%s][%d] i2c transfer failed", __func__, __LINE__);
-			ret = -EINVAL;
-			goto exit;
-		}
-		/* to wait Tmin = 47us(the time to transfer 1page data from OTP */
-		usleep_range(50, 50);
-
-		/* read the 1st byte data from buffer */
-		ret = fimc_is_sensor_read8(client, 0x0A04, &sensor_otp);
-		if (ret == 0) {
-			if (sensor_otp == 0x01)
-				is_iris_mtf_test_check = true;
-			else
-				is_iris_mtf_test_check = false;
-			pr_info("[%s][%d] otpValue = %d\n", __func__, __LINE__, sensor_otp);
-		} else if (ret) {
-			err("[%s][%d] i2c transfer failed", __func__, __LINE__);
-			ret = -EINVAL;
-			goto exit;
-		}
-
-		/* read year */
-		ret = fimc_is_sensor_read8(client, 0x0A05, &is_iris_mtf_read_data[0]);
-		if (ret) {
-			err("[%s][%d] i2c transfer failed", __func__, __LINE__);
-			ret = -EINVAL;
-			goto exit;
-		}
-		/* read month */
-		ret = fimc_is_sensor_read8(client, 0x0A06, &is_iris_mtf_read_data[1]);
-		if (ret) {
-			err("[%s][%d] i2c transfer failed", __func__, __LINE__);
-			ret = -EINVAL;
-			goto exit;
-		}
-		/* read company */
-		ret = fimc_is_sensor_read8(client, 0x0A07, &is_iris_mtf_read_data[2]);
-		if (ret) {
-			err("[%s][%d] i2c transfer failed", __func__, __LINE__);
-			ret = -EINVAL;
-			goto exit;
-		}
-
 		ret = fimc_is_sensor_read8(client, SENSOR_REG_VERSION, &sensor_ver);
 		if (ret == 0) {
 			is_iris_ver_read = true;
@@ -424,7 +328,7 @@ static int sensor_5e6_init(struct v4l2_subdev *subdev, u32 val)
 			}
 			pr_info("is_final_cam_module_iris = %s, sensor version = 0x%02x\n",
 				is_final_cam_module_iris ? "true" : "false", sensor_ver);
-		}
+		 }
 	}
 
 	hrtimer_init(&module->vsync_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
@@ -465,12 +369,6 @@ static const struct v4l2_subdev_core_ops core_ops = {
 	.ioctl = sensor_5e6_ioctl,
 	.log_status = sensor_module_log_status,
 };
-
-static int sensor_5e6_s_routing(struct v4l2_subdev *sd,
-		u32 input, u32 output, u32 config) {
-
-	return 0;
-}
 
 #define VSYNC_TIMEOUT_IN_NSEC	(300 * NSEC_PER_MSEC) /* msec */
 static int sensor_5e6_s_stream(struct v4l2_subdev *subdev, int enable)
@@ -520,8 +418,8 @@ static int sensor_5e6_s_param(struct v4l2_subdev *subdev, struct v4l2_streamparm
 	struct v4l2_fract *tpf;
 	u64 duration;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!param);
+	BUG_ON(!subdev);
+	BUG_ON(!param);
 
 	pr_info("%s\n", __func__);
 
@@ -567,7 +465,6 @@ static int sensor_5e6_s_format(struct v4l2_subdev *subdev,	struct v4l2_subdev_pa
 }
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_routing = sensor_5e6_s_routing,
 	.s_stream = sensor_5e6_s_stream,
 	.s_parm = sensor_5e6_s_param
 };
@@ -588,7 +485,7 @@ int sensor_5e6_stream_on(struct v4l2_subdev *subdev)
 	struct fimc_is_module_enum *module;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	pr_info("%s\n", __func__);
 
@@ -683,7 +580,7 @@ int sensor_5e6_stream_off(struct v4l2_subdev *subdev)
 	struct fimc_is_module_enum *module;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!module)) {
@@ -705,7 +602,7 @@ int sensor_5e6_stream_off(struct v4l2_subdev *subdev)
 		goto p_err;
 	}
 	/* add 1 frame delay for stream off */
-	usleep_range(40000, 44000);
+	usleep_range(40000, 40000);
 
 p_err:
 	return ret;
@@ -720,12 +617,12 @@ p_err:
  */
 int sensor_5e6_s_duration(struct v4l2_subdev *subdev, u64 duration)
 {
-	ulong i = 0;
+	int i = 0;
 	int ret = 0;
 	struct fimc_is_module_enum *module;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	client = module->client;
@@ -778,7 +675,7 @@ int sensor_5e6_s_exposure(struct v4l2_subdev *subdev, u64 exposure)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	pr_info("%s(%d)\n", __func__, (u32)exposure);
 
@@ -825,7 +722,7 @@ int sensor_5e6_s_again(struct v4l2_subdev *subdev, u64 gain)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	pr_info("%s(%d)\n", __func__, (u32)gain);
 
@@ -893,7 +790,7 @@ int sensor_5e6_s_shutterspeed(struct v4l2_subdev *subdev, u64 shutterspeed)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	pr_info("%s(%d)\n", __func__, (u32)shutterspeed);
 
@@ -966,7 +863,7 @@ static int sensor_5e6_power_setpin(struct device *dev,
 	u32 power_seq_id = 0;
 	int ret;
 
-	FIMC_BUG(!dev);
+	BUG_ON(!dev);
 
 	pr_info("%s\n", __func__);
 
@@ -1054,7 +951,7 @@ static int sensor_5e6_power_setpin(struct device *dev,
 }
 #endif /* CONFIG_OF */
 
-static int sensor_module_5e6_probe(struct i2c_client *client,
+int sensor_5e6_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -1067,7 +964,7 @@ static int sensor_module_5e6_probe(struct i2c_client *client,
 	struct device *dev;
 	struct pinctrl_state *s;
 
-	FIMC_BUG(!client);
+	BUG_ON(!client);
 
 	if (fimc_is_dev == NULL) {
 		warn("fimc_is_dev is not yet probed(5e6)");
@@ -1114,7 +1011,11 @@ static int sensor_module_5e6_probe(struct i2c_client *client,
 	module->pixel_height = module->active_height + 0;
 	module->max_framerate = 30;
 	module->position = pdata->position;
+	module->mode = CSI_MODE_CH0_ONLY;
+	module->lanes = CSI_DATA_LANES_2;
 	module->bitwidth = 8;
+	module->vcis = ARRAY_SIZE(vci_5e6);
+	module->vci = vci_5e6;
 	module->sensor_maker = "SLSI";
 	module->sensor_name = "S5K5E6";
 	module->setfile_name = "setfile_5e6.bin";
@@ -1146,6 +1047,8 @@ static int sensor_module_5e6_probe(struct i2c_client *client,
 	module->ops = &module_5e6_ops;
 
 	ext = &module->ext;
+	ext->mipi_lane_num = module->lanes;
+	ext->I2CSclk = 0;
 
 	ext->sensor_con.product_name = SENSOR_S5K5E6_NAME;
 	ext->sensor_con.peri_type = SE_I2C;
@@ -1179,8 +1082,14 @@ p_err:
 }
 
 
+static int sensor_5e6_remove(struct i2c_client *client)
+{
+	int ret = 0;
+	return ret;
+}
+
 #ifdef CONFIG_OF
-static const struct of_device_id exynos_fimc_is_sensor_module_5e6_match[] = {
+static const struct of_device_id exynos_fimc_is_sensor_5e6_match[] = {
 	{
 		.compatible = "samsung,sensor-module-5e6",
 	},
@@ -1188,36 +1097,38 @@ static const struct of_device_id exynos_fimc_is_sensor_module_5e6_match[] = {
 };
 #endif
 
-static const struct i2c_device_id sensor_module_5e6_idt[] = {
+static const struct i2c_device_id sensor_5e6_idt[] = {
 	{ SENSOR_NAME, 0 },
 	{},
 };
 
-static struct i2c_driver sensor_module_5e6_driver = {
-	.probe  = sensor_module_5e6_probe,
+static struct i2c_driver sensor_5e6_driver = {
 	.driver = {
 		.name	= SENSOR_NAME,
 		.owner  = THIS_MODULE,
 #ifdef CONFIG_OF
-		.of_match_table = exynos_fimc_is_sensor_module_5e6_match,
+		.of_match_table = exynos_fimc_is_sensor_5e6_match
 #endif
-		.suppress_bind_attrs = true,
 	},
-	.id_table = sensor_module_5e6_idt,
+	.probe	= sensor_5e6_probe,
+	.remove	= sensor_5e6_remove,
+	.id_table = sensor_5e6_idt
 };
 
-static int __init fimc_is_sensor_module_5e6_init(void)
+static int __init sensor_5e6_load(void)
 {
-	int ret;
+	probe_info("%s TEST \n", __func__);
 
-	ret = i2c_add_driver(&sensor_module_5e6_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_module_5e6_driver.driver.name, ret);
-
-	return ret;
+        return i2c_add_driver(&sensor_5e6_driver);
 }
-late_initcall_sync(fimc_is_sensor_module_5e6_init);
+
+static void __exit sensor_5e6_unload(void)
+{
+        i2c_del_driver(&sensor_5e6_driver);
+}
+
+module_init(sensor_5e6_load);
+module_exit(sensor_5e6_unload);
 
 MODULE_AUTHOR("Gilyeon lim");
 MODULE_DESCRIPTION("Sensor 5E6 driver");

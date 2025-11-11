@@ -26,9 +26,6 @@
 #define CSI_GET_NEXT_FRAMEPTR(frameptr, num_frames) \
 	(((frameptr) + 1) % num_frames)
 
-extern int debug_csi;
-extern struct fimc_is_sysfs_debug sysfs_debug;
-
 enum fimc_is_csi_state {
 	/* flite join ischain */
 	CSIS_JOIN_ISCHAIN,
@@ -60,27 +57,45 @@ enum itf_vc_buf_data_type {
 	VC_BUF_DATA_TYPE_MAX
 };
 
+#ifdef DBG_CSI_ALL_VC_TASKLET
+#define CSI_VC_TASKLET_MAX	CSI_VIRTUAL_CH_MAX
+#else
+#define CSI_VC_TASKLET_MAX	1 /* only CH0 */
+#endif
+
 struct fimc_is_device_csi {
 	/* channel information */
 	u32				instance;
-	enum subdev_ch_mode		scm;
 	u32 __iomem			*base_reg;
-	u32 __iomem			*vc_reg[SCM_MAX][CSI_VIRTUAL_CH_MAX];
-	u32 __iomem			*cmn_reg[SCM_MAX][CSI_VIRTUAL_CH_MAX];
-	u32 __iomem			*phy_reg;
 	resource_size_t			regs_start;
 	resource_size_t			regs_end;
 	int				irq;
-	int				vc_irq[SCM_MAX][CSI_VIRTUAL_CH_MAX];
-	unsigned long			vc_irq_state;
 
+#if defined(CONFIG_EXYNOS_DEVICE_MIPI_CSIS_VER3)
 	/* csi common dma */
-	struct fimc_is_device_csi_dma	*csi_dma;
+	struct fimc_is_device_csi_dma *csi_dma;
+#endif
 
 	/* for settle time */
+	u32				sensor_cfgs;
 	struct fimc_is_sensor_cfg	*sensor_cfg;
 
+	/* for vci setting */
+	u32				active_vci;
+	u32				vcis;
+	struct fimc_is_vci		*vci;
+	/* only ch1 ~ ch3 use */
+	u32				internal_vc[CSI_VIRTUAL_CH_MAX];
+	/* HACK: Double calling get_vc_dma_buf when don't update sensor noti
+	 * check to this flag and don't update frame when double calling get_vc_dma_buf
+	 * return 0 values
+	 */
+	bool				internal_update;
+
 	/* image configuration */
+	u32				mode;
+	u32				lanes;
+	u32				mipi_speed;
 	struct fimc_is_image		image;
 
 	unsigned long			state;
@@ -90,13 +105,14 @@ struct fimc_is_device_csi {
 	u32				overflow_cnt;
 	u32				sw_checker;
 	atomic_t			fcount;
-	struct tasklet_struct		tasklet_csis_str;
-	struct tasklet_struct		tasklet_csis_end;
+	struct tasklet_struct		tasklet_csis_str[CSI_VC_TASKLET_MAX];
+	struct tasklet_struct		tasklet_csis_end[CSI_VC_TASKLET_MAX];
 	struct tasklet_struct		tasklet_csis_line;
-	struct work_struct		wq_csis_dma[CSI_VIRTUAL_CH_MAX];
-	struct workqueue_struct		*workqueue;
+#ifdef DBG_CSI_ALL_VC_TASKLET
+	struct tasklet_struct		tasklet_csis_dma_str[CSI_VIRTUAL_CH_MAX];
+#endif
+	struct tasklet_struct		tasklet_csis_dma_end[CSI_VIRTUAL_CH_MAX];
 	int				pre_dma_enable[CSI_VIRTUAL_CH_MAX];
-	int				cur_dma_enable[CSI_VIRTUAL_CH_MAX];
 
 	/* subdev slots for dma */
 	struct fimc_is_subdev		*dma_subdev[CSI_VIRTUAL_CH_MAX];
@@ -104,6 +120,10 @@ struct fimc_is_device_csi {
 	/* pointer address from device sensor */
 	struct v4l2_subdev		**subdev;
 	struct phy			*phy;
+#if defined(CONFIG_SECURE_CAMERA_USE)
+	struct phy      *extra_phy;
+	int		extra_phy_off;
+#endif
 
 	u32 error_id[CSI_VIRTUAL_CH_MAX];
 	u32 error_count;
@@ -113,22 +133,22 @@ struct fimc_is_device_csi {
 
 	atomic_t			vvalid; /* set 1 while vvalid period */
 #endif
-	char				name[FIMC_IS_STR_LEN];
 };
 
+#if defined(CONFIG_EXYNOS_DEVICE_MIPI_CSIS_VER3)
 struct fimc_is_device_csi_dma {
 	u32 __iomem			*base_reg;
-	u32 __iomem			*base_reg_stat;
 	resource_size_t			regs_start;
 	resource_size_t			regs_end;
 
 	atomic_t			rcount; /* CSI open count check */
 
 	spinlock_t			barrier;
+	bool				use_split;
 };
 
-void csi_frame_start_inline(struct fimc_is_device_csi *csi);
 int __must_check fimc_is_csi_dma_probe(struct fimc_is_device_csi_dma *csi_dma, struct platform_device *pdev);
+#endif
 
 int __must_check fimc_is_csi_probe(void *parent, u32 instance);
 int __must_check fimc_is_csi_open(struct v4l2_subdev *subdev, struct fimc_is_framemgr *framemgr);

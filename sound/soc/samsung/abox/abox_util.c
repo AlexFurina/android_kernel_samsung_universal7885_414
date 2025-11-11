@@ -1,13 +1,12 @@
 #include <linux/platform_device.h>
 #include <linux/clk.h>
 #include <linux/io.h>
-#include <sound/pcm.h>
 
 #include "abox_util.h"
 
 void __iomem *devm_not_request_and_map(struct platform_device *pdev,
-		const char *name, unsigned int num, phys_addr_t *phys_addr,
-		size_t *size)
+		const char *name, unsigned int num,
+		phys_addr_t *phys_addr, size_t *size)
 {
 	struct resource *res;
 	void __iomem *ret;
@@ -28,16 +27,12 @@ void __iomem *devm_not_request_and_map(struct platform_device *pdev,
 		return ERR_PTR(-EFAULT);
 	}
 
-	dev_dbg(&pdev->dev, "%s: %s(%p) is mapped on %p with size of %zu",
-			__func__, name, (void *)res->start, ret,
-			(size_t)resource_size(res));
-
 	return ret;
 }
 
 void __iomem *devm_request_and_map(struct platform_device *pdev,
-		const char *name, unsigned int num, phys_addr_t *phys_addr,
-		size_t *size)
+		const char *name, unsigned int num,
+		phys_addr_t *phys_addr, size_t *size)
 {
 	struct resource *res;
 	void __iomem *ret;
@@ -64,10 +59,6 @@ void __iomem *devm_request_and_map(struct platform_device *pdev,
 		dev_err(&pdev->dev, "Failed to map %s\n", name);
 		return ERR_PTR(-EFAULT);
 	}
-
-	dev_dbg(&pdev->dev, "%s: %s(%p) is mapped on %p with size of %zu",
-			__func__, name, (void *)res->start, ret,
-			(size_t)resource_size(res));
 
 	return ret;
 }
@@ -100,10 +91,6 @@ void __iomem *devm_request_and_map_byname(struct platform_device *pdev,
 		dev_err(&pdev->dev, "Failed to map %s\n", name);
 		return ERR_PTR(-EFAULT);
 	}
-
-	dev_dbg(&pdev->dev, "%s: %s(%p) is mapped on %p with size of %zu",
-			__func__, name, (void *)res->start, ret,
-			(size_t)resource_size(res));
 
 	return ret;
 }
@@ -154,36 +141,8 @@ void writel_phys(unsigned int val, phys_addr_t addr)
 
 bool is_secure_gic(void)
 {
-	pr_debug("%s: %08x, %08x\n", __func__, readl_phys(0x10000000),
-			readl_phys(0x10000010));
+	pr_debug("%s: %08x, %08x\n", __func__,
+			readl_phys(0x10000000), readl_phys(0x10000010));
 	return (readl_phys(0x10000000) == 0xE8895000) &&
 			(readl_phys(0x10000010) == 0x0);
-}
-
-u64 width_range_to_bits(unsigned int width_min, unsigned int width_max)
-{
-	static const struct {
-		unsigned int width;
-		u64 format;
-	} map[] = {
-		{  8, SNDRV_PCM_FMTBIT_S8  },
-		{ 16, SNDRV_PCM_FMTBIT_S16 },
-		{ 24, SNDRV_PCM_FMTBIT_S24 },
-		{ 32, SNDRV_PCM_FMTBIT_S32 },
-	};
-
-	int i;
-	u64 fmt = 0;
-
-	for (i = 0; i < ARRAY_SIZE(map); i++) {
-		if (map[i].width >= width_min && map[i].width <= width_max)
-			fmt |= map[i].format;
-	}
-
-	return fmt;
-}
-
-char substream_to_char(struct snd_pcm_substream *substream)
-{
-	return (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) ? 'p' : 'c';
 }

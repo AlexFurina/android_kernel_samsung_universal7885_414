@@ -47,8 +47,6 @@
 #define PPP_ADDR	0xFF
 #define PPP_CTRL	0x03
 
-#define NET_RX_L2TP_CONTROL_MSG	2
-
 union unaligned {
 	__u32 u32;
 } __attribute__((packed));
@@ -84,12 +82,8 @@ static int pppolac_recv_core(struct sock *sk_udp, struct sk_buff *skb)
 		goto drop;
 
 	/* Put it back if it is a control packet. */
-	if (skb->data[sizeof(struct udphdr)] & L2TP_CONTROL_BIT) {
-		if (!opt->backlog_rcv)
-			return NET_RX_L2TP_CONTROL_MSG;
-
-		return opt->backlog_rcv(sk_udp, skb);
-	}
+	if (skb->data[sizeof(struct udphdr)] & L2TP_CONTROL_BIT)
+		return 2;
 
 	/* Skip UDP header. */
 	skb_pull(skb, sizeof(struct udphdr));
@@ -196,14 +190,10 @@ drop:
 
 static int pppolac_recv(struct sock *sk_udp, struct sk_buff *skb)
 {
-	int ret = 0;
-
+	int retval;
 	sock_hold(sk_udp);
-	ret = sk_receive_skb(sk_udp, skb, 0);
-	if (ret == NET_RX_L2TP_CONTROL_MSG)
-		return 1;
-
-	return 0;
+	retval =  sk_receive_skb(sk_udp, skb, 0);
+	return (retval >> 1);
 }
 
 static struct sk_buff_head delivery_queue;

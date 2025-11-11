@@ -145,6 +145,7 @@ int csi_hw_s_phy_default_value(u32 __iomem *base_reg, u32 instance)
 	} else if (instance == CSI_ID_B || instance == CSI_ID_D) {
 		csi_hw_s_phy_sctrl_n(base_reg, 0xC000, 3);
 	}
+#else
 #endif
 	/* other project setting to reset value */
 
@@ -176,7 +177,21 @@ int csi_hw_s_lane(u32 __iomem *base_reg,
 		u32 phy_val = 0;
 		deskew = true;
 
+#ifdef CONFIG_SOC_EXYNOS7885
 		/*
+		 * for 14nm
+		 * 1. D-phy Slave S_DPHYCTL[63:0] setting
+		 *	 [33]	= 0b1		 / Skew Calibration Enable
+		 *	 [39:34] = 0b10_0100 / RX Skew Calibration Max Code Control.
+		 *	 [63:60] = 0b11 	 / RX Skew Calibration Compare-run time Control
+		 */
+		phy_val = fimc_is_hw_get_reg(base_reg, &csi_regs[CSIS_R_PHY_SCTRL_1]);
+		phy_val &= ~(0xF00000FE);
+		phy_val |= ((1 << 1) | (0x24 << 2) | (0x3 << 28));
+		fimc_is_hw_set_reg(base_reg, &csi_regs[CSIS_R_PHY_SCTRL_1], phy_val);
+#else
+		/*
+		 * for 10nm
 		 * 1. D-phy Slave S_DPHYCTL[13:0] setting
 		 *   [0]     = 0b1	/ Skew calibration enable (default disabled)
 		 *   [13:12] = 0bxx	/ Coarse delay selection for skew calibration
@@ -192,6 +207,7 @@ int csi_hw_s_lane(u32 __iomem *base_reg,
 		else if (mipi_speed > 2000)
 			phy_val &= ~(1 << 12);
 		fimc_is_hw_set_reg(base_reg, &csi_regs[CSIS_R_PHY_SCTRL_0], phy_val);
+#endif
 
 		/*
 		 * 2. D-phy Slave byte clock control register enable
@@ -200,6 +216,11 @@ int csi_hw_s_lane(u32 __iomem *base_reg,
 		phy_val = fimc_is_hw_set_field_value(phy_val, &csi_fields[CSIS_F_S_BYTE_CLK_ENABLE], 1);
 		fimc_is_hw_set_reg(base_reg, &csi_regs[CSIS_R_PHY_CMN_CTRL], phy_val);
 	}
+
+#ifdef CONFIG_SOC_EXYNOS7885
+	fimc_is_hw_set_field(base_reg, &csi_regs[CSIS_R_PHY_CMN_CTRL],
+			&csi_fields[CSIS_F_S_BYTE_CLK_ENABLE], 1);
+#endif
 
 #ifdef CONFIG_SOC_EXYNOS8895
 	/* Exynos8895 always set deskew enable */
@@ -358,20 +379,11 @@ int csi_hw_s_config_dma(u32 __iomem *base_reg, u32 channel, struct fimc_is_image
 	}
 
 #ifdef CONFIG_USE_SENSOR_GROUP
-	if (!cfg->format) {
-		err("cfg->format is null");
-		ret = -EINVAL;
-		goto p_err;
-	}
-
-	if (cfg->format->pixelformat == V4L2_PIX_FMT_SBGGR10 ||
-		cfg->format->pixelformat == V4L2_PIX_FMT_SBGGR12 ||
-		cfg->format->pixelformat == V4L2_PIX_FMT_PRIV_MAGIC)
-
+	if ((cfg->format) && (cfg->format->pixelformat == V4L2_PIX_FMT_SBGGR10 ||
+		cfg->format->pixelformat == V4L2_PIX_FMT_SBGGR12))
 #else
 	if (image->format.pixelformat == V4L2_PIX_FMT_SBGGR10 ||
-		image->format.pixelformat == V4L2_PIX_FMT_SBGGR12 ||
-		image->format.pixelformat == V4L2_PIX_FMT_PRIV_MAGIC)
+		image->format.pixelformat == V4L2_PIX_FMT_SBGGR12)
 #endif
 		dma_pack12 = CSIS_REG_DMA_PACK12;
 	else
@@ -544,8 +556,8 @@ static void csi_hw_g_err_types_from_err_dma(u32 __iomem *base_reg, u32 val, u32 
 
 	for (i = 0; i < CSI_VIRTUAL_CH_MAX; i++) {
 		err_id[i] |= ((dma_otf_overlap   & (1 << i)) ? (1 << CSIS_ERR_OTF_OVERLAP) : 0);
-		err_id[i] |= ((dmafifo_full_err  & 1) ? (1 << CSIS_ERR_DMA_ERR_DMAFIFO_FULL) : 0);
-		err_id[i] |= ((dma_abort_done  & 1) ? (1 << CSIS_ERR_DMA_ABORT_DONE) : 0);
+		err_id[i] |= ((dmafifo_full_err  & (1 << i)) ? (1 << CSIS_ERR_DMA_ERR_DMAFIFO_FULL) : 0);
+		err_id[i] |= ((dma_abort_done  & (1 << i)) ? (1 << CSIS_ERR_DMA_ABORT_DONE) : 0);
 	}
 }
 
@@ -586,8 +598,8 @@ int csi_hw_g_irq_src(u32 __iomem *base_reg, struct csis_irq_src *src, bool clear
 		fimc_is_hw_set_reg(base_reg, &csi_regs[CSIS_R_DMA_INT_SRC], dma_src);
 	}
 
-	src->dma_start = fimc_is_hw_get_field_value(dma_src, &csi_fields[CSIS_F_DMA_FRM_START]);
-	src->dma_end = fimc_is_hw_get_field_value(dma_src, &csi_fields[CSIS_F_DMA_FRM_END]);
+	src->dma_start = fimc_is_hw_get_field_value(dma_src, &csi_fields[CSIS_F_MSK_DMA_FRM_START]);
+	src->dma_end = fimc_is_hw_get_field_value(dma_src, &csi_fields[CSIS_F_MSK_DMA_FRM_END]);
 #ifdef CONFIG_CSIS_V4_0
 	/* HACK: For dual scanario in EVT0, we should use only DMA interrupt */
 	src->otf_start = src->dma_start;
@@ -596,7 +608,7 @@ int csi_hw_g_irq_src(u32 __iomem *base_reg, struct csis_irq_src *src, bool clear
 	src->otf_start = fimc_is_hw_get_field_value(otf_src0, &csi_fields[CSIS_F_FRAMESTART]);
 	src->otf_end = fimc_is_hw_get_field_value(otf_src0, &csi_fields[CSIS_F_FRAMEEND]);
 #endif
-	src->line_end = fimc_is_hw_get_field_value(otf_src1, &csi_fields[CSIS_F_LINE_END]);
+	src->line_end = fimc_is_hw_get_field_value(otf_src1, &csi_fields[CSIS_F_MSK_LINE_END]);
 	src->err_flag = csi_hw_g_value_of_err(base_reg, otf_src0, otf_src1, dma_src, (u32 *)src->err_id);
 
 	return 0;
@@ -649,19 +661,26 @@ void csi_hw_s_multibuf_dma_addr(u32 __iomem *base_reg, u32 vc, u32 number, u32 a
 void csi_hw_s_output_dma(u32 __iomem *base_reg, u32 vc, bool enable)
 {
 	u32 val = fimc_is_hw_get_reg(base_reg, &csi_regs[CSIS_R_DMA0_CTRL + (vc * 17)]);
+
+#ifdef CONFIG_SOC_EXYNOS7885
+	val = fimc_is_hw_set_field_value(val, &csi_fields[CSIS_F_DMA_N_DISABLE], enable);
+#else
 	val = fimc_is_hw_set_field_value(val, &csi_fields[CSIS_F_DMA_N_DISABLE], !enable);
+#endif
 	val = fimc_is_hw_set_field_value(val, &csi_fields[CSIS_F_DMA_N_UPDT_PTR_EN], enable);
 	fimc_is_hw_set_reg(base_reg, &csi_regs[CSIS_R_DMA0_CTRL + (vc * 17)], val);
 }
 
 bool csi_hw_g_output_dma_enable(u32 __iomem *base_reg, u32 vc)
 {
+#ifdef CONFIG_SOC_EXYNOS7885
+	return fimc_is_hw_get_field(base_reg, &csi_regs[CSIS_R_DMA0_CTRL + (vc * 17)],
+			&csi_fields[CSIS_F_DMA_N_DISABLE]) ? true : false;
+#else
 	/* if DMA_DISABLE field value is 1, this means dma output is disabled */
-	if (fimc_is_hw_get_field(base_reg, &csi_regs[CSIS_R_DMA0_CTRL + (vc * 17)],
-			&csi_fields[CSIS_F_DMA_N_DISABLE]))
-		return false;
-	else
-		return true;
+	return fimc_is_hw_get_field(base_reg, &csi_regs[CSIS_R_DMA0_CTRL + (vc * 17)],
+			&csi_fields[CSIS_F_DMA_N_DISABLE]) ? false : true;
+#endif
 }
 
 bool csi_hw_g_output_cur_dma_enable(u32 __iomem *base_reg, u32 vc)
@@ -743,6 +762,138 @@ int csi_hw_s_dma_common(u32 __iomem *base_reg)
 	return 0;
 }
 
+#define CSIS_DMA_MINIMUM_SIZE	(4) /* guided minimum value of split */
+int csi_hw_s_dma_common_dynamic(u32 __iomem *base_reg, size_t size, unsigned int dma_ch)
+{
+	u32 val;
+	u32 sram0_split, sram1_split;
+	u32 max;
+	u32 arb_pri_0, arb_pri_1;
+	u32 sram_matrix;
+
+	if (!base_reg)
+		return 0;
+
+	/* Common DMA Control register */
+	/* CSIS_DMA_F_IP_PROCESSING : 1 = Q-channel clock enable  */
+	/* CSIS_DMA_F_IP_PROCESSING : 0 = Q-channel clock disable */
+	val = fimc_is_hw_get_reg(base_reg, &csi_dma_regs[CSIS_DMA_R_COMMON_DMA_CTRL]);
+	val = fimc_is_hw_set_field_value(val, &csi_dma_fields[CSIS_DMA_F_IP_PROCESSING], 0x1);
+	fimc_is_hw_set_reg(base_reg, &csi_dma_regs[CSIS_DMA_R_COMMON_DMA_CTRL], val);
+
+	/* set default value */
+	max = (unsigned int)(size / 16);
+	sram0_split = max / 2;
+	sram1_split = max / 2;
+	arb_pri_0 = 0, arb_pri_1 = 0;
+	sram_matrix = 0;
+
+	/* Change CSIS DMA parameters
+	 * - adjust SRAM size to adjust CSIS DMA sizes more effieient
+	 * ex> if CSIS0 only -> set SRAM_0 split set to use CSIS0 max size
+	 *     if CSIS0 & CSIS2 -> set each SRAM_0, SRAM_1 set to use CSIS0, CSIS2 max size
+	 *     if CSIS0 & CSIS1 -> change SRAM matrix for use SRAM_0, SRAM_1 itelately,
+	 *                         then set SRAM split
+	 */
+	switch (dma_ch) {
+	case (1 << 0): /* DMA0 only */
+		sram0_split = max;
+		arb_pri_0 = 1;
+		break;
+	case (1 << 1): /* DMA1 only */
+		sram0_split = CSIS_DMA_MINIMUM_SIZE;
+		arb_pri_0 = 2;
+		break;
+	case (1 << 2): /* DMA2 only */
+		sram1_split = max;
+		arb_pri_1 = 1;
+		break;
+	case (1 << 3): /* DMA3 only */
+		sram1_split = CSIS_DMA_MINIMUM_SIZE;
+		arb_pri_1 = 2;
+		break;
+	case ((1 << 0) | (1 << 2)): /* DMA0 & DMA2 */
+		sram0_split = max;
+		sram1_split = max;
+		arb_pri_0 = 1;
+		arb_pri_1 = 1;
+		break;
+	case ((1 << 0) | (1 << 3)): /* DMA0 & DMA3 */
+		sram0_split = max;
+		sram1_split = CSIS_DMA_MINIMUM_SIZE;
+		arb_pri_0 = 1;
+		arb_pri_1 = 2;
+		break;
+	case ((1 << 1) | (1 << 2)): /* DMA1 & DMA2 */
+		sram0_split = CSIS_DMA_MINIMUM_SIZE;
+		sram1_split = max;
+		arb_pri_0 = 2;
+		arb_pri_1 = 1;
+		break;
+	case ((1 << 1) | (1 << 3)): /* DMA1 & DMA3 */
+		sram0_split = CSIS_DMA_MINIMUM_SIZE;
+		sram1_split = CSIS_DMA_MINIMUM_SIZE;
+		arb_pri_0 = 2;
+		arb_pri_1 = 2;
+		break;
+	case ((1 << 0) | (1 << 1)): /* DMA0 & DMA1 -> change DMA matrix */
+		sram_matrix = 2;
+		sram0_split = max;
+		sram1_split = max;
+		/* TODO: arb_pri value set when matrix is modified */
+		break;
+	case ((1 << 2) | (1 << 3)): /* DMA2 & DMA3 -> change DMA matrix */
+		sram_matrix = 2;
+		sram0_split = CSIS_DMA_MINIMUM_SIZE;
+		sram1_split = CSIS_DMA_MINIMUM_SIZE;
+		/* TODO: arb_pri value set when matrix is modified */
+		break;
+	default:
+		/* TODO: support over 3 CSI use case if need */
+		warn("invalid CSI dma_ch(%x)\n", dma_ch);
+		break;
+	}
+
+	info("[CSI] DMA split(matrix:%d, 0:%x, 1:%x), priority(0:%x, 1:%x)\n",
+		sram_matrix, sram0_split, sram1_split, arb_pri_0, arb_pri_1);
+
+	/* Common DMA Arbitration Priority register */
+	/* CSIS_DMA_F_DMA_ARB_PRI_1 : 1 = CSIS2 DMA has a high priority */
+	/* CSIS_DMA_F_DMA_ARB_PRI_1 : 2 = CSIS3 DMA has a high priority */
+	/* CSIS_DMA_F_DMA_ARB_PRI_0 : 1 = CSIS0 DMA has a high priority */
+	/* CSIS_DMA_F_DMA_ARB_PRI_0 : 2 = CSIS1 DMA has a high priority */
+	val = fimc_is_hw_get_reg(base_reg, &csi_dma_regs[CSIS_DMA_R_COMMON_DMA_ARB_PRI]);
+	val = fimc_is_hw_set_field_value(val, &csi_dma_fields[CSIS_DMA_F_DMA_ARB_PRI_1], arb_pri_1);
+	val = fimc_is_hw_set_field_value(val, &csi_dma_fields[CSIS_DMA_F_DMA_ARB_PRI_0], arb_pri_0);
+	fimc_is_hw_set_reg(base_reg, &csi_dma_regs[CSIS_DMA_R_COMMON_DMA_ARB_PRI], val);
+
+	/* Common DMA SRAM split register */
+	/* CSIS_DMA_F_DMA_SRAM1_SPLIT : internal SRAM1 is 10KB (640 * 16 bytes) */
+	/* CSIS_DMA_F_DMA_SRAM0_SPLIT : internal SRAM0 is 10KB (640 * 16 bytes) */
+	/* This register can be set between 0 to 640 */
+	val = fimc_is_hw_get_reg(base_reg, &csi_dma_regs[CSIS_DMA_R_COMMON_DMA_SRAM_SPLIT]);
+	val = fimc_is_hw_set_field_value(val, &csi_dma_fields[CSIS_DMA_F_DMA_SRAM1_SPLIT], sram1_split);
+	val = fimc_is_hw_set_field_value(val, &csi_dma_fields[CSIS_DMA_F_DMA_SRAM0_SPLIT], sram0_split);
+	fimc_is_hw_set_reg(base_reg, &csi_dma_regs[CSIS_DMA_R_COMMON_DMA_SRAM_SPLIT], val);
+
+	/* Common DMA Martix register */
+	/* CSIS_DMA_F_DMA_MATRIX : Under Table see */
+	/*       CSIS0      CSIS1      CSIS2      CSIS3  */
+	/* 0  : SRAM0_0    SRAM0_1    SRAM1_0    SRAM1_1 */
+	/* 2  : SRAM0_0    SRAM1_0    SRAM0_1    SRAM1_1 */
+	/* 5  : SRAM0_0    SRAM1_1    SRAM1_0    SRAM0_1 */
+	/* 14 : SRAM1_0    SRAM0_1    SRAM0_0    SRAM1_1 */
+	/* 16 : SRAM1_0    SRAM1_1    SRAM0_0    SRAM0_1 */
+	/* 17 : SRAM1_0    SRAM1_1    SRAM0_1    SRAM0_0 */
+	/* 22 : SRAM1_1    SRAM1_0    SRAM0_0    SRAM0_1 */
+	/* 23 : SRAM1_1    SRAM1_0    SRAM0_1    SRAM0_0 */
+	val = fimc_is_hw_get_reg(base_reg, &csi_dma_regs[CSIS_DMA_R_COMMON_DMA_MATRIX]);
+	val = fimc_is_hw_set_field_value(val, &csi_dma_fields[CSIS_DMA_F_DMA_MATRIX], sram_matrix);
+	fimc_is_hw_set_reg(base_reg, &csi_dma_regs[CSIS_DMA_R_COMMON_DMA_MATRIX], val);
+
+	return 0;
+}
+
 int csi_hw_enable(u32 __iomem *base_reg)
 {
 	/* update shadow */
@@ -786,7 +937,7 @@ int csi_hw_disable(u32 __iomem *base_reg)
 
 int csi_hw_dump(u32 __iomem *base_reg)
 {
-	info("CSI SFR DUMP (v5.0)\n");
+	info("CSI 5.0 DUMP\n");
 	fimc_is_hw_dump_regs(base_reg, csi_regs, CSIS_REG_CNT);
 
 	return 0;

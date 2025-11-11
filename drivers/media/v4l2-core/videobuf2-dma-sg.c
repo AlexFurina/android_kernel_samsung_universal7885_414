@@ -108,7 +108,7 @@ static int vb2_dma_sg_alloc_compacted(struct vb2_dma_sg_buf *buf,
 
 static void *vb2_dma_sg_alloc(struct device *dev, unsigned long dma_attrs,
 			      unsigned long size, enum dma_data_direction dma_dir,
-			      gfp_t gfp_flags, int memflags)
+			      gfp_t gfp_flags)
 {
 	struct vb2_dma_sg_buf *buf;
 	struct sg_table *sgt;
@@ -150,8 +150,7 @@ static void *vb2_dma_sg_alloc(struct device *dev, unsigned long dma_attrs,
 
 	sgt = &buf->sg_table;
 
-	if (!(memflags & VB2_DMA_SG_MEMFLAG_IOMMU_UNCACHED) &&
-	    (device_get_dma_attr(dev) == DEV_DMA_COHERENT))
+	if (device_get_dma_attr(dev) == DEV_DMA_COHERENT)
 		ioprot |= IOMMU_CACHE;
 
 	buf->iova = iovmm_map(buf->dev, sgt->sgl, 0, size,
@@ -203,7 +202,7 @@ static void vb2_dma_sg_put(void *buf_priv)
 	}
 }
 
-static void vb2_dma_sg_prepare(void *buf_priv, size_t size, int memflags)
+static void vb2_dma_sg_prepare(void *buf_priv, size_t size)
 {
 	struct vb2_dma_sg_buf *buf = buf_priv;
 	struct sg_table *sgt = buf->dma_sgt;
@@ -230,7 +229,7 @@ static void vb2_dma_sg_prepare(void *buf_priv, size_t size, int memflags)
 	}
 }
 
-static void vb2_dma_sg_finish(void *buf_priv, size_t size, int memflags)
+static void vb2_dma_sg_finish(void *buf_priv, size_t size)
 {
 	struct vb2_dma_sg_buf *buf = buf_priv;
 	struct sg_table *sgt = buf->dma_sgt;
@@ -259,8 +258,7 @@ static void vb2_dma_sg_finish(void *buf_priv, size_t size, int memflags)
 
 static void *vb2_dma_sg_get_userptr(struct device *dev, unsigned long vaddr,
 				    unsigned long size,
-				    enum dma_data_direction dma_dir,
-				    int memflags)
+				    enum dma_data_direction dma_dir)
 {
 	struct vb2_dma_sg_buf *buf;
 	struct sg_table *sgt;
@@ -294,7 +292,7 @@ static void *vb2_dma_sg_get_userptr(struct device *dev, unsigned long vaddr,
 	buf->num_pages = frame_vector_count(vec);
 
 	if (sg_alloc_table_from_pages(buf->dma_sgt, buf->pages,
-			buf->num_pages, buf->offset, size, GFP_KERNEL))
+			buf->num_pages, buf->offset, size, 0))
 		goto userptr_fail_sgtable;
 
 	sgt = &buf->sg_table;
@@ -304,8 +302,7 @@ static void *vb2_dma_sg_get_userptr(struct device *dev, unsigned long vaddr,
 	for_each_sg(sgt->sgl, s, sgt->orig_nents, i)
 		s->dma_address = sg_phys(s);
 
-	if (!(memflags & VB2_DMA_SG_MEMFLAG_IOMMU_UNCACHED) &&
-	    (device_get_dma_attr(dev) == DEV_DMA_COHERENT))
+	if (device_get_dma_attr(dev) == DEV_DMA_COHERENT)
 		ioprot |= IOMMU_CACHE;
 
 	buf->iova = iovmm_map(buf->dev, sgt->sgl, 0, size,
@@ -589,7 +586,7 @@ static struct dma_buf *vb2_dma_sg_get_dmabuf(void *buf_priv, unsigned long flags
 /*       callbacks for DMABUF buffers        */
 /*********************************************/
 
-static int vb2_dma_sg_map_dmabuf(void *mem_priv, size_t size, int memflags)
+static int vb2_dma_sg_map_dmabuf(void *mem_priv, size_t size)
 {
 	struct vb2_dma_sg_buf *buf = mem_priv;
 	struct sg_table *sgt;
@@ -623,8 +620,7 @@ static int vb2_dma_sg_map_dmabuf(void *mem_priv, size_t size, int memflags)
 	 */
 	if ((dmabuf_container_get_count(buf->db_attach->dmabuf) < 0) &&
 	    ((buf->iova == 0) || IS_ERR_VALUE(buf->iova))) {
-		if (!(memflags & VB2_DMA_SG_MEMFLAG_IOMMU_UNCACHED) &&
-		    (device_get_dma_attr(buf->dev) == DEV_DMA_COHERENT))
+		if (device_get_dma_attr(buf->dev) == DEV_DMA_COHERENT)
 			ioprot |= IOMMU_CACHE;
 
 		buf->iova = ion_iovmm_map(buf->db_attach, 0, buf->size,

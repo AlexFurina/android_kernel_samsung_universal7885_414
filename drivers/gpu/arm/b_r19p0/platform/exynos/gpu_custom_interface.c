@@ -32,7 +32,7 @@
 #endif /* CONFIG_CPU_THERMAL_IPA */
 #include "gpu_custom_interface.h"
 
-#ifdef CONFIG_MALI_RT_PM
+#ifdef CONFIG_EXYNOS_PD
 #include <soc/samsung/exynos-pd.h>
 #endif
 

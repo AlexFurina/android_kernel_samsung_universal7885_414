@@ -26,6 +26,8 @@
 #include "mfc_utils.h"
 #include "mfc_mem.h"
 
+#include "mfc_watchdog.h"
+
 /* Initialize hardware */
 static int __mfc_init_hw(struct mfc_dev *dev, enum mfc_buf_usage_type buf_type)
 {
@@ -303,7 +305,13 @@ int mfc_run_wakeup(struct mfc_dev *dev)
 
 	dev->sleep = 0;
 
+	/* Dump the status of POWER/CLK */
+	mfc_dump_power_clk_status();
+
 	mfc_pm_clock_off(dev);
+
+        /* Dump the status of POWER/CLK */
+        mfc_dump_power_clk_status();
 
 	mfc_debug_leave();
 
@@ -581,20 +589,22 @@ int mfc_run_enc_frame(struct mfc_ctx *ctx)
 
 int mfc_run_enc_last_frames(struct mfc_ctx *ctx)
 {
-	struct mfc_buf *dst_mb = NULL;
+	struct mfc_buf *dst_mb;
 	struct mfc_raw_info *raw;
 
 	raw = &ctx->raw_buf;
 
 	dst_mb = mfc_get_buf(&ctx->buf_queue_lock, &ctx->dst_buf_queue, MFC_BUF_SET_USED);
-	if (!dst_mb)
-		mfc_debug(2, "no dst buffers set to zero\n");
+	if (!dst_mb) {
+		mfc_debug(2, "no dst buffers\n");
+		return -EAGAIN;
+	}
 
 	mfc_debug(2, "Set address zero for all planes\n");
 	mfc_set_enc_frame_buffer(ctx, 0, raw->num_planes);
 
 	/* encoder dst buffer CFW PROT */
-	if (dst_mb && ctx->is_drm) {
+	if (ctx->is_drm) {
 		int index = dst_mb->vb.vb2_buf.index;
 
 		mfc_stream_protect(ctx, dst_mb, index);

@@ -22,11 +22,11 @@
 #include <linux/vmalloc.h>
 #include <linux/module.h>
 #include <linux/memblock.h>
-#include <linux/of.h>
-#include <linux/of_fdt.h>
 #include <linux/of_address.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/sched/clock.h>
+#include <linux/mm.h>
+#include <asm/memory.h>
 
 #include "debug-snapshot-local.h"
 
@@ -34,6 +34,15 @@
 #include <dt-bindings/soc/samsung/debug-snapshot-table.h>
 #ifdef CONFIG_DEBUG_SNAPSHOT_PMU
 #include <soc/samsung/cal-if.h>
+#endif
+
+#include <linux/sec_debug.h>
+
+#ifdef CONFIG_SEC_PM_DEBUG
+#include <linux/uaccess.h>
+#include <linux/proc_fs.h>
+
+static bool sec_log_full;
 #endif
 
 extern void register_hook_logbuf(void (*)(const char *, size_t));
@@ -59,7 +68,6 @@ const char *debug_level_val[] = {
 	"mid",
 };
 
-struct dbg_snapshot_bl *dss_bl;
 struct dbg_snapshot_item dss_items[] = {
 	{"header",		{0, 0, 0, false, false}, NULL ,NULL, 0, },
 	{"log_kernel",		{0, 0, 0, false, false}, NULL ,NULL, 0, },
@@ -82,26 +90,101 @@ struct dbg_snapshot_base ess_base;
 struct dbg_snapshot_log *dss_log = NULL;
 struct dbg_snapshot_desc dss_desc;
 
+void sec_debug_get_kevent_info(struct ess_info_offset *p, int type)
+{
+#ifndef CONFIG_DEBUG_SNAPSHOT_MINIMIZED_MODE
+	unsigned long kevent_base_va = (unsigned long)(dss_log->task);
+	unsigned long kevent_base_pa = dss_items[dss_desc.kevents_num].entry.paddr;
+
+	switch (type) {
+	case DSS_KEVENT_TASK:
+		p->base = kevent_base_pa + (unsigned long)(dss_log->task) - kevent_base_va;
+		p->nr = DSS_LOG_MAX_NUM;
+		p->size = sizeof(struct __task_log);
+		p->per_core = 1;
+		break;
+
+	case DSS_KEVENT_WORK:
+		p->base = kevent_base_pa + (unsigned long)(dss_log->work) - kevent_base_va;
+		p->nr = DSS_LOG_MAX_NUM;
+		p->size = sizeof(struct __work_log);
+		p->per_core = 1;
+		break;
+
+	case DSS_KEVENT_IRQ:
+		p->base = kevent_base_pa + (unsigned long)(dss_log->irq) - kevent_base_va;
+		p->nr = DSS_LOG_MAX_NUM * 2;
+		p->size = sizeof(struct __irq_log);
+		p->per_core = 1;
+		break;
+
+#ifdef CONFIG_DEBUG_SNAPSHOT_FREQ
+	case DSS_KEVENT_FREQ:
+		p->base = kevent_base_pa + (unsigned long)(dss_log->freq) - kevent_base_va;
+		p->nr = DSS_LOG_MAX_NUM;
+		p->size = sizeof(struct __freq_log);
+		p->per_core = 0;
+		break;
+#endif
+
+	case DSS_KEVENT_IDLE:
+		p->base = kevent_base_pa + (unsigned long)(dss_log->cpuidle) - kevent_base_va;
+		p->nr = DSS_LOG_MAX_NUM;
+		p->size = sizeof(struct __cpuidle_log);
+		p->per_core = 1;
+		break;
+
+	case DSS_KEVENT_THRM:
+		p->base = kevent_base_pa + (unsigned long)(dss_log->thermal) - kevent_base_va;
+		p->nr = DSS_LOG_MAX_NUM;
+		p->size = sizeof(struct __thermal_log);
+		p->per_core = 0;
+		break;
+
+#ifdef CONFIG_DEBUG_SNAPSHOT_ACPM
+	case DSS_KEVENT_ACPM:
+		p->base = kevent_base_pa + (unsigned long)(dss_log->acpm) - kevent_base_va;
+		p->nr = DSS_LOG_MAX_NUM;
+		p->size = sizeof(struct __acpm_log);
+		p->per_core = 0;
+		break;
+#endif
+
+	default:
+		p->base = 0;
+		p->nr = 0;
+		p->size = 0;
+		p->per_core = 0;
+		break;
+	}
+
+	p->last = sec_debug_get_kevent_index_addr(type);
+#endif
+}
+
 /* Variable for assigning virtual address base */
 static size_t g_dbg_snapshot_vaddr_base = DSS_FIXED_VIRT_BASE;
+
+int dbg_snapshot_set_debug_level(int level)
+{
+	int i;
+
+	if (level > -1 && level < ARRAY_SIZE(debug_level_val)) {
+		dss_desc.debug_level = i;
+	} else {
+#if !IS_ENABLED(CONFIG_DEBUG_SNAPSHOT_USER_MODE)
+		dss_desc.debug_level = DSS_DEBUG_LEVEL_MID;
+#else
+		dss_desc.debug_level = DSS_DEBUG_LEVEL_LOW;
+#endif
+	}
+	dbg_snapshot_set_debug_level_reg();
+	return 0;
+}
 
 int dbg_snapshot_get_debug_level(void)
 {
 	return dss_desc.debug_level;
-}
-
-int dbg_snapshot_add_bl_item_info(const char *name, unsigned int paddr, unsigned int size)
-{
-	if (dss_bl->item_count >= SZ_16)
-		return -1;
-
-	memcpy(dss_bl->item[dss_bl->item_count].name, name, strlen(name) + 1);
-	dss_bl->item[dss_bl->item_count].paddr = paddr;
-	dss_bl->item[dss_bl->item_count].size = size;
-	dss_bl->item[dss_bl->item_count].enabled = 1;
-	dss_bl->item_count++;
-
-	return 0;
 }
 
 int dbg_snapshot_set_enable(const char *name, int en)
@@ -114,7 +197,8 @@ int dbg_snapshot_set_enable(const char *name, int en)
 		pr_info("debug-snapshot: %sabled\n", en ? "en" : "dis");
 	} else {
 		for (i = 0; i < ARRAY_SIZE(dss_items); i++) {
-			if (!strncmp(dss_items[i].name, name, strlen(name))) {
+			if (dss_items[i].entry.size &&
+				!strncmp(dss_items[i].name, name, strlen(name))) {
 				item = &dss_items[i];
 				item->entry.enabled = en;
 				item->time = local_clock();
@@ -140,7 +224,8 @@ int dbg_snapshot_try_enable(const char *name, unsigned long long duration)
 		return ret;
 
 	for (i = 0; i < ARRAY_SIZE(dss_items); i++) {
-		if (!strncmp(dss_items[i].name, name, strlen(name))) {
+		if (dss_items[i].entry.size &&
+			!strncmp(dss_items[i].name, name, strlen(name))) {
 			item = &dss_items[i];
 
 			/* We only interest in disabled */
@@ -214,6 +299,17 @@ static inline void dbg_snapshot_hook_logger(const char *name,
 	}
 }
 
+size_t dbg_snapshot_get_curr_ptr_for_sysrq(void)
+{
+#ifdef CONFIG_SEC_DEBUG_SYSRQ_KMSG
+	struct dbg_snapshot_item *item = &dss_items[dss_desc.log_kernel_num];
+
+	return (size_t)item->curr_ptr;
+#else
+	return 0;
+#endif
+}
+
 static inline void dbg_snapshot_hook_logbuf(const char *buf, size_t size)
 {
 	struct dbg_snapshot_item *item = &dss_items[dss_desc.log_kernel_num];
@@ -221,8 +317,16 @@ static inline void dbg_snapshot_hook_logbuf(const char *buf, size_t size)
 	if (likely(dss_base.enabled && item->entry.enabled)) {
 		size_t last_buf;
 
-		if (dbg_snapshot_check_eob(item, size))
+		if (dbg_snapshot_check_eob(item, size)) {
 			item->curr_ptr = item->head_ptr;
+#ifdef CONFIG_SEC_DEBUG_LAST_KMSG
+			*((unsigned long long *)(item->head_ptr + item->entry.size - (size_t)0x08)) = SEC_LKMSG_MAGICKEY;
+#endif
+#ifdef CONFIG_SEC_PM_DEBUG
+			if (unlikely(!sec_log_full))
+				sec_log_full = true;
+#endif
+		}
 
 		memcpy(item->curr_ptr, buf, size);
 		item->curr_ptr += size;
@@ -465,36 +569,58 @@ static int __init dbg_snapshot_init_desc(void)
 	return 0;
 }
 
-#ifdef CONFIG_OF_RESERVED_MEM
-int __init dbg_snapshot_reserved_mem_check(unsigned long node, unsigned long size)
-{
+struct free_rmem_entry {
 	const char *name;
-	int ret = 0;
+	struct reserved_mem *rmem;
+};
 
-	name = of_get_flat_dt_prop(node, "compatible", NULL);
-	if (!name)
-		goto out;
-
-	if (!strstr(name, "debug-snapshot"))
-		goto out;
-
-	if (!strstr(name, "log"))
-		goto out;
-
-	if (size == 0) {
-		ret = -EINVAL;
-		goto out;
-	}
-
-#if !defined(CONFIG_DEBUG_SNAPSHOT_USER_MODE)
-	if (strstr(name, "user"))
-		ret = -EINVAL;
+#ifdef CONFIG_DEBUG_SNAPSHOT_MINIMIZED_MODE
+static struct free_rmem_entry free_rmem_list[] =
+{
+	{"log_kevents", NULL},
+	{"log_platform", NULL},
+	{"log_sfr", NULL},
+};
 #else
-	if (!strstr(name, "user"))
-		ret = -EINVAL;
+static struct free_rmem_entry free_rmem_list[] =
+{
+	{"nothing", NULL},
+};
 #endif
-out:
-	return ret;
+
+static void __init release_reserved_memory(struct reserved_mem *rmem)
+{
+	struct page *first = phys_to_page(rmem->base & PAGE_MASK);
+	struct page *last = phys_to_page(PAGE_ALIGN(rmem->base + rmem->size));
+	struct page *page;
+
+	for (page = first; page != last; page++)
+		free_reserved_page(page);
+}
+
+static void __init dbg_snapshot_free_releasable_rmem(void)
+{
+	int i;
+
+	for (i = 0; i < (int)ARRAY_SIZE(free_rmem_list); i++) {
+		if (!!free_rmem_list[i].rmem)
+			release_reserved_memory(free_rmem_list[i].rmem);
+	}
+}
+
+static bool __init should_be_released(const char *name, struct reserved_mem *rmem)
+{
+	int i;
+	bool matched = false;
+
+	for (i = 0; i < (int)ARRAY_SIZE(free_rmem_list); i++) {
+		if (!strcmp(name, free_rmem_list[i].name)) {
+			matched = true;
+			free_rmem_list[i].rmem = rmem;
+			break;
+		}
+	}
+	return matched;
 }
 
 static int __init dbg_snapshot_item_reserved_mem_setup(struct reserved_mem *remem)
@@ -508,6 +634,14 @@ static int __init dbg_snapshot_item_reserved_mem_setup(struct reserved_mem *reme
 
 	if (i == ARRAY_SIZE(dss_items))
 		return -ENODEV;
+
+	if (!remem->base && !remem->size)
+		return -ENODEV;
+
+	if (should_be_released(dss_items[i].name, remem)) {
+		pr_info("%s will be released\n", remem->name);
+		return 0;
+	}
 
 	dss_items[i].entry.paddr = remem->base;
 	dss_items[i].entry.size = remem->size;
@@ -534,7 +668,6 @@ static int __init dbg_snapshot_item_reserved_mem_setup(struct reserved_mem *reme
 #define DECLARE_DBG_SNAPSHOT_RESERVED_REGION(compat, name) \
 RESERVEDMEM_OF_DECLARE(name, compat#name, dbg_snapshot_item_reserved_mem_setup)
 
-#if !defined(CONFIG_DEBUG_SNAPSHOT_USER_MODE)
 DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", header);
 DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_kernel);
 DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_platform);
@@ -545,19 +678,6 @@ DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_etm);
 DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_bcm);
 DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_pstore);
 DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_kevents);
-#else
-DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", header);
-DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_kernel_user);
-DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_platform_user);
-DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_sfr_user);
-DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_s2d_user);
-DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_cachedump_user);
-DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_etm_user);
-DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_bcm_user);
-DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_pstore_user);
-DECLARE_DBG_SNAPSHOT_RESERVED_REGION("debug-snapshot,", log_kevents_user);
-#endif
-#endif
 
 /*
  *  ---------------------------------------------------------------------
@@ -617,19 +737,6 @@ static void __init dbg_snapshot_fixmap_header(void)
 
 	/*  initialize kernel event to 0 except only header */
 	memset((size_t *)(vaddr + DSS_KEEP_HEADER_SZ), 0, size - DSS_KEEP_HEADER_SZ);
-
-	dss_bl = dbg_snapshot_get_base_vaddr() + DSS_OFFSET_ITEM_INFO;
-	memset(dss_bl, 0, sizeof(struct dbg_snapshot_bl));
-	dss_bl->magic1 = 0x01234567;
-	dss_bl->magic2 = 0x89ABCDEF;
-	dss_bl->item_count = ARRAY_SIZE(dss_items);
-	memcpy(dss_bl->item[dss_desc.header_num].name,
-			dss_items[dss_desc.header_num].name,
-			strlen(dss_items[dss_desc.header_num].name) + 1);
-	dss_bl->item[dss_desc.header_num].paddr = paddr;
-	dss_bl->item[dss_desc.header_num].size = size;
-	dss_bl->item[dss_desc.header_num].enabled =
-		dss_items[dss_desc.header_num].entry.enabled;
 }
 
 static void __init dbg_snapshot_fixmap(void)
@@ -642,11 +749,6 @@ static void __init dbg_snapshot_fixmap(void)
 	dbg_snapshot_fixmap_header();
 
 	for (i = 1; i < ARRAY_SIZE(dss_items); i++) {
-		memcpy(dss_bl->item[i].name,
-				dss_items[i].name,
-				strlen(dss_items[i].name) + 1);
-		dss_bl->item[i].enabled = dss_items[i].entry.enabled;
-
 		if (!dss_items[i].entry.enabled)
 			continue;
 
@@ -690,12 +792,6 @@ static void __init dbg_snapshot_fixmap(void)
 		dss_info.info_log[i - 1].head_ptr = (unsigned char *)dss_items[i].entry.vaddr;
 		dss_info.info_log[i - 1].curr_ptr = NULL;
 		dss_info.info_log[i - 1].entry.size = size;
-
-		memcpy(dss_bl->item[i].name,
-				dss_items[i].name,
-				strlen(dss_items[i].name) + 1);
-		dss_bl->item[i].paddr = paddr;
-		dss_bl->item[i].size = size;
 	}
 
 	dss_log = (struct dbg_snapshot_log *)(dss_items[dss_desc.kevents_num].entry.vaddr);
@@ -706,6 +802,12 @@ static void __init dbg_snapshot_fixmap(void)
 
 	/* output the information of debug-snapshot */
 	dbg_snapshot_output();
+
+#ifdef CONFIG_SEC_DEBUG
+	sec_debug_save_last_kmsg(dss_items[dss_desc.log_kernel_num].head_ptr,
+			dss_items[dss_desc.log_kernel_num].curr_ptr,
+			dss_items[dss_desc.log_kernel_num].entry.size);
+#endif
 }
 
 static int dbg_snapshot_init_dt_parse(struct device_node *np)
@@ -766,24 +868,43 @@ static int __init dbg_snapshot_init_dt(void)
 
 static int __init dbg_snapshot_init_value(void)
 {
-	dss_desc.debug_level = dbg_snapshot_get_debug_level_reg();
+	int val = dbg_snapshot_get_debug_level_reg();
+	struct dbg_snapshot_item *item;
+
+	dbg_snapshot_set_debug_level(val);
 
 	pr_info("debug-snapshot: debug_level [%s]\n",
 		debug_level_val[dss_desc.debug_level]);
 
-	if (dss_desc.debug_level != DSS_DEBUG_LEVEL_LOW)
-		dbg_snapshot_scratch_reg(DSS_SIGN_SCRATCH);
+	dbg_snapshot_scratch_reg(DSS_SIGN_SCRATCH);
+
+	dbg_snapshot_set_sjtag_status();
 
 	/* copy linux_banner, physical address of
 	 * kernel log / platform log / kevents to DSS header */
 	strncpy(dbg_snapshot_get_base_vaddr() + DSS_OFFSET_LINUX_BANNER,
 		linux_banner, strlen(linux_banner));
 
+	item = &dss_items[dss_desc.log_kernel_num];
+	__raw_writel(item->entry.paddr,
+		dbg_snapshot_get_base_vaddr() + DSS_OFFSET_KERNEL_LOG);
+
+	item = &dss_items[dss_desc.log_platform_num];
+	__raw_writel(item->entry.paddr,
+		dbg_snapshot_get_base_vaddr() + DSS_OFFSET_PLATFORM_LOG);
+
+	item = &dss_items[dss_desc.kevents_num];
+	__raw_writel(item->entry.paddr,
+		dbg_snapshot_get_base_vaddr() + DSS_OFFSET_KERNEL_EVENT);
+
 	return 0;
 }
 
 static int __init dbg_snapshot_init(void)
 {
+	dbg_snapshot_free_releasable_rmem();
+	mem_init_print_info("after reconfiguration of dss rmem");
+
 	dbg_snapshot_init_desc();
 	if (dbg_snapshot_remap() > 0) {
 	/*
@@ -810,3 +931,59 @@ static int __init dbg_snapshot_init(void)
 	return 0;
 }
 early_initcall(dbg_snapshot_init);
+
+#ifdef CONFIG_SEC_PM_DEBUG
+static ssize_t sec_log_read_all(struct file *file, char __user *buf,
+				size_t len, loff_t *offset)
+{
+	loff_t pos = *offset;
+	ssize_t count;
+	size_t size;
+	struct dbg_snapshot_item *item = &dss_items[dss_desc.log_kernel_num];
+
+	if (sec_log_full)
+		size = item->entry.size;
+	else
+		size = (size_t)(item->curr_ptr - item->head_ptr);
+
+	if (pos >= size)
+		return 0;
+
+	count = min(len, size);
+
+	if ((pos + count) > size)
+		count = size - pos;
+
+	if (copy_to_user(buf, item->head_ptr + pos, count))
+		return -EFAULT;
+
+	*offset += count;
+	return count;
+}
+
+static const struct file_operations sec_log_file_ops = {
+	.owner = THIS_MODULE,
+	.read = sec_log_read_all,
+};
+
+static int __init sec_log_late_init(void)
+{
+	struct proc_dir_entry *entry;
+	struct dbg_snapshot_item *item = &dss_items[dss_desc.log_kernel_num];
+
+	if (!item->head_ptr)
+		return 0;
+
+	entry = proc_create("sec_log", 0440, NULL, &sec_log_file_ops);
+	if (!entry) {
+		pr_err("%s: failed to create proc entry\n", __func__);
+		return 0;
+	}
+
+	proc_set_size(entry, item->entry.size);
+
+	return 0;
+}
+
+late_initcall(sec_log_late_init);
+#endif /* CONFIG_SEC_PM_DEBUG */

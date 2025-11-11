@@ -87,6 +87,10 @@ struct ion_buffer {
 	void *vaddr;
 	struct sg_table *sg_table;
 	struct list_head iovas;
+	char task_comm[TASK_COMM_LEN];
+	char thread_comm[TASK_COMM_LEN];
+	pid_t pid;
+	pid_t tid;
 };
 void ion_buffer_destroy(struct ion_buffer *buffer);
 
@@ -195,6 +199,8 @@ struct ion_heap {
 	struct task_struct *task;
 
 	int (*debug_show)(struct ion_heap *heap, struct seq_file *, void *);
+	atomic_long_t total_allocated;
+	atomic_long_t total_allocated_peak;
 };
 
 /**
@@ -349,7 +355,6 @@ struct ion_page_pool *ion_page_pool_create(gfp_t gfp_mask, unsigned int order,
 void ion_page_pool_destroy(struct ion_page_pool *pool);
 struct page *ion_page_pool_alloc(struct ion_page_pool *pool, bool nozero);
 void ion_page_pool_free(struct ion_page_pool *pool, struct page *page);
-int ion_page_pool_total(struct ion_page_pool *pool, bool high);
 
 /** ion_page_pool_shrink - shrinks the size of the memory cached in the pool
  * @pool:		the pool

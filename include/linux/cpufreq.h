@@ -534,6 +534,8 @@ unsigned int cpufreq_policy_transition_delay_us(struct cpufreq_policy *policy);
 int cpufreq_register_governor(struct cpufreq_governor *governor);
 void cpufreq_unregister_governor(struct cpufreq_governor *governor);
 
+unsigned long cpufreq_governor_get_util(unsigned int cpu);
+unsigned int cpufreq_governor_get_freq(int cpu);
 struct cpufreq_governor *cpufreq_default_governor(void);
 struct cpufreq_governor *cpufreq_fallback_governor(void);
 
@@ -630,6 +632,19 @@ static inline void dev_pm_opp_free_cpufreq_table(struct device *dev,
 	for (pos = table; pos->frequency != CPUFREQ_TABLE_END; pos++)
 
 /*
+ * cpufreq_for_each_entry_idx - iterate over a cpufreq_frequency_table
+ *      with index
+ * @pos:        the cpufreq_frequency_table * to use as a loop cursor.
+ * @table:      the cpufreq_frequency_table * to iterate over.
+ * @idx:        the table entry currently being processed
+ */
+
+#define cpufreq_for_each_entry_idx(pos, table, idx)     \
+        for (pos = table, idx = 0; pos->frequency != CPUFREQ_TABLE_END; \
+                pos++, idx++)
+
+
+/*
  * cpufreq_for_each_valid_entry -     iterate over a cpufreq_frequency_table
  *	excluding CPUFREQ_ENTRY_INVALID frequencies.
  * @pos:        the cpufreq_frequency_table * to use as a loop cursor.
@@ -641,6 +656,20 @@ static inline void dev_pm_opp_free_cpufreq_table(struct device *dev,
 		if (pos->frequency == CPUFREQ_ENTRY_INVALID)		\
 			continue;					\
 		else
+
+/*
+ * cpufreq_for_each_valid_entry_idx -     iterate with index over a cpufreq
+ *      frequency_table excluding CPUFREQ_ENTRY_INVALID frequencies.
+ * @pos:        the cpufreq_frequency_table * to use as a loop cursor.
+ * @table:      the cpufreq_frequency_table * to iterate over.
+ * @idx:        the table entry currently being processed
+ */
+
+#define cpufreq_for_each_valid_entry_idx(pos, table, idx)               \
+        cpufreq_for_each_entry_idx(pos, table, idx)                     \
+                if (pos->frequency == CPUFREQ_ENTRY_INVALID)            \
+                        continue;                                       \
+                else
 
 int cpufreq_frequency_table_cpuinfo(struct cpufreq_policy *policy,
 				    struct cpufreq_frequency_table *table);
@@ -930,8 +959,7 @@ extern void arch_set_max_freq_scale(struct cpumask *cpus,
 extern struct freq_attr cpufreq_freq_attr_scaling_available_freqs;
 extern struct freq_attr cpufreq_freq_attr_scaling_boost_freqs;
 extern struct freq_attr *cpufreq_generic_attr[];
-int cpufreq_table_validate_and_show(struct cpufreq_policy *policy,
-				      struct cpufreq_frequency_table *table);
+int cpufreq_table_validate_and_sort(struct cpufreq_policy *policy);
 
 unsigned int cpufreq_generic_get(unsigned int cpu);
 int cpufreq_generic_init(struct cpufreq_policy *policy,

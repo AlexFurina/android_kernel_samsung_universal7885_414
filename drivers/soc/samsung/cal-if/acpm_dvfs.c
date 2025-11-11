@@ -20,6 +20,32 @@ static struct acpm_dvfs acpm_dvfs;
 static struct acpm_dvfs acpm_noti_mif;
 static struct pm_qos_request mif_request_from_acpm;
 
+int exynos_acpm_set_flag(void)
+{
+	struct ipc_config config;
+	unsigned int cmd[4];
+	unsigned long long before, after, latency;
+	int ret, id;
+
+	id = 7;
+	config.cmd = cmd;
+	config.response = true;
+	config.indirection = false;
+	config.cmd[0] = id;
+	config.cmd[1] = 1;
+	config.cmd[2] = SET_FLAG;
+	config.cmd[3] = 0;
+
+	before = sched_clock();
+	ret = acpm_ipc_send_data(acpm_dvfs.ch_num, &config);
+	after = sched_clock();
+	latency = after - before;
+	if (ret)
+		pr_err("%s:[%d] latency = %llu ret = %d",__func__, id, latency, ret);
+
+	return ret;
+}
+
 int exynos_acpm_set_rate(unsigned int id, unsigned long rate)
 {
 	struct ipc_config config;

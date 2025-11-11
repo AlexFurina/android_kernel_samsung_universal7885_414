@@ -41,32 +41,29 @@
 #define MAX_2P8_SETPIN_CNT 2
 
 static struct fimc_is_sensor_cfg config_module_2p8[] = {
-			/* width, height, fps, settle, mode, lane, speed, interleave, pd_mode */
-	FIMC_IS_SENSOR_CFG(5328, 3000, 30, 0, 0, CSI_DATA_LANES_4, 1404, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 5328, 3000), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(2, HW_FORMAT_USER, 0, 0), VC_OUT(HW_FORMAT_USER, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(4000, 3000, 30, 0, 1, CSI_DATA_LANES_4, 1118, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 4000, 3000), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(2, HW_FORMAT_USER, 0, 0), VC_OUT(HW_FORMAT_USER, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(3008, 3000, 30, 0, 2, CSI_DATA_LANES_4, 1014, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 3008, 3000), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(2, HW_FORMAT_USER, 0, 0), VC_OUT(HW_FORMAT_USER, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(2664, 1500, 60, 0, 3, CSI_DATA_LANES_4, 702, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 2664, 1500), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(2, HW_FORMAT_USER, 0, 0), VC_OUT(HW_FORMAT_USER, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(1328, 748, 120, 0, 4, CSI_DATA_LANES_4, 624, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 1328, 748), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0),
-		VC_IN(2, HW_FORMAT_USER, 0, 0), VC_OUT(HW_FORMAT_USER, VC_NOTHING, 0, 0),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
+	/* 5328x3000@30fps */
+	FIMC_IS_SENSOR_CFG(5328, 3000, 30, 31, 0, CSI_DATA_LANES_4),
+	/* 4000X3000@30fps */
+	FIMC_IS_SENSOR_CFG(4000, 3000, 30, 24, 1, CSI_DATA_LANES_4),
+	/* 3008X3000@30fps */
+	FIMC_IS_SENSOR_CFG(3008, 3000, 30, 22, 2, CSI_DATA_LANES_4),
+	/* 2664X1500@60fps */
+	FIMC_IS_SENSOR_CFG(2664, 1500, 60, 15, 3, CSI_DATA_LANES_4),
+	/* 1328X748@120fps */
+	FIMC_IS_SENSOR_CFG(1328, 748, 120, 15, 4, CSI_DATA_LANES_4),
+};
+
+static struct fimc_is_vci vci_module_2p8[] = {
+	{
+		.pixelformat = V4L2_PIX_FMT_SBGGR10,
+		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_UNKNOWN}, {2, HW_FORMAT_USER}, {3, 0}}
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR12,
+		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_UNKNOWN}, {2, HW_FORMAT_USER}, {3, 0}}
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR16,
+		.config = {{0, HW_FORMAT_RAW10}, {1, HW_FORMAT_UNKNOWN}, {2, HW_FORMAT_USER}, {3, 0}}
+	}
 };
 
 static const struct v4l2_subdev_core_ops core_ops = {
@@ -80,7 +77,6 @@ static const struct v4l2_subdev_core_ops core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_routing = sensor_module_s_routing,
 	.s_stream = sensor_module_s_stream,
 	.s_parm = sensor_module_s_param
 };
@@ -105,7 +101,7 @@ static int sensor_module_2p8_power_back_setpin(struct device *dev,
 	int gpio_dovdd_en = 0;
 #endif
 
-	FIMC_BUG(!dev);
+	BUG_ON(!dev);
 
 	dnode = dev->of_node;
 
@@ -139,92 +135,31 @@ static int sensor_module_2p8_power_back_setpin(struct device *dev,
 
 	/* BACK CAEMRA - POWER ON */
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
-#if defined(CONFIG_SOC_EXYNOS9610)
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDDIO_1.8V_CAM", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDDD_2.8V_OIS", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDDA_2.8V_CAM", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDDD_1.0V_CAM", PIN_REGULATOR, 1, 0);
-#else /* defined(CONFIG_SOC_EXYNOS9610) */
 #if defined(CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS7880)
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_dovdd_en, "dovdd_1p8_en", PIN_OUTPUT, 1, 0);
-#elif defined(CONFIG_SOC_EXYNOS7872) || defined(CONFIG_SOC_EXYNOS9810)
+#elif defined(CONFIG_SOC_EXYNOS7872)
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "DOVDD_REAR_CAM_1V8", PIN_REGULATOR, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDD_REAR_CAM_SENSOR_2V8", PIN_REGULATOR, 1, 0);
 #endif
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDD_REAR_CAM_AF_2V8", PIN_REGULATOR, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "DVDD_REAR_CAM_1V2", PIN_REGULATOR, 1, 2000);
-#endif
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "on_i2c", PIN_I2C, 1, 10);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 2, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 2000);
 
 	/* BACK CAEMRA - POWER OFF */
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_RESET, 0, 10);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst input", PIN_INPUT, 0 ,0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "off_i2c", PIN_I2C, 1, 10);
-#if defined(CONFIG_SOC_EXYNOS9610)
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "VDDD_1.0V_CAM", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "VDDD_2.8V_OIS", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "VDDA_2.8V_CAM", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "VDDIO_1.8V_CAM", PIN_REGULATOR, 0, 0);
-#else /* defined(CONFIG_SOC_EXYNOS9610) */
 #if defined(CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS7880)
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_dovdd_en, "dovdd_1p8_en", PIN_INPUT, 0, 0);
-#elif defined(CONFIG_SOC_EXYNOS7872) || defined(CONFIG_SOC_EXYNOS9810)
+#elif defined(CONFIG_SOC_EXYNOS7872)
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "VDD_REAR_CAM_SENSOR_2V8", PIN_REGULATOR, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "DOVDD_REAR_CAM_1V8", PIN_REGULATOR, 0, 0);
 #endif
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "VDD_REAR_CAM_AF_2V8", PIN_REGULATOR, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "DVDD_REAR_CAM_1V2", PIN_REGULATOR, 0, 0);
-#endif
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
-
-	/* REAR VISION CAEMRA - POWER ON */
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
-#if defined(CONFIG_SOC_EXYNOS9610)
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "VDDIO_1.8V_CAM", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "VDDD_2.8V_OIS", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "VDDA_2.8V_CAM", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "VDDD_1.0V_CAM", PIN_REGULATOR, 1, 0);
-#else /* defined(CONFIG_SOC_EXYNOS9610) */
-#if defined(CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS7880)
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_dovdd_en, "dovdd_1p8_en", PIN_OUTPUT, 1, 0);
-#elif defined(CONFIG_SOC_EXYNOS7872) || defined(CONFIG_SOC_EXYNOS9810)
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "DOVDD_REAR_CAM_1V8", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "VDD_REAR_CAM_SENSOR_2V8", PIN_REGULATOR, 1, 0);
-#endif
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "VDD_REAR_CAM_AF_2V8", PIN_REGULATOR, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "DVDD_REAR_CAM_1V2", PIN_REGULATOR, 1, 2000);
-#endif
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "on_i2c", PIN_I2C, 1, 10);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 2, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 2000);
-
-
-	/* REAR VISION CAEMRA - POWER OFF */
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_RESET, 0, 10);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst input", PIN_INPUT, 0 ,0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "off_i2c", PIN_I2C, 1, 10);
-#if defined(CONFIG_SOC_EXYNOS9610)
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "VDDD_1.0V_CAM", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "VDDD_2.8V_OIS", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "VDDA_2.8V_CAM", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "VDDIO_1.8V_CAM", PIN_REGULATOR, 0, 0);
-#else /* defined(CONFIG_SOC_EXYNOS9610) */
-#if defined(CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS7880)
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_dovdd_en, "dovdd_1p8_en", PIN_INPUT, 0, 0);
-#elif defined(CONFIG_SOC_EXYNOS7872) || defined(CONFIG_SOC_EXYNOS9810)
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "VDD_REAR_CAM_SENSOR_2V8", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "DOVDD_REAR_CAM_1V8", PIN_REGULATOR, 0, 0);
-#endif
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "VDD_REAR_CAM_AF_2V8", PIN_REGULATOR, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "DVDD_REAR_CAM_1V2", PIN_REGULATOR, 0, 0);
-#endif
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
 
 	dev_info(dev, "%s X v4\n", __func__);
 
@@ -241,7 +176,7 @@ static int sensor_module_2p8_power_front_setpin(struct device *dev,
 	int gpio_dvdd_en = 0;
 	int gpio_af_en = 0;
 
-	FIMC_BUG(!dev);
+	BUG_ON(!dev);
 
 	dnode = dev->of_node;
 
@@ -289,7 +224,7 @@ static int sensor_module_2p8_power_front_setpin(struct device *dev,
 	SET_PIN_INIT(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON);
 	SET_PIN_INIT(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF);
 
-	/* BACK CAEMRA - POWER ON */
+	/* NORMAL - POWER ON */
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_dovdd_en, "dovdd_1p8_en", PIN_OUTPUT, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_dvdd_en, "dvdd_1p8_en", PIN_OUTPUT, 1, 0);
@@ -297,7 +232,7 @@ static int sensor_module_2p8_power_front_setpin(struct device *dev,
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 2, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 2000);
 
-	/* BACK CAEMRA - POWER OFF */
+	/* NORMAL - POWER OFF */
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_RESET, 0, 10);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst input", PIN_OUTPUT, 0 ,0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_dovdd_en, "dovdd_1p8_en", PIN_OUTPUT, 0, 0);
@@ -307,20 +242,20 @@ static int sensor_module_2p8_power_front_setpin(struct device *dev,
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
 
-	/* BACK CAEMRA - POWER ON */
+	/* VISION - POWER ON */
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 10);
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_dovdd_en, "dovdd_1p8_en", PIN_OUTPUT, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_dvdd_en, "dvdd_1p8_en", PIN_OUTPUT, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_af_en, "af_en", PIN_OUTPUT, 1, 2000);
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_dvdd_en, "dvdd_1p2_en", PIN_OUTPUT, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 2, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 2000);
 
-	/* BACK CAEMRA - POWER OFF */
+	/* VISION - POWER OFF */
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_RESET, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst input", PIN_OUTPUT, 0 ,0);
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_dovdd_en, "dovdd_1p8_en", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_dvdd_en, "dvdd_1p8_en", PIN_OUTPUT, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_af_en, "af_en", PIN_OUTPUT, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_dvdd_en, "dvdd_1p2_en", PIN_OUTPUT, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
@@ -336,11 +271,10 @@ static int (* module_2p8_power_setpin[MAX_2P8_SETPIN_CNT])(struct device *dev,
 	sensor_module_2p8_power_front_setpin
 };
 
-static int __init sensor_module_2p8_probe(struct platform_device *pdev)
+int sensor_module_2p8_probe(struct platform_device *pdev)
 {
 	int ret = 0;
-	int ret_gpio = 0;
-	int gpio_sel;
+	u32 position = SENSOR_POSITION_REAR;
 	struct fimc_is_core *core;
 	struct v4l2_subdev *subdev_module;
 	struct fimc_is_module_enum *module;
@@ -349,7 +283,7 @@ static int __init sensor_module_2p8_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -358,17 +292,13 @@ static int __init sensor_module_2p8_probe(struct platform_device *pdev)
 	}
 
 	dev = &pdev->dev;
-
-	/*
-	 * GPIO scenario selecltion is depend on board configuration.
-	 * If same sensor is used both rear and front side, gpio_sel can be used.
-	 */
-	ret_gpio = of_property_read_u32(dev->of_node, "gpio_sel", &gpio_sel);
-	if (ret_gpio || gpio_sel > SENSOR_POSITION_FRONT) {
-		probe_err("gpio_sel is invalid(%d, %d)", ret_gpio, gpio_sel);
-		gpio_sel = SENSOR_POSITION_REAR;
+	ret = of_property_read_u32(dev->of_node, "position", &position);
+	if (ret || position > SENSOR_POSITION_FRONT) {
+		probe_err("position is invalid(%d, %d)", ret, position);
+		position = SENSOR_POSITION_REAR;
 	}
-	fimc_is_module_parse_dt(dev, module_2p8_power_setpin[gpio_sel]);
+
+	fimc_is_module_parse_dt(dev, module_2p8_power_setpin[position]);
 
 	pdata = dev_get_platdata(dev);
 	device = &core->sensor[pdata->id];
@@ -400,7 +330,11 @@ static int __init sensor_module_2p8_probe(struct platform_device *pdev)
 	module->pixel_height = module->active_height;
 	module->max_framerate = 120;
 	module->position = pdata->position;
+	module->mode = CSI_MODE_CH0_ONLY;
+	module->lanes = CSI_DATA_LANES_4;
 	module->bitwidth = 10;
+	module->vcis = ARRAY_SIZE(vci_module_2p8);
+	module->vci = vci_module_2p8;
 	module->sensor_maker = "SLSI";
 	module->sensor_name = "S5K2P8";
 	module->setfile_name = "setfile_2p8.bin";
@@ -418,6 +352,7 @@ static int __init sensor_module_2p8_probe(struct platform_device *pdev)
 	PERI_SET_MODULE(module);
 
 	ext = &module->ext;
+	ext->mipi_lane_num = module->lanes;
 
 	ext->sensor_con.product_name = module->sensor_id;
 	ext->sensor_con.peri_type = SE_I2C;
@@ -432,7 +367,6 @@ static int __init sensor_module_2p8_probe(struct platform_device *pdev)
 		ext->actuator_con.peri_setting.i2c.slave_address = pdata->af_i2c_addr;
 		ext->actuator_con.peri_setting.i2c.speed = 400000;
 	}
-	ext->actuator_con.product_name = ACTUATOR_NAME_NOTHING;
 
 	if (pdata->flash_product_name != FLADRV_NAME_NOTHING) {
 		ext->flash_con.product_name = pdata->flash_product_name;
@@ -483,6 +417,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_2p8_remove(struct platform_device *pdev)
+{
+        int ret = 0;
+
+        info("%s\n", __func__);
+
+        return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_2p8_match[] = {
 	{
 		.compatible = "samsung,sensor-module-2p8",
@@ -495,6 +438,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_2p8_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_2p8_match);
 
 static struct platform_driver sensor_module_2p8_driver = {
+	.probe  = sensor_module_2p8_probe,
+	.remove = sensor_module_2p8_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-2P8",
 		.owner  = THIS_MODULE,
@@ -502,16 +447,4 @@ static struct platform_driver sensor_module_2p8_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_2p8_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_module_2p8_driver,
-				sensor_module_2p8_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_2p8_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_2p8_init);
+module_platform_driver(sensor_module_2p8_driver);

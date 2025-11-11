@@ -143,6 +143,7 @@ int devfreq_update_status(struct devfreq *devfreq, unsigned long freq)
 	int lev, prev_lev = 0, ret = 0;
 	unsigned long cur_time;
 
+	//lockdep_assert_held(&devfreq->lock);
 	cur_time = jiffies;
 
 	/* Immediately exit if previous_freq is not initialized yet. */
@@ -209,17 +210,27 @@ static struct devfreq_governor *find_devfreq_governor(const char *name)
 }
 
 #if defined(CONFIG_EXYNOS_DVFS_MANAGER) && defined(CONFIG_ARM_EXYNOS_DEVFREQ)
-static int devfreq_frequency_scaler(int dm_type, void *devdata,
+static int devfreq_frequency_scaler(enum exynos_dm_type dm_type,
 				u32 target_freq, unsigned int relation)
 {
+	struct device *dev;
 	struct devfreq *devfreq;
 	unsigned long freq = target_freq;
 	u32 flags = 0;
 	int err = 0;
 
-	devfreq = find_exynos_devfreq_device(devdata);
-	if (IS_ERR_OR_NULL(devfreq)) {
-		pr_err("%s: No such devfreq for dm_type(%d)\n", __func__, dm_type);
+	dev = find_exynos_devfreq_device(dm_type);
+	if (IS_ERR(dev)) {
+		pr_err("%s: No such devfreq device for dm_type(%d)\n", __func__, dm_type);
+		err = -ENODEV;
+		goto err_out;
+	}
+
+	mutex_lock(&devfreq_list_lock);
+	devfreq = find_device_devfreq(dev);
+	mutex_unlock(&devfreq_list_lock);
+	if (IS_ERR(devfreq)) {
+		dev_err(dev, "%s: No such devfreq for the device\n", __func__);
 		err = -ENODEV;
 		goto err_out;
 	}
@@ -296,7 +307,7 @@ int update_devfreq(struct devfreq *devfreq)
 	unsigned long freq;
 	int err = 0;
 #if defined(CONFIG_EXYNOS_DVFS_MANAGER) && defined(CONFIG_ARM_EXYNOS_DEVFREQ)
-	int dm_type;
+	enum exynos_dm_type dm_type;
 	unsigned long pm_qos_max;
 #if IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_INTERACTIVE)
 	struct devfreq_simple_interactive_data *gov_data = devfreq->data;
@@ -581,11 +592,6 @@ static void devfreq_dev_release(struct device *dev)
 	struct devfreq *devfreq = to_devfreq(dev);
 
 	mutex_lock(&devfreq_list_lock);
-	if (IS_ERR(find_device_devfreq(devfreq->dev.parent))) {
-		mutex_unlock(&devfreq_list_lock);
-		dev_warn(&devfreq->dev, "releasing devfreq which doesn't exist\n");
-		return;
-	}
 	list_del(&devfreq->node);
 	mutex_unlock(&devfreq_list_lock);
 
@@ -617,7 +623,7 @@ struct devfreq *devfreq_add_device(struct device *dev,
 	struct devfreq_governor *governor;
 	int err = 0;
 #if defined(CONFIG_EXYNOS_DVFS_MANAGER) && defined(CONFIG_ARM_EXYNOS_DEVFREQ)
-	int dm_type;
+	enum exynos_dm_type dm_type;
 #endif
 
 	if (!dev || !profile || !governor_name) {
@@ -646,6 +652,7 @@ struct devfreq *devfreq_add_device(struct device *dev,
 	devfreq->dev.parent = dev;
 	devfreq->dev.class = devfreq_class;
 	devfreq->dev.release = devfreq_dev_release;
+	INIT_LIST_HEAD(&devfreq->node);
 	devfreq->profile = profile;
 	strncpy(devfreq->governor_name, governor_name, DEVFREQ_NAME_LEN);
 	devfreq->previous_freq = profile->initial_freq;
@@ -739,7 +746,7 @@ EXPORT_SYMBOL(devfreq_add_device);
 int devfreq_remove_device(struct devfreq *devfreq)
 {
 #if defined(CONFIG_EXYNOS_DVFS_MANAGER) && defined(CONFIG_ARM_EXYNOS_DEVFREQ)
-	int dm_type;
+	enum exynos_dm_type dm_type;
 	int err = 0;
 #endif
 	if (!devfreq)
@@ -1028,6 +1035,14 @@ err_out:
 }
 EXPORT_SYMBOL(devfreq_remove_governor);
 
+static ssize_t name_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct devfreq *devfreq = to_devfreq(dev);
+	return sprintf(buf, "%s\n", dev_name(devfreq->dev.parent));
+}
+static DEVICE_ATTR_RO(name);
+
 static ssize_t governor_show(struct device *dev,
 			     struct device_attribute *attr, char *buf)
 {
@@ -1100,7 +1115,7 @@ static ssize_t available_governors_show(struct device *d,
 	 * The devfreq with immutable governor (e.g., passive) shows
 	 * only own governor.
 	 */
-	if (df->governor->immutable) {
+	if (df->governor && df->governor->immutable) {
 		count = scnprintf(&buf[count], DEVFREQ_NAME_LEN,
 				   "%s ", df->governor_name);
 	/*
@@ -1230,11 +1245,16 @@ static ssize_t trans_stat_show(struct device *dev,
 	int i, j;
 	unsigned int max_state = devfreq->profile->max_state;
 
-	if (!devfreq->stop_polling &&
-			devfreq_update_status(devfreq, devfreq->previous_freq))
-		return 0;
 	if (max_state == 0)
 		return sprintf(buf, "Not Supported.\n");
+
+	mutex_lock(&devfreq->lock);
+	if (!devfreq->stop_polling &&
+			devfreq_update_status(devfreq, devfreq->previous_freq)) {
+		mutex_unlock(&devfreq->lock);
+		return 0;
+	}
+	mutex_unlock(&devfreq->lock);
 
 	len = sprintf(buf, "     From  :   To\n");
 	len += sprintf(buf + len, "           :");
@@ -1289,6 +1309,7 @@ static ssize_t time_in_state_show(struct device *dev,
 static DEVICE_ATTR_RO(time_in_state);
 
 static struct attribute *devfreq_attrs[] = {
+	&dev_attr_name.attr,
 	&dev_attr_governor.attr,
 	&dev_attr_available_governors.attr,
 	&dev_attr_cur_freq.attr,

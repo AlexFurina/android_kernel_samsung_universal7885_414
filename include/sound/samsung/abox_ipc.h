@@ -49,8 +49,6 @@ enum PCMMSG {
 	PCM_PLTDAI_MMAP		= 19,
 	PCM_SET_BUFFER		= 20,
 	PCM_SYNCHRONIZE		= 21,
-	PCM_PLTDAI_ACK		= 22,
-	PCM_PLTDAI_REGISTER	= 50,
 };
 
 struct PCMTASK_HW_PARAMS {
@@ -65,25 +63,6 @@ struct PCMTASK_SET_BUFFER {
 	int count;
 };
 
-struct PCMTASK_HARDWARE {
-	char name[32];			/* name */
-	unsigned int addr;		/* buffer address */
-	unsigned int width_min;		/* min width */
-	unsigned int width_max;		/* max width */
-	unsigned int rate_min;		/* min rate */
-	unsigned int rate_max;		/* max rate */
-	unsigned int channels_min;	/* min channels */
-	unsigned int channels_max;	/* max channels */
-	unsigned int buffer_bytes_max;	/* max buffer size */
-	unsigned int period_bytes_min;	/* min period size */
-	unsigned int period_bytes_max;	/* max period size */
-	unsigned int periods_min;	/* min # of periods */
-	unsigned int periods_max;	/* max # of periods */
-};
-
-/* Channel id of the Virtual DMA should be started from the BASE */
-#define PCMTASK_VDMA_ID_BASE 100
-
 /* Parameter of the PCMTASK command */
 struct IPC_PCMTASK_MSG {
 	enum PCMMSG msgtype;
@@ -91,7 +70,6 @@ struct IPC_PCMTASK_MSG {
 	union {
 		struct PCMTASK_HW_PARAMS hw_params;
 		struct PCMTASK_SET_BUFFER setbuff;
-		struct PCMTASK_HARDWARE hardware;
 		unsigned int pointer;
 		int trigger;
 		int synchronize;
@@ -151,25 +129,12 @@ enum ABOX_ERAP_MSG {
 	REALTIME_PREDSM_VI_SENSE,
 	REALTIME_TONEGEN = 0x20,
 	REALTIME_EXTRA = 0xea,
-	REALTIME_USB = 0x30,
 };
 
 enum ABOX_ERAP_TYPE {
 	ERAP_ECHO_CANCEL,
 	ERAP_VI_SENSE,
 	ERAP_TYPE_COUNT,
-};
-
-enum ABOX_USB_MSG {
-	IPC_USB_PCM_OPEN,
-	IPC_USB_DESC,
-	IPC_USB_XHCI,
-	IPC_USB_L2,
-	IPC_USB_CONN,
-	IPC_USB_CTRL,
-	IPC_USB_SET_INTF,
-	IPC_USB_SAMPLE_RATE,
-	IPC_USB_PCM_BUF,
 };
 
 struct ERAP_ONOFF_PARAM {
@@ -192,14 +157,6 @@ struct ERAP_RAW_PARAM {
 	unsigned int params[188];
 };
 
-struct ERAP_USB_AUDIO_PARAM {
-	enum ABOX_USB_MSG type;
-	int param1;
-	int param2;
-	int param3;
-	int param4;
-};
-
 struct IPC_ERAP_MSG {
 	enum ABOX_ERAP_MSG msgtype;
 	union {
@@ -207,7 +164,6 @@ struct IPC_ERAP_MSG {
 		struct ERAP_BIND_CHANNEL_PARAM bind;
 		struct ERAP_SET_SRATE_PARAM srate;
 		struct ERAP_RAW_PARAM raw;
-		struct ERAP_USB_AUDIO_PARAM usbaudio;
 	} param;
 };
 
@@ -275,7 +231,6 @@ enum ABOX_SYSTEM_MSG {
 	ABOX_START_RECLAIM_SRAM,
 	ABOX_END_RECLAIM_SRAM,
 	ABOX_REPORT_DRAM,
-	ABOX_SET_MODE = 0x50,
 	ABOX_SET_TYPE = 0x60,
 	ABOX_START_VSS = 0xA0,
 	ABOX_REPORT_COMPONENT = 0xC0,
@@ -328,7 +283,6 @@ enum IPC_ID {
 	IPC_PCMCAPTURE,
 	IPC_OFFLOAD,
 	IPC_ERAP,
-	RDMA7_BUF_EMPTY = 0x7,
 	WDMA0_BUF_FULL = 0x8,
 	WDMA1_BUF_FULL = 0x9,
 	IPC_ABOX_CONFIG = 0xA,

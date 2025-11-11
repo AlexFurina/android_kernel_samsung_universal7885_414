@@ -15,12 +15,9 @@
 #define MASK(width, shift)	(((0x1 << (width)) - 1) << shift)
 
 #define FLED_EN 0
-#define DEBUG_TEST_READ		0
 
 #define S2MU106_CH_MAX 3
-
-#define S2MU106_FLED_PMIC_ID	0xF5
-#define S2MU106_FLED_REV_NO	MASK(4,0)
+#define S2MU106_FLASH_LIGHT_MAX 5
 
 /* Interrupt register */
 #define S2MU106_FLED_INT1	0x04
@@ -75,12 +72,18 @@
 #define S2MU106_FLED_CTRL5	0x61
 #define S2MU106_FLED_CTRL6	0x62
 #define S2MU106_FLED_CTRL7	0x63
+#define S2MU106_FLED_TEST3	0x66
+#define S2MU106_FLED_TEST4	0x67
 
 /* Mask for channel control register */
 #define S2MU106_CHX_FLASH_FLED_EN	MASK(3,3)
 #define S2MU106_CHX_TORCH_FLED_EN	MASK(3,0)
 #define S2MU106_EN_FLED_PRE	MASK(1,5)
 #define S2MU106_FLED_EN	0x5
+#define S2MU106_FLED_GPIO_EN1		0x01
+#define S2MU106_FLED_GPIO_EN2		0x02
+#define S2MU106_FLED_GPIO_EN3		0x03
+#define S2MU106_FLED_GPIO_EN4		0x04
 
 /* Mask for Mode control register */
 #define S2MU106_FLED_MODE	MASK(2,6)
@@ -105,7 +108,7 @@ enum operating_mode {
 
 enum cam_flash_mode{
 	CAM_FLASH_MODE_NONE=0,		//CAM2_FLASH_MODE_NONE=0,
-	CAM_FLASH_MODE_OFF,			//CAM2_FLASH_MODE_OFF,
+	CAM_FLASH_MODE_OFF,		//CAM2_FLASH_MODE_OFF,
 	CAM_FLASH_MODE_SINGLE,		//CAM2_FLASH_MODE_SINGLE,
 	CAM_FLASH_MODE_TORCH,		//CAM2_FLASH_MODE_TORCH,
 };
@@ -114,6 +117,8 @@ enum s2mu106_fled_mode {
 	S2MU106_FLED_MODE_OFF,
 	S2MU106_FLED_MODE_TORCH,
 	S2MU106_FLED_MODE_FLASH,
+	S2MU106_FLED_MODE_MOVIE,
+	S2MU106_FLED_MODE_FACTORY,
 	S2MU106_FLED_MODE_MAX,
 };
 
@@ -127,16 +132,18 @@ struct s2mu106_fled_chan {
 struct s2mu106_fled_platform_data {
 	struct s2mu106_fled_chan *channel;
 	int chan_num;
-#if FLED_EN
-	int fled-en1-pin;
-	int fled-en2-pin;
-	int fled-en3-pin;
-	int fled-en4-pin;
-#endif
+	int flash_gpio;
+	int torch_gpio;
 	u32 default_current;
 	u32 max_current;
 	u8 default_mode;
 	u32 default_timer;
+	unsigned int flash_current;
+	unsigned int torch_current;
+	unsigned int preflash_current;
+	unsigned int movie_current;
+	unsigned int factory_current;
+	unsigned int flashlight_current[S2MU106_FLASH_LIGHT_MAX];
 };
 
 struct s2mu106_fled_data {
@@ -145,13 +152,30 @@ struct s2mu106_fled_data {
 	struct led_classdev cdev;
 	struct device *dev;
 
-	int rev_id;
+	int set_on_factory;
+	int flash_gpio;
+	int torch_gpio;
+	int sysfs_input_data;
+	int control_mode; /* 0 : I2C, 1 : GPIO */
+
+	/* charger mode control */
+	bool is_en_flash;
+	struct power_supply *psy_chg;
 
 	struct i2c_client *i2c;
+	struct mutex lock;
+	u32 default_current;
+	unsigned int flash_current;
+	unsigned int torch_current;
+	unsigned int preflash_current;
+	unsigned int movie_current;
+	unsigned int factory_current;
+	unsigned int flashlight_current[S2MU106_FLASH_LIGHT_MAX];
 };
 
 int s2mu106_fled_set_mode_ctrl(int chan, enum cam_flash_mode cam_mode);
 int s2mu106_fled_set_curr(int chan, enum cam_flash_mode cam_mode, int curr);
 int s2mu106_fled_get_curr(int chan, enum cam_flash_mode cam_mode);
-
+int s2mu106_led_mode_ctrl(int state);
+extern void s2mu106_fled_set_operation_mode(int val);
 #endif

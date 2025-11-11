@@ -231,6 +231,14 @@ unsigned long gpufreq_cooling_get_level(unsigned int gpu, unsigned int freq)
 {
 	unsigned int val;
 
+#if defined(CONFIG_SOC_EXYNOS7885)
+	if (freq > gpu_dvfs_get_max_freq())
+		freq = gpu_dvfs_get_max_freq();
+#else
+	if (freq > gpu_dvfs_get_max_freq() * 1000)
+		freq = gpu_dvfs_get_max_freq() * 1000;
+#endif
+
 	if (get_property(gpu, (unsigned long)freq, &val, GET_LEVEL))
 		return THERMAL_CSTATE_INVALID;
 
@@ -306,7 +314,11 @@ static int build_dyn_power_table(struct gpufreq_cooling_device *gpufreq_cdev,
 		 * Do the multiplication with MHz and millivolt so as
 		 * to not overflow.
 		 */
+#if defined(CONFIG_SOC_EXYNOS7885)
 		power = (u64)capacitance * (freq / 1000) * voltage_mv * voltage_mv;
+#else
+		power = (u64)capacitance * freq * voltage_mv * voltage_mv;
+#endif
 		do_div(power, 1000000000);
 
 		power_table[i].frequency = (unsigned int)freq;
@@ -564,6 +576,9 @@ static int gpufreq_apply_cooling(struct gpufreq_cooling_device *gpufreq_cdev,
 		return -EINVAL;
 	}
 
+#if !defined(CONFIG_SOC_EXYNOS7885)
+	gpu_cooling_freq = gpu_cooling_freq / 1000;
+#endif
 	blocking_notifier_call_chain(&gpu_notifier, GPU_THROTTLING, &gpu_cooling_freq);
 
 	return 0;
@@ -741,7 +756,11 @@ static int gpufreq_state2power(struct thermal_cooling_device *cdev,
 	int ret;
 	struct gpufreq_cooling_device *gpufreq_cdev = cdev->devdata;
 
+#if defined(CONFIG_SOC_EXYNOS7885)
 	freq = gpu_freq_table[state].frequency;
+#else
+	freq = gpu_freq_table[state].frequency / 1000;
+#endif
 	if (!freq)
 		return -EINVAL;
 
@@ -793,7 +812,11 @@ static int gpufreq_power2state(struct thermal_cooling_device *cdev,
 	dyn_power = dyn_power > 0 ? dyn_power : 0;
 	target_freq = gpu_power_to_freq(gpufreq_cdev, dyn_power);
 
+#if defined(CONFIG_SOC_EXYNOS7885)
 	*state = gpufreq_cooling_get_level(0, target_freq);
+#else
+	*state = gpufreq_cooling_get_level(0, target_freq * 1000);
+#endif
 	if (*state == THERMAL_CSTATE_INVALID) {
 		pr_warn("Failed to convert %dKHz for gpu into a cdev state\n",
 				     target_freq);
@@ -1035,7 +1058,7 @@ static int gpu_cooling_table_init(void)
 	for (i = 0; i < num_level; i++) {
 		freq = gpu_dvfs_get_clock(i);
 
-		if (freq > gpu_dvfs_get_max_freq())
+		if (freq > gpu_dvfs_get_max_freq() || freq == 0)
 			continue;
 
 		gpu_freq_table[count].flags = 0;

@@ -180,7 +180,7 @@ int fimc_is_set_fwboot(struct fimc_is_interface *this, int val) {
 	int ret = 0;
 	u32 set = 0;
 
-	FIMC_BUG(!this);
+	BUG_ON(!this);
 
 #ifdef FW_SUSPEND_RESUME
 	switch (val) {
@@ -561,7 +561,7 @@ static int waiting_is_ready(struct fimc_is_interface *itf)
 	int ret = 0;
 	u32 try_count, log_count, status;
 
-	FIMC_BUG(!itf);
+	BUG_ON(!itf);
 
 	log_count = 0;
 	try_count = 0;
@@ -661,11 +661,11 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 #endif
 #endif
 
-	FIMC_BUG(!itf);
-	FIMC_BUG(!msg);
-	FIMC_BUG(msg->instance >= FIMC_IS_STREAM_COUNT);
-	FIMC_BUG(msg->command >= HIC_COMMAND_END);
-	FIMC_BUG(!reply);
+	BUG_ON(!itf);
+	BUG_ON(!msg);
+	BUG_ON(msg->instance >= FIMC_IS_STREAM_COUNT);
+	BUG_ON(msg->command >= HIC_COMMAND_END);
+	BUG_ON(!reply);
 
 	if (!test_bit(IS_IF_STATE_OPEN, &itf->state)) {
 		warn("interface close, %d cmd is cancel", msg->command);
@@ -839,9 +839,9 @@ static int fimc_is_set_cmd_shot(struct fimc_is_interface *itf,
 	volatile struct is_common_reg __iomem *com_regs;
 	ulong flags;
 
-	FIMC_BUG(!itf);
-	FIMC_BUG(!msg);
-	FIMC_BUG(msg->instance >= FIMC_IS_STREAM_COUNT);
+	BUG_ON(!itf);
+	BUG_ON(!msg);
+	BUG_ON(msg->instance >= FIMC_IS_STREAM_COUNT);
 
 	if (!test_bit(IS_IF_STATE_OPEN, &itf->state)) {
 		warn("interface close, %d cmd is cancel", msg->command);
@@ -1301,7 +1301,7 @@ static void wq_func_subdev(struct fimc_is_subdev *leader,
 	struct fimc_is_frame *ldr_frame;
 	struct camera2_node *capture;
 
-	FIMC_BUG(!sub_frame);
+	BUG_ON(!sub_frame);
 
 	ldr_vctx = leader->vctx;
 	if (unlikely(!ldr_vctx)) {
@@ -1370,7 +1370,7 @@ static void wq_func_subdev(struct fimc_is_subdev *leader,
 
 	/* for debug */
 	DBG_DIGIT_TAG((ldr_frame->group) ? ((struct fimc_is_group *)ldr_frame->group)->slot : 0,
-			0, GET_QUEUE(sub_vctx), sub_frame, fcount - sub_frame->num_buffers + 1, 1);
+			0, GET_QUEUE(sub_vctx), sub_frame, fcount);
 
 complete:
 	sub_frame->stream->fcount = fcount;
@@ -1391,12 +1391,12 @@ static void wq_func_frame(struct fimc_is_subdev *leader,
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_frame *frame;
 
-	FIMC_BUG(!leader);
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!leader->vctx);
-	FIMC_BUG(!subdev->vctx);
-	FIMC_BUG(!leader->vctx->video);
-	FIMC_BUG(!subdev->vctx->video);
+	BUG_ON(!leader);
+	BUG_ON(!subdev);
+	BUG_ON(!leader->vctx);
+	BUG_ON(!subdev->vctx);
+	BUG_ON(!leader->vctx->video);
+	BUG_ON(!subdev->vctx->video);
 
 	framemgr = GET_FRAMEMGR(subdev->vctx);
 
@@ -2359,9 +2359,9 @@ static void wq_func_group_xxx(struct fimc_is_groupmgr *groupmgr,
 {
 	u32 done_state = VB2_BUF_STATE_DONE;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!framemgr);
-	FIMC_BUG(!frame);
+	BUG_ON(!vctx);
+	BUG_ON(!framemgr);
+	BUG_ON(!frame);
 
 	/* perframe error control */
 	if (test_bit(FIMC_IS_SUBDEV_PARAM_ERR, &group->leader.state)) {
@@ -2421,11 +2421,11 @@ void wq_func_group(struct fimc_is_device_ischain *device,
 	u32 lindex = 0;
 	u32 hindex = 0;
 
-	FIMC_BUG(!groupmgr);
-	FIMC_BUG(!group);
-	FIMC_BUG(!framemgr);
-	FIMC_BUG(!frame);
-	FIMC_BUG(!vctx);
+	BUG_ON(!groupmgr);
+	BUG_ON(!group);
+	BUG_ON(!framemgr);
+	BUG_ON(!frame);
+	BUG_ON(!vctx);
 
 	TIME_SHOT(TMS_SDONE);
 	/*
@@ -2490,7 +2490,7 @@ static void wq_func_shot(struct work_struct *data)
 	int group_id;
 	struct fimc_is_core *core;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	itf = container_of(data, struct fimc_is_interface, work_wq[INTR_SHOT_DONE]);
 	work_list = &itf->work_list[INTR_SHOT_DONE];
@@ -2669,8 +2669,8 @@ static void interface_timer(unsigned long data)
 	struct fimc_is_work_list *work_list;
 	struct work_struct *work_wq;
 
-	FIMC_BUG(!itf);
-	FIMC_BUG(!itf->core);
+	BUG_ON(!itf);
+	BUG_ON(!itf->core);
 
 	if (!test_bit(IS_IF_STATE_OPEN, &itf->state)) {
 		pr_info("shot timer is terminated\n");
@@ -3325,8 +3325,8 @@ int fimc_is_hw_logdump(struct fimc_is_interface *this)
 	struct fimc_is_core *core;
 	struct fimc_is_minfo *minfo;
 
-	FIMC_BUG(!this);
-	FIMC_BUG(!this->core);
+	BUG_ON(!this);
+	BUG_ON(!this->core);
 
 	if (!test_bit(IS_IF_STATE_OPEN, &this->state)) {
 		warn("interface is closed");
@@ -3657,7 +3657,7 @@ int fimc_is_hw_stream_on(struct fimc_is_interface *this,
 	int ret;
 	struct fimc_is_msg msg, reply;
 
-	FIMC_BUG(!this);
+	BUG_ON(!this);
 
 	dbg_interface(1, "stream_on(%d)\n", instance);
 

@@ -737,19 +737,13 @@ config MMC_DW_FORCE_32BIT_SFR_RW
 
 config MMC_DW_EXYNOS_FMP
 	tristate "EXYNOS Flash Memory Protector for MMC_DW"
-	depends on MMC_DW_EXYNOS && EXYNOS_FMP
+	depends on MMC_DW_EXYNOS
 	---help---
 	  This selects the EXYNOS MMC_DW FMP Driver.
 
 	  If you have a controller with this interface, say Y or M here.
 
 	  If unsure, say N.
-
-config MMC_DW_EXYNOS_SMU
-	tristate "EXYNOS Secure Management Unit Interface for MMC_DW"
-	depends on MMC_DW_EXYNOS && EXYNOS_SMU
-	---help---
-	  This selects the EXYNOS MMC_DW SMU Interface.
 
 	  If you have a controller with this interface, say Y or M here.
 
@@ -894,6 +888,19 @@ config MMC_SUNXI
 	help
 	  This selects support for the SD/MMC Host Controller on
 	  Allwinner sunxi SoCs.
+
+config MMC_CQ_HCI
+	tristate "Command Queue Support"
+	depends on HAS_DMA
+	help
+	  This selects the Command Queue Host Controller Interface (CQHCI)
+	  support present in host controllers of Qualcomm Technologies, Inc
+	  amongst others.
+	  This controller supports eMMC devices with command queue support.
+
+	  If you have a controller with this interface, say Y or M here.
+
+	  If unsure, say N.
 
 config MMC_TOSHIBA_PCI
 	tristate "Toshiba Type A SD/MMC Card Interface Driver"

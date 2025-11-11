@@ -54,7 +54,7 @@ static u32 sensor_imx333_max_setfile_num;
 
 static void sensor_imx333_set_integration_max_margin(u32 mode, cis_shared_data *cis_data)
 {
-	FIMC_BUG(!cis_data);
+	BUG_ON(!cis_data);
 
 	switch (mode) {
 		case SENSOR_IMX333_8064X3024_30FPS:
@@ -89,7 +89,7 @@ static void sensor_imx333_set_integration_max_margin(u32 mode, cis_shared_data *
 
 static void sensor_imx333_set_integration_min(u32 mode, cis_shared_data *cis_data)
 {
-	FIMC_BUG(!cis_data);
+	BUG_ON(!cis_data);
 
 	switch (mode) {
 		case SENSOR_IMX333_8064X3024_30FPS:
@@ -126,7 +126,7 @@ static void sensor_imx333_set_integration_min(u32 mode, cis_shared_data *cis_dat
 
 static void sensor_imx333_set_integration_time_step(u32 mode, cis_shared_data *cis_data)
 {
-	FIMC_BUG(!cis_data);
+	BUG_ON(!cis_data);
 
 	switch (mode) {
 		case SENSOR_IMX333_8064X3024_30FPS:
@@ -168,7 +168,7 @@ static void sensor_imx333_cis_data_calculation(const struct sensor_pll_info_comp
         u32 vt_pix_clk_hz = 0;
         u32 frame_rate = 0, max_fps = 0, frame_valid_us = 0;
 
-        FIMC_BUG(!pll_info);
+        BUG_ON(!pll_info);
 
 	/* 1. get pclk value from pll info */
         vt_pix_clk_hz = pll_info->pclk;
@@ -228,11 +228,11 @@ void sensor_imx333_cis_data_calc(struct v4l2_subdev *subdev, u32 mode)
 	int ret = 0;
 	struct fimc_is_cis *cis = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	if (mode > sensor_imx333_max_setfile_num) {
 		err("invalid mode(%d)!!", mode);
@@ -257,7 +257,7 @@ static int sensor_imx333_wait_stream_off_status(cis_shared_data *cis_data)
 	int ret = 0;
 	u32 timeout = 0;
 
-	FIMC_BUG(!cis_data);
+	BUG_ON(!cis_data);
 
 #define STREAM_OFF_WAIT_TIME 250
 	while (timeout < STREAM_OFF_WAIT_TIME) {
@@ -283,8 +283,8 @@ int sensor_imx333_cis_check_rev(struct fimc_is_cis *cis)
 	u8 rev = 0, status=0;
 	struct i2c_client *client;
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -324,10 +324,14 @@ int sensor_imx333_cis_init(struct v4l2_subdev *subdev)
 	struct fimc_is_cis *cis;
 	u32 setfile_index = 0;
 	cis_setting_info setinfo;
+#ifdef USE_CAMERA_HW_BIG_DATA
+	struct cam_hw_param *hw_param = NULL;
+	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
+#endif
 	setinfo.param = NULL;
 	setinfo.return_value = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -336,18 +340,25 @@ int sensor_imx333_cis_init(struct v4l2_subdev *subdev)
 		goto p_err;
 	}
 
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis->cis_data);
 	memset(cis->cis_data, 0, sizeof(cis_shared_data));
 	cis->rev_flag = false;
 
 	ret = sensor_imx333_cis_check_rev(cis);
 	if (ret < 0) {
-		warn("sensor_imx333_check_rev is fail when cis init, ret(%d)", ret);
+#ifdef USE_CAMERA_HW_BIG_DATA
+		sensor_peri = container_of(cis, struct fimc_is_device_sensor_peri, cis);
+		if (sensor_peri)
+			fimc_is_sec_get_hw_param(&hw_param, sensor_peri->module->position);
+		if (hw_param)
+			hw_param->i2c_sensor_err_cnt++;
+#endif
+		warn("sensor_imx333_check_rev is fail when cis init");
 		cis->rev_flag = true;
-		goto p_err;
+		ret = 0;
 	}
 
-	if (cis->cis_data->cis_rev < 0x12) {
+	if (cis->cis_data->cis_rev != 0x12) {
 		probe_info("%s setfile_A\n", __func__);
 		sensor_imx333_global = sensor_imx333_setfile_A_Global;
 		sensor_imx333_global_size = sizeof(sensor_imx333_setfile_A_Global) / sizeof(sensor_imx333_setfile_A_Global[0]);
@@ -371,7 +382,6 @@ int sensor_imx333_cis_init(struct v4l2_subdev *subdev)
 	cis->cis_data->low_expo_start = 33000;
 	cis->need_mode_change = false;
 	cis->long_term_mode.sen_strm_off_on_step = 0;
-	cis->long_term_mode.sen_strm_off_on_enable = false;
 
 	sensor_imx333_cis_data_calculation(sensor_imx333_pllinfos[setfile_index], cis->cis_data);
 	sensor_imx333_set_integration_max_margin(setfile_index, cis->cis_data);
@@ -414,7 +424,7 @@ int sensor_imx333_cis_log_status(struct v4l2_subdev *subdev)
 	u8 data8 = 0;
 	u16 data16 = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -440,6 +450,8 @@ int sensor_imx333_cis_log_status(struct v4l2_subdev *subdev)
 	pr_err("[SEN:DUMP] frame_count(%x)\n", data8);
 	fimc_is_sensor_read8(client, 0x0100, &data8);
 	pr_err("[SEN:DUMP] mode_select(%x)\n", data8);
+
+	sensor_cis_dump_registers(subdev, sensor_imx333_setfiles[0], sensor_imx333_setfile_sizes[0]);
 	I2C_MUTEX_UNLOCK(cis->i2c_lock);
 
 	pr_err("[SEN:DUMP] *******************************\n");
@@ -455,12 +467,12 @@ static int sensor_imx333_cis_group_param_hold_func(struct v4l2_subdev *subdev, u
 	struct fimc_is_cis *cis = NULL;
 	struct i2c_client *client = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -500,12 +512,12 @@ int sensor_imx333_cis_group_param_hold(struct v4l2_subdev *subdev, bool hold)
 	int ret = 0;
 	struct fimc_is_cis *cis = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
 	ret = sensor_imx333_cis_group_param_hold_func(subdev, hold);
@@ -525,10 +537,10 @@ int sensor_imx333_cis_set_global_setting(struct v4l2_subdev *subdev)
 	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
 	struct sensor_open_extended *ext_info;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	sensor_peri = container_of(cis, struct fimc_is_device_sensor_peri, cis);
 	module = sensor_peri->module;
@@ -536,10 +548,12 @@ int sensor_imx333_cis_set_global_setting(struct v4l2_subdev *subdev)
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
 	/* setfile global setting is at camera entrance */
-	ret = sensor_cis_set_registers(subdev, sensor_imx333_global, sensor_imx333_global_size);
-	if (ret < 0) {
-		err("sensor_imx333_set_registers fail!!");
-		goto p_err;
+	if (ext_info->use_retention_mode == SENSOR_RETENTION_DISABLE) {
+		ret = sensor_cis_set_registers(subdev, sensor_imx333_global, sensor_imx333_global_size);
+		if (ret < 0) {
+			err("sensor_imx333_set_registers fail!!");
+			goto p_err;
+		}
 	}
 
 	dbg_sensor(1, "[%s] global setting done\n", __func__);
@@ -553,15 +567,16 @@ int sensor_imx333_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 {
 	int ret = 0;
 	struct fimc_is_cis *cis = NULL;
+	int index = 0;
 	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
 	struct fimc_is_module_enum *module;
 	struct sensor_open_extended *ext_info;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	if (mode > sensor_imx333_max_setfile_num) {
 		err("invalid mode(%d)!!", mode);
@@ -589,11 +604,102 @@ int sensor_imx333_cis_mode_change(struct v4l2_subdev *subdev, u32 mode)
 	ext_info = &module->ext;
 
 	I2C_MUTEX_LOCK(cis->i2c_lock);
+	if (ext_info->use_retention_mode != SENSOR_RETENTION_DISABLE) {
+		switch (mode) {
+		case SENSOR_IMX333_8064X3024_30FPS:
+			index = 0;
+			break;
+		case SENSOR_IMX333_8064X2268_30FPS:
+			index = 1;
+			break;
+		case SENSOR_IMX333_1008X756_120FPS:
+			index = 2;
+			break;
+		case SENSOR_IMX333_4032X2268_60FPS:
+			index = 3;
+			break;
+		default:
+			index = 4;
+			break;
+		}
 
-	ret = sensor_cis_set_registers(subdev, sensor_imx333_setfiles[mode], sensor_imx333_setfile_sizes[mode]);
-	if (ret < 0) {
-		err("sensor_imx333_set_registers fail!!");
-		goto p_err;
+	        if (sensor_peri->mode_change_first == true) {
+			switch (index) {
+			case 0:
+				fimc_is_sensor_write8(cis->client, 0x9007, 0x20);
+				break;
+			case 1:
+				fimc_is_sensor_write8(cis->client, 0x9007, 0x21);
+				break;
+			case 2:
+				fimc_is_sensor_write8(cis->client, 0x9007, 0x22);
+				break;
+			case 3:
+				fimc_is_sensor_write8(cis->client, 0x9007, 0x23);
+				break;
+			default:
+				break;
+			}
+
+			/* IMX333 rev 0.6 do not needs D0D2 swap */
+			fimc_is_sensor_write8(cis->client, 0x40AD, 0x00); // DP/DN SWAP disabled
+			fimc_is_sensor_write8(cis->client, 0x40B8, 0x02); // D0/D2 SWAP disabled
+			fimc_is_sensor_write8(cis->client, 0x40B9, 0x01);
+			fimc_is_sensor_write8(cis->client, 0x40BA, 0x03);
+			fimc_is_sensor_write8(cis->client, 0x40BB, 0x00);
+	        } else {
+			/* Retention mode sensor mode select */
+			switch (index) {
+			case 0:
+				fimc_is_sensor_write8(cis->client, 0x9007, 0x00);
+				break;
+			case 1:
+				fimc_is_sensor_write8(cis->client, 0x9007, 0x01);
+				break;
+			case 2:
+				fimc_is_sensor_write8(cis->client, 0x9007, 0x02);
+				break;
+			case 3:
+				fimc_is_sensor_write8(cis->client, 0x9007, 0x03);
+				break;
+			default: /* Not Retention Mode */
+				fimc_is_sensor_write8(cis->client, 0x9007, 0x00);
+				break;
+			}
+#if 0
+			/* Retention mode setting */
+			switch (index) {
+			case 0:
+				sensor_cis_set_registers(subdev, sensor_imx333_retention[index], sensor_imx333_retention_size[index]);
+				break;
+			case 1:
+				sensor_cis_set_registers(subdev, sensor_imx333_retention[index], sensor_imx333_retention_size[index]);
+				break;
+			case 2:
+				sensor_cis_set_registers(subdev, sensor_imx333_retention[index], sensor_imx333_retention_size[index]);
+				break;
+			case 3:
+				sensor_cis_set_registers(subdev, sensor_imx333_retention[index], sensor_imx333_retention_size[index]);
+				break;
+			default: /* Not Retention Mode */
+				sensor_cis_set_registers(subdev, sensor_imx333_setfiles[mode], sensor_imx333_setfile_sizes[mode]);
+				break;
+			}
+#endif
+		}
+	} else {
+		ret = sensor_cis_set_registers(subdev, sensor_imx333_setfiles[mode], sensor_imx333_setfile_sizes[mode]);
+		if (ret < 0) {
+			err("sensor_imx333_set_registers fail!!");
+			goto p_err;
+		}
+
+		/* IMX333 rev 0.6 do not needs D0D2 swap */
+		fimc_is_sensor_write8(cis->client, 0x40AD, 0x00); // DP/DN SWAP disabled
+		fimc_is_sensor_write8(cis->client, 0x40B8, 0x02); // D0/D2 SWAP disabled
+		fimc_is_sensor_write8(cis->client, 0x40B9, 0x01);
+		fimc_is_sensor_write8(cis->client, 0x40BA, 0x03);
+		fimc_is_sensor_write8(cis->client, 0x40BB, 0x00);
 	}
 
 	dbg_sensor(1, "[%s] mode changed(%d)\n", __func__, mode);
@@ -616,10 +722,10 @@ int sensor_imx333_cis_set_size(struct v4l2_subdev *subdev, cis_shared_data *cis_
 	struct timeval st, end;
 	do_gettimeofday(&st);
 #endif
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	dbg_sensor(1, "[MOD:D:%d] %s\n", cis->id, __func__);
 
@@ -775,15 +881,15 @@ int sensor_imx333_cis_stream_on(struct v4l2_subdev *subdev)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	sensor_peri = container_of(cis, struct fimc_is_device_sensor_peri, cis);
-	FIMC_BUG(!sensor_peri);
+	BUG_ON(!sensor_peri);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -863,12 +969,12 @@ int sensor_imx333_cis_stream_off(struct v4l2_subdev *subdev)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -914,9 +1020,9 @@ int sensor_imx333_cis_compensate_gain_under_ext_br(struct v4l2_subdev *subdev, u
 	u32 min_fine_int = 0;
 	u32 expected_again = 0;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!again);
-	FIMC_BUG(!dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!again);
+	BUG_ON(!dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	if (!cis) {
@@ -1074,13 +1180,13 @@ int sensor_imx333_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_pa
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!target_exposure);
+	BUG_ON(!subdev);
+	BUG_ON(!target_exposure);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1159,15 +1265,14 @@ int sensor_imx333_cis_set_exposure_time(struct v4l2_subdev *subdev, struct ae_pa
 	if (ret < 0)
 		goto p_err;
 
-	/* Short exposure */
-	/* if (fimc_is_vender_wdr_mode_on(cis_data)) */
-	{
-		arrayBuf[0] = (cis_data->cur_short_exposure_coarse & 0xFF00) >> 8;
-		arrayBuf[1] = cis_data->cur_short_exposure_coarse & 0xFF;
-		ret = fimc_is_sensor_write8_array(client, 0x0224, arrayBuf, 2);
-		if (ret < 0)
-			goto p_err;
-	}
+        /* Short exposure */
+        if (fimc_is_vender_wdr_mode_on(cis_data)) {
+                arrayBuf[0] = (cis_data->cur_short_exposure_coarse & 0xFF00) >> 8;
+                arrayBuf[1] = cis_data->cur_short_exposure_coarse & 0xFF;
+                ret = fimc_is_sensor_write8_array(client, 0x0224, arrayBuf, 2);
+                if (ret < 0)
+                        goto p_err;
+        }
 
 	dbg_sensor(1, "[MOD:D:%d] %s, vsync_cnt(%d), vt_pic_clk_freq_mhz (%d),"
 		KERN_CONT "line_length_pck(%d), min_fine_int (%d)\n", cis->id, __func__,
@@ -1208,13 +1313,13 @@ int sensor_imx333_cis_get_min_exposure_time(struct v4l2_subdev *subdev, u32 *min
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!min_expo);
+	BUG_ON(!subdev);
+	BUG_ON(!min_expo);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1260,13 +1365,13 @@ int sensor_imx333_cis_get_max_exposure_time(struct v4l2_subdev *subdev, u32 *max
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!max_expo);
+	BUG_ON(!subdev);
+	BUG_ON(!max_expo);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1321,13 +1426,13 @@ int sensor_imx333_cis_adjust_frame_duration(struct v4l2_subdev *subdev,
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!target_duration);
+	BUG_ON(!subdev);
+	BUG_ON(!target_duration);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1370,12 +1475,12 @@ int sensor_imx333_cis_set_frame_duration(struct v4l2_subdev *subdev, u32 frame_d
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1445,12 +1550,12 @@ int sensor_imx333_cis_set_frame_rate(struct v4l2_subdev *subdev, u32 min_fps)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1514,13 +1619,13 @@ int sensor_imx333_cis_adjust_analog_gain(struct v4l2_subdev *subdev, u32 input_a
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!target_permile);
+	BUG_ON(!subdev);
+	BUG_ON(!target_permile);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	cis_data = cis->cis_data;
 
@@ -1561,12 +1666,12 @@ int sensor_imx333_cis_set_analog_gain(struct v4l2_subdev *subdev, struct ae_para
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!again);
+	BUG_ON(!subdev);
+	BUG_ON(!again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1632,12 +1737,12 @@ int sensor_imx333_cis_get_analog_gain(struct v4l2_subdev *subdev, u32 *again)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!again);
+	BUG_ON(!subdev);
+	BUG_ON(!again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1690,13 +1795,13 @@ int sensor_imx333_cis_get_min_analog_gain(struct v4l2_subdev *subdev, u32 *min_a
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!min_again);
+	BUG_ON(!subdev);
+	BUG_ON(!min_again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1735,13 +1840,13 @@ int sensor_imx333_cis_get_max_analog_gain(struct v4l2_subdev *subdev, u32 *max_a
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!max_again);
+	BUG_ON(!subdev);
+	BUG_ON(!max_again);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1784,13 +1889,13 @@ int sensor_imx333_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_par
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1830,22 +1935,23 @@ int sensor_imx333_cis_set_digital_gain(struct v4l2_subdev *subdev, struct ae_par
 		goto p_err;
 	}
 
-	/* Set current short & long digitial gain */
-	/* 0x0226 ~ 0x0227 : ST_DIG_GAIN_GLOBAL */
-	/* 0x020E ~ 0x020F : DIG_GAIN_GLOBAL */
-	/* if (fimc_is_vender_wdr_mode_on(cis_data)) */
-	{
-		dgains[0] = (short_gain & 0xFF00) >> 8;
-		dgains[1] = short_gain & 0xFF;
-		ret = fimc_is_sensor_write8_array(client, 0x0226, dgains, 2);
-		if (ret < 0)
-			goto p_err;
-	}
-	dgains[0] = (long_gain & 0xFF00) >> 8;
-	dgains[1] = long_gain & 0xFF;
-	ret = fimc_is_sensor_write8_array(client, 0x020E, dgains, 2);
-	if (ret < 0)
-		goto p_err;
+        /* Set current short & long digitial gain */
+        /* 0x0226 ~ 0x0227 : ST_DIG_GAIN_GLOBAL */
+        /* 0x020E ~ 0x020F : DIG_GAIN_GLOBAL */
+        if (fimc_is_vender_wdr_mode_on(cis_data)) {
+                dgains[0] = (short_gain & 0xFF00) >> 8;
+                dgains[1] = short_gain & 0xFF;
+                ret = fimc_is_sensor_write8_array(client, 0x0226, dgains, 2);
+                if (ret < 0) {
+                        goto p_err;
+                }
+        }
+        dgains[0] = (long_gain & 0xFF00) >> 8;
+        dgains[1] = long_gain & 0xFF;
+        ret = fimc_is_sensor_write8_array(client, 0x020E, dgains, 2);
+        if (ret < 0) {
+                goto p_err;
+        }
 
 #ifdef DEBUG_SENSOR_TIME
 	do_gettimeofday(&end);
@@ -1877,12 +1983,12 @@ int sensor_imx333_cis_get_digital_gain(struct v4l2_subdev *subdev, u32 *dgain)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
+	BUG_ON(!cis);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1935,13 +2041,13 @@ int sensor_imx333_cis_get_min_digital_gain(struct v4l2_subdev *subdev, u32 *min_
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!min_dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!min_dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -1980,13 +2086,13 @@ int sensor_imx333_cis_get_max_digital_gain(struct v4l2_subdev *subdev, u32 *max_
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!max_dgain);
+	BUG_ON(!subdev);
+	BUG_ON(!max_dgain);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!cis);
-	FIMC_BUG(!cis->cis_data);
+	BUG_ON(!cis);
+	BUG_ON(!cis->cis_data);
 
 	client = cis->client;
 	if (unlikely(!client)) {
@@ -2020,7 +2126,7 @@ int sensor_imx333_cis_long_term_exposure(struct v4l2_subdev *subdev)
 	struct fimc_is_long_term_expo_mode *lte_mode;
 	unsigned char cit_lshift_val = 0;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	cis = (struct fimc_is_cis *)v4l2_get_subdevdata(subdev);
 	lte_mode = &cis->long_term_mode;
@@ -2081,7 +2187,7 @@ static struct fimc_is_cis_ops cis_ops_imx333 = {
 	.cis_set_long_term_exposure = sensor_imx333_cis_long_term_exposure,
 };
 
-static int cis_imx333_probe(struct i2c_client *client,
+int cis_imx333_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -2090,7 +2196,7 @@ static int cis_imx333_probe(struct i2c_client *client,
 	struct fimc_is_cis *cis = NULL;
 	struct fimc_is_device_sensor *device = NULL;
 	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
-	u32 sensor_id[FIMC_IS_SENSOR_COUNT] = {0, };
+	u32 sensor_id[FIMC_IS_STREAM_COUNT] = {0, };
 	u32 sensor_id_len;
 	const u32 *sensor_id_spec;
 	char const *setfile;
@@ -2098,8 +2204,8 @@ static int cis_imx333_probe(struct i2c_client *client,
 	struct device_node *dnode;
 	int i;
 
-	FIMC_BUG(!client);
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!client);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -2133,7 +2239,7 @@ static int cis_imx333_probe(struct i2c_client *client,
 
 		sensor_peri = find_peri_by_cis_id(device, SENSOR_NAME_IMX333);
 		if (!sensor_peri) {
-			probe_info("sensor peri is net yet probed");
+			probe_info("sensor peri is not yet probed");
 			return -EPROBE_DEFER;
 		}
 	}
@@ -2203,39 +2309,34 @@ p_err:
 	return ret;
 }
 
-static const struct of_device_id sensor_cis_imx333_match[] = {
+static int cis_imx333_remove(struct i2c_client *client)
+{
+	int ret = 0;
+	return ret;
+}
+
+static const struct of_device_id exynos_fimc_is_cis_imx333_match[] = {
 	{
 		.compatible = "samsung,exynos5-fimc-is-cis-imx333",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, sensor_cis_imx333_match);
+MODULE_DEVICE_TABLE(of, exynos_fimc_is_cis_imx333_match);
 
-static const struct i2c_device_id sensor_cis_imx333_idt[] = {
+static const struct i2c_device_id cis_imx333_idt[] = {
 	{ SENSOR_NAME, 0 },
 	{},
 };
 
-static struct i2c_driver sensor_cis_imx333_driver = {
-	.probe	= cis_imx333_probe,
+static struct i2c_driver cis_imx333_driver = {
 	.driver = {
 		.name	= SENSOR_NAME,
 		.owner	= THIS_MODULE,
-		.of_match_table = sensor_cis_imx333_match,
-		.suppress_bind_attrs = true,
+		.of_match_table = exynos_fimc_is_cis_imx333_match
 	},
-	.id_table = sensor_cis_imx333_idt
+	.probe	= cis_imx333_probe,
+	.remove	= cis_imx333_remove,
+	.id_table = cis_imx333_idt
 };
+module_i2c_driver(cis_imx333_driver);
 
-static int __init sensor_cis_imx333_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&sensor_cis_imx333_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_cis_imx333_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(sensor_cis_imx333_init);

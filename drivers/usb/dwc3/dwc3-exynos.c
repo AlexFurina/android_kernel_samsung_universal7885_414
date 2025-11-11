@@ -21,11 +21,11 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/mutex.h>
+#include <linux/dma-mapping.h>
 #include <linux/clk.h>
 #include <linux/usb/otg.h>
 #include <linux/usb/usb_phy_generic.h>
 #include <linux/usb/samsung_usb.h>
-#include <linux/dma-mapping.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/regulator/consumer.h>
@@ -34,16 +34,15 @@
 #include <linux/io.h>
 #include <linux/usb/otg-fsm.h>
 
-#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
+#include <soc/samsung/exynos-powermode.h>
 #include <soc/samsung/exynos-cpupm.h>
-#endif
 
 /* -------------------------------------------------------------------------- */
 
 struct dwc3_exynos_rsw {
 	struct otg_fsm		*fsm;
 	struct work_struct	work;
-	struct workqueue_struct *rsw_wq;
+	int rsw_start;
 };
 
 struct dwc3_exynos {
@@ -225,18 +224,23 @@ int dwc3_exynos_rsw_start(struct device *dev)
 	struct dwc3_exynos	*exynos = dev_get_drvdata(dev);
 	struct dwc3_exynos_rsw	*rsw = &exynos->rsw;
 
-	dev_info(dev, "%s\n", __func__);
+	dev_dbg(dev, "%s\n", __func__);
 
 	/* B-device by default */
 	rsw->fsm->id = 1;
 	rsw->fsm->b_sess_vld = 0;
+	rsw->rsw_start = 1;
 
 	return 0;
 }
 
 void dwc3_exynos_rsw_stop(struct device *dev)
 {
-	dev_info(dev, "%s\n", __func__);
+	struct dwc3_exynos	*exynos = dev_get_drvdata(dev);
+	struct dwc3_exynos_rsw	*rsw = &exynos->rsw;
+
+	rsw->rsw_start = 0;
+	dev_dbg(dev, "%s\n", __func__);
 }
 
 static void dwc3_exynos_rsw_work(struct work_struct *w)
@@ -246,7 +250,7 @@ static void dwc3_exynos_rsw_work(struct work_struct *w)
 	struct dwc3_exynos	*exynos = container_of(rsw,
 					struct dwc3_exynos, rsw);
 
-	dev_info(exynos->dev, "%s\n", __func__);
+	dev_vdbg(exynos->dev, "%s\n", __func__);
 
 	dwc3_otg_run_sm(rsw->fsm);
 }
@@ -257,11 +261,6 @@ int dwc3_exynos_rsw_setup(struct device *dev, struct otg_fsm *fsm)
 	struct dwc3_exynos_rsw	*rsw = &exynos->rsw;
 
 	dev_dbg(dev, "%s\n", __func__);
-
-	rsw->rsw_wq
-		= create_singlethread_workqueue("usb_rsw_wq");
-	 if (!rsw->rsw_wq)
-		pr_err("%s failed to create rsw work queue\n", __func__);
 
 	INIT_WORK(&rsw->work, dwc3_exynos_rsw_work);
 
@@ -278,7 +277,6 @@ void dwc3_exynos_rsw_exit(struct device *dev)
 	dev_dbg(dev, "%s\n", __func__);
 
 	cancel_work_sync(&rsw->work);
-	destroy_workqueue(rsw->rsw_wq);
 
 	rsw->fsm = NULL;
 }
@@ -307,8 +305,7 @@ int dwc3_exynos_id_event(struct device *dev, int state)
 
 	if (fsm->id != state) {
 		fsm->id = state;
-		/* schedule_work(&rsw->work); */
-		queue_work(rsw->rsw_wq, &rsw->work);
+		schedule_work(&rsw->work);
 	}
 
 	return 0;
@@ -333,14 +330,20 @@ int dwc3_exynos_vbus_event(struct device *dev, bool vbus_active)
 
 	rsw = &exynos->rsw;
 
+	/* check rsw start */
+	do {
+		if (rsw->rsw_start == 1)
+			break;
+		mdelay(1);
+	} while (1);
+
 	fsm = rsw->fsm;
 	if (!fsm)
 		return -ENOENT;
 
 	if (fsm->b_sess_vld != vbus_active) {
 		fsm->b_sess_vld = vbus_active;
-		/* schedule_work(&rsw->work); */
-		queue_work(rsw->rsw_wq, &rsw->work);
+		schedule_work(&rsw->work);
 	}
 
 	return 0;
@@ -423,20 +426,27 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 	if (!exynos)
 		return -ENOMEM;
 
-	ret = dma_set_mask(dev, DMA_BIT_MASK(36));
-	if (ret) {
-		pr_err("dma set mask ret = %d\n", ret);
+	/*
+	 * Right now device-tree probed devices don't get dma_mask set.
+	 * Since shared usb code relies on it, set it here for now.
+	 * Once we move to full device tree support this will vanish off.
+	 */
+	ret = dma_coerce_mask_and_coherent(dev, DMA_BIT_MASK(36));
+	if (ret)
 		return ret;
-	}
 
 	platform_set_drvdata(pdev, exynos);
 
+	ret = dwc3_exynos_register_phys(exynos);
+	if (ret) {
+		dev_err(dev, "couldn't register PHYs\n");
+		return ret;
+	}
+
 	exynos->dev = dev;
 
-#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 	exynos->idle_ip_index = exynos_get_idle_ip_index(dev_name(dev));
 	exynos_update_ip_idle_status(exynos->idle_ip_index, 0);
-#endif
 
 	ret = dwc3_exynos_clk_get(exynos);
 	if (ret)
@@ -457,14 +467,14 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 
 	exynos->vdd33 = devm_regulator_get(dev, "vdd33");
 	if (IS_ERR(exynos->vdd33)) {
-	        dev_dbg(dev, "couldn't get regulator vdd33\n");
+		dev_dbg(dev, "couldn't get regulator vdd33\n");
 		exynos->vdd33 = NULL;
 	}
 	if (exynos->vdd33) {
 		ret = regulator_enable(exynos->vdd33);
 		if (ret) {
 			dev_err(dev, "Failed to enable VDD33 supply\n");
-			goto vdd33_err;
+			goto err2;
 		}
 	}
 
@@ -477,41 +487,41 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 		ret = regulator_enable(exynos->vdd10);
 		if (ret) {
 			dev_err(dev, "Failed to enable VDD10 supply\n");
-			goto vdd10_err;
+			goto err3;
 		}
-        }
+	}
 
 	ret = dwc3_exynos_register_phys(exynos);
 	if (ret) {
 		dev_err(dev, "couldn't register PHYs\n");
-		goto phys_err;
+		goto err4;
 	}
 
 	if (node) {
 		ret = of_platform_populate(node, NULL, NULL, dev);
 		if (ret) {
 			dev_err(dev, "failed to add dwc3 core\n");
-			goto populate_err;
+			goto err5;
 		}
 	} else {
 		dev_err(dev, "no device node, failed to add dwc3 core\n");
 		ret = -ENODEV;
-		goto populate_err;
+		goto err5;
 	}
 
 	pr_info("%s: ---\n", __func__);
 	return 0;
 
-populate_err:
+err5:
 	platform_device_unregister(exynos->usb2_phy);
 	platform_device_unregister(exynos->usb3_phy);
-phys_err:
+err4:
 	if (exynos->vdd10)
 		regulator_disable(exynos->vdd10);
-vdd10_err:
+err3:
 	if (exynos->vdd33)
 		regulator_disable(exynos->vdd33);
-vdd33_err:
+err2:
 	pm_runtime_disable(&pdev->dev);
 	dwc3_exynos_clk_disable(exynos);
 	dwc3_exynos_clk_unprepare(exynos);
@@ -540,8 +550,37 @@ static int dwc3_exynos_remove(struct platform_device *pdev)
 	if (exynos->vdd10)
 		regulator_disable(exynos->vdd10);
 
-
 	return 0;
+}
+
+static void dwc3_exynos_shutdown(struct platform_device *pdev)
+{
+	struct dwc3_exynos	*exynos = platform_get_drvdata(pdev);
+	struct dwc3_exynos_rsw	*rsw;
+	struct otg_fsm		*fsm;
+
+	pr_info("%s: +++\n", __func__);
+
+	rsw = &exynos->rsw;
+	if (!rsw) {
+		pr_err("%s: rsw is not available\n", __func__);
+		goto err;
+	}
+
+	fsm = rsw->fsm;
+	if (!fsm) {
+		pr_err("%s: fsm is not available\n", __func__);
+		goto err;
+	}
+
+	fsm->reset = 1;
+	dwc3_otg_run_sm(rsw->fsm);
+	pr_info("%s: ---\n", __func__);
+
+	return;
+
+err:
+	pr_err("%s: Failed to complete usb cleanup\n", __func__);
 }
 
 #ifdef CONFIG_PM
@@ -549,14 +588,12 @@ static int dwc3_exynos_runtime_suspend(struct device *dev)
 {
 	struct dwc3_exynos *exynos = dev_get_drvdata(dev);
 
-	dev_info(dev, "%s\n", __func__);
+	dev_dbg(dev, "%s\n", __func__);
 
 	dwc3_exynos_clk_disable(exynos);
 
-#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 	/* inform what USB state is idle to IDLE_IP */
 	exynos_update_ip_idle_status(exynos->idle_ip_index, 1);
-#endif
 
 	return 0;
 }
@@ -566,12 +603,10 @@ static int dwc3_exynos_runtime_resume(struct device *dev)
 	struct dwc3_exynos *exynos = dev_get_drvdata(dev);
 	int ret = 0;
 
-	dev_info(dev, "%s\n", __func__);
+	dev_dbg(dev, "%s\n", __func__);
 
-#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 	/* inform what USB state is not idle to IDLE_IP */
 	exynos_update_ip_idle_status(exynos->idle_ip_index, 0);
-#endif
 
 	ret = dwc3_exynos_clk_enable(exynos);
 	if (ret) {
@@ -600,9 +635,6 @@ static int dwc3_exynos_suspend(struct device *dev)
 	if (exynos->vdd10)
 		regulator_disable(exynos->vdd10);
 
-	/* inform what USB state is idle to IDLE_IP */
-	//exynos_update_ip_idle_status(exynos->idle_ip_index, 1);
-
 	return 0;
 }
 
@@ -612,9 +644,6 @@ static int dwc3_exynos_resume(struct device *dev)
 	int ret;
 
 	dev_dbg(dev, "%s\n", __func__);
-
-	/* inform what USB state is not idle to IDLE_IP */
-	//exynos_update_ip_idle_status(exynos->idle_ip_index, 0);
 
 	if (exynos->vdd33) {
 		ret = regulator_enable(exynos->vdd33);
@@ -661,6 +690,7 @@ static const struct dev_pm_ops dwc3_exynos_dev_pm_ops = {
 static struct platform_driver dwc3_exynos_driver = {
 	.probe		= dwc3_exynos_probe,
 	.remove		= dwc3_exynos_remove,
+	.shutdown	= dwc3_exynos_shutdown,
 	.driver		= {
 		.name	= "exynos-dwc3",
 		.of_match_table = exynos_dwc3_match,
@@ -670,6 +700,7 @@ static struct platform_driver dwc3_exynos_driver = {
 
 module_platform_driver(dwc3_exynos_driver);
 
+MODULE_ALIAS("platform:exynos-dwc3");
 MODULE_AUTHOR("Anton Tikhomirov <av.tikhomirov@samsung.com>");
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("DesignWare USB3 EXYNOS Glue Layer");

@@ -53,15 +53,6 @@ const struct file_operations *debugfs_real_fops(const struct file *filp)
 {
 	struct debugfs_fsdata *fsd = F_DENTRY(filp)->d_fsdata;
 
-	if ((unsigned long)fsd & DEBUGFS_FSDATA_IS_REAL_FOPS_BIT) {
-		/*
-		 * Urgh, we've been called w/o a protecting
-		 * debugfs_file_get().
-		 */
-		WARN_ON(1);
-		return NULL;
-	}
-
 	return fsd->real_fops;
 }
 EXPORT_SYMBOL_GPL(debugfs_real_fops);
@@ -83,39 +74,13 @@ EXPORT_SYMBOL_GPL(debugfs_real_fops);
  */
 int debugfs_file_get(struct dentry *dentry)
 {
-	struct debugfs_fsdata *fsd;
-	void *d_fsd;
+	struct debugfs_fsdata *fsd = dentry->d_fsdata;
 
-	d_fsd = READ_ONCE(dentry->d_fsdata);
-	if (!((unsigned long)d_fsd & DEBUGFS_FSDATA_IS_REAL_FOPS_BIT)) {
-		fsd = d_fsd;
-	} else {
-		fsd = kmalloc(sizeof(*fsd), GFP_KERNEL);
-		if (!fsd)
-			return -ENOMEM;
-
-		fsd->real_fops = (void *)((unsigned long)d_fsd &
-					~DEBUGFS_FSDATA_IS_REAL_FOPS_BIT);
-		refcount_set(&fsd->active_users, 1);
-		init_completion(&fsd->active_users_drained);
-		if (cmpxchg(&dentry->d_fsdata, d_fsd, fsd) != d_fsd) {
-			kfree(fsd);
-			fsd = READ_ONCE(dentry->d_fsdata);
-		}
-	}
-
-	/*
-	 * In case of a successful cmpxchg() above, this check is
-	 * strictly necessary and must follow it, see the comment in
-	 * __debugfs_remove_file().
-	 * OTOH, if the cmpxchg() hasn't been executed or wasn't
-	 * successful, this serves the purpose of not starving
-	 * removers.
-	 */
+	/* Avoid starvation of removers. */
 	if (d_unlinked(dentry))
 		return -EIO;
 
-	if (!refcount_inc_not_zero(&fsd->active_users))
+	if (!atomic_add_unless(&fsd->active_users, 1, 0))
 		return -EIO;
 
 	return 0;
@@ -133,9 +98,9 @@ EXPORT_SYMBOL_GPL(debugfs_file_get);
  */
 void debugfs_file_put(struct dentry *dentry)
 {
-	struct debugfs_fsdata *fsd = READ_ONCE(dentry->d_fsdata);
+	struct debugfs_fsdata *fsd = dentry->d_fsdata;
 
-	if (refcount_dec_and_test(&fsd->active_users))
+	if (atomic_dec_and_test(&fsd->active_users))
 		complete(&fsd->active_users_drained);
 }
 EXPORT_SYMBOL_GPL(debugfs_file_put);
@@ -144,11 +109,10 @@ static int open_proxy_open(struct inode *inode, struct file *filp)
 {
 	struct dentry *dentry = F_DENTRY(filp);
 	const struct file_operations *real_fops = NULL;
-	int r;
+	int r = 0;
 
-	r = debugfs_file_get(dentry);
-	if (r)
-		return r == -EIO ? -ENOENT : r;
+	if (debugfs_file_get(dentry))
+		return -ENOENT;
 
 	real_fops = debugfs_real_fops(filp);
 	real_fops = fops_get(real_fops);
@@ -269,11 +233,10 @@ static int full_proxy_open(struct inode *inode, struct file *filp)
 	struct dentry *dentry = F_DENTRY(filp);
 	const struct file_operations *real_fops = NULL;
 	struct file_operations *proxy_fops = NULL;
-	int r;
+	int r = 0;
 
-	r = debugfs_file_get(dentry);
-	if (r)
-		return r == -EIO ? -ENOENT : r;
+	if (debugfs_file_get(dentry))
+		return -ENOENT;
 
 	real_fops = debugfs_real_fops(filp);
 	real_fops = fops_get(real_fops);

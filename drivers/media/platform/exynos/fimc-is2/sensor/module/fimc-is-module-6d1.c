@@ -266,7 +266,7 @@ static int sensor_6d1_init(struct v4l2_subdev *subdev, u32 val)
 	struct fimc_is_module_6d1 *module_6d1;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	module_6d1 = module->private_data;
@@ -332,8 +332,8 @@ static int sensor_6d1_s_param(struct v4l2_subdev *subdev, struct v4l2_streamparm
 	struct v4l2_fract *tpf;
 	u64 duration;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!param);
+	BUG_ON(!subdev);
+	BUG_ON(!param);
 
 	pr_info("%s\n", __func__);
 
@@ -399,7 +399,7 @@ int sensor_6d1_stream_on(struct v4l2_subdev *subdev)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	sensor = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!sensor)) {
@@ -431,7 +431,7 @@ int sensor_6d1_stream_off(struct v4l2_subdev *subdev)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	sensor = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!sensor)) {
@@ -471,7 +471,7 @@ int sensor_6d1_s_duration(struct v4l2_subdev *subdev, u64 duration)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	pr_info("%s\n", __func__);
 
@@ -521,7 +521,7 @@ int sensor_6d1_s_exposure(struct v4l2_subdev *subdev, u64 exposure)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	pr_info("%s(%d)\n", __func__, (u32)exposure);
 
@@ -623,8 +623,8 @@ static int sensor_6d1_power_setpin(struct device *dev)
 	int gpio_reset = 0, gpio_standby = 0;
 	int gpio_none = 0;
 
-	FIMC_BUG(!dev);
-	FIMC_BUG(!dev->platform_data);
+	BUG_ON(!dev);
+	BUG_ON(!dev->platform_data);
 
 	dnode = dev->of_node;
 	pdata = dev->platform_data;

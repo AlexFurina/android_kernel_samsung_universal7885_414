@@ -27,9 +27,13 @@ struct fscrypt_operations {
 	const char *key_prefix;
 	int (*get_context)(struct inode *, void *, size_t);
 	int (*set_context)(struct inode *, const void *, size_t, void *);
+#if defined(CONFIG_DDAR) || defined(CONFIG_FSCRYPT_SDP)
+	int (*get_knox_context)(struct inode *, const char *, void *, size_t);
+	int (*set_knox_context)(struct inode *, const char *, const void *, size_t, void *);
+#endif
 	bool (*dummy_context)(struct inode *);
 	bool (*empty_dir)(struct inode *);
-	unsigned (*max_namelen)(struct inode *);
+	unsigned int max_namelen;
 };
 
 struct fscrypt_ctx {
@@ -75,20 +79,6 @@ static inline struct page *fscrypt_control_page(struct page *page)
 
 extern void fscrypt_restore_control_page(struct page *);
 
-extern const struct dentry_operations fscrypt_d_ops;
-
-static inline void fscrypt_set_d_op(struct dentry *dentry)
-{
-	d_set_d_op(dentry, &fscrypt_d_ops);
-}
-
-static inline void fscrypt_set_encrypted_dentry(struct dentry *dentry)
-{
-	spin_lock(&dentry->d_lock);
-	dentry->d_flags |= DCACHE_ENCRYPTED_WITH_KEY;
-	spin_unlock(&dentry->d_lock);
-}
-
 /* policy.c */
 extern int fscrypt_ioctl_set_policy(struct file *, const void __user *);
 extern int fscrypt_ioctl_get_policy(struct file *, void __user *);
@@ -98,6 +88,16 @@ extern int fscrypt_inherit_context(struct inode *, struct inode *,
 /* keyinfo.c */
 extern int fscrypt_get_encryption_info(struct inode *);
 extern void fscrypt_put_encryption_info(struct inode *);
+#ifdef CONFIG_FSCRYPT_SDP
+extern int fscrypt_get_encryption_key(struct inode *inode,
+						struct fscrypt_key *key);
+extern int fscrypt_get_encryption_key_classified(struct inode *inode,
+						struct fscrypt_key *key);
+extern int fscrypt_get_encryption_kek(struct inode *inode,
+						struct fscrypt_info *crypt_info,
+						struct fscrypt_key *kek);
+
+#endif
 
 /* fname.c */
 extern int fscrypt_setup_filename(struct inode *, const struct qstr *,

@@ -130,7 +130,7 @@ static int sensor_6b2_init(struct v4l2_subdev *subdev, u32 val)
 	struct fimc_is_module_6b2 *module_6b2;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!module)) {
@@ -290,8 +290,8 @@ static int sensor_6b2_s_param(struct v4l2_subdev *subdev, struct v4l2_streamparm
 	u64 numerator, denominator;
 	u64 duration;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!param);
+	BUG_ON(!subdev);
+	BUG_ON(!param);
 
 	pr_info("%s\n", __func__);
 
@@ -338,8 +338,8 @@ static int sensor_6b2_s_format(struct v4l2_subdev *subdev, struct v4l2_mbus_fram
 	struct fimc_is_module_6b2 *module_6b2;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!fmt);
+	BUG_ON(!subdev);
+	BUG_ON(!fmt);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!module)) {
@@ -387,7 +387,7 @@ int sensor_6b2_stream_on(struct v4l2_subdev *subdev)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	sensor = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!sensor)) {
@@ -420,7 +420,7 @@ int sensor_6b2_stream_off(struct v4l2_subdev *subdev)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	sensor = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!sensor)) {
@@ -462,7 +462,7 @@ int sensor_6b2_s_duration(struct v4l2_subdev *subdev, u64 duration)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	pr_info("%s\n", __func__);
 
@@ -511,7 +511,7 @@ int sensor_6b2_s_exposure(struct v4l2_subdev *subdev, u64 exposure)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	pr_info("%s(%d)\n", __func__, (u32)exposure);
 
@@ -613,7 +613,7 @@ static int sensor_6b2_power_setpin(struct platform_device *pdev,
 	struct device_node *dnode;
 	int gpio_none = 0, gpio_reset = 0, gpio_standby = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;

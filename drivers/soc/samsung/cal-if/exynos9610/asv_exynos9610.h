@@ -70,15 +70,17 @@ struct id_tbl_info {
 	unsigned reserved_1:16;
 	unsigned reserved_2:16;
 	unsigned reserved_3:16;
-	unsigned reserved_4:16;
+	unsigned reserved_4:10;
+	unsigned product_line:2;
+	unsigned reserved_4_1:4;
 	unsigned char ids_big:8;
 	unsigned char ids_g3d:8;
 	unsigned char ids_others:8; /* little, int, mif, disp, cp */
-	unsigned reserved_5:8;
-	unsigned reserved_6;
+	unsigned asb_version:8;
+	unsigned reserved_5;
 	unsigned short sub_rev:4;
 	unsigned short main_rev:4;
-	unsigned reserved_7;
+	unsigned reserved_6;
 };
 
 static volatile struct asv_tbl_info *asv_tbl;
@@ -168,10 +170,24 @@ void id_get_rev(unsigned int *main_rev, unsigned int *sub_rev)
 	*sub_rev =  id_tbl->sub_rev;
 }
 
+int id_get_product_line(void)
+{
+	return id_tbl->product_line;
+}
+
+int id_get_asb_ver(void)
+{
+	return id_tbl->asb_version;
+}
+
 int asv_table_init(void)
 {
 	asv_tbl = ioremap(ASV_TABLE_BASE, SZ_4K);
 	if (!asv_tbl)
+		return 0;
+
+	id_tbl = ioremap(ID_TABLE_BASE, SZ_4K);
+	if (!id_tbl)
 		return 0;
 
 	pr_info("asv_table_version : %d\n", asv_tbl->asv_table_version);
@@ -183,8 +199,6 @@ int asv_table_init(void)
 	pr_info("  cam_disp grp : %d\n", asv_tbl->cam_disp_asv_group);
 	pr_info("  cp grp : %d\n", asv_tbl->cp_asv_group);
 	pr_info("  fsys grp : %d\n", asv_tbl->fsys_asv_group);
-
-	id_tbl = ioremap(ID_TABLE_BASE, SZ_4K);
 
 	return asv_tbl->asv_table_version;
 }

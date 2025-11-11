@@ -41,16 +41,6 @@ static struct seclog_data ldata;
 static struct seclog_ctx slog_ctx;
 static struct sec_log_info *sec_log[NR_CPUS];
 
-static inline uint32_t exynos_seclog_check_va_validation(uint64_t ptr)
-{
-	uint64_t base = (uint64_t)ldata.virt_addr;
-	uint64_t end = base + ldata.size;
-
-	if (base <= ptr && end > ptr)
-		return 0;
-
-	return -1;
-}
 
 static void exynos_ldfw_error(struct platform_device *pdev,
 				int error)
@@ -135,30 +125,6 @@ static void exynos_seclog_worker(struct work_struct *work)
 					sec_log[cpu]->log_return_cnt = 0;
 					v_log_addr = SECLOG_PHYS_TO_VIRT(sec_log[cpu]->initial_log_addr);
 				}
-			}
-
-			if (exynos_seclog_check_va_validation((uint64_t)v_log_addr)) {
-				/* v_log_addr is not valid. print debugging info  */
-				pr_err("[SECLOG_ERR C%d] read_cnt[%d]\n",
-						cpu, sec_log[cpu]->log_read_cnt);
-				pr_err("[SECLOG_ERR C%d] write_cnt[%d]\n",
-						cpu, sec_log[cpu]->log_write_cnt);
-				pr_err("[SECLOG_ERR C%d] return_cnt[%d]\n",
-						cpu, sec_log[cpu]->log_return_cnt);
-				pr_err("[SECLOG_ERR C%d] v_log_addr[%#lx]\n",
-						cpu, v_log_addr);
-				pr_err("[SECLOG_ERR C%d] start_log_addr[%#lx]\n",
-						cpu, sec_log[cpu]->start_log_addr);
-				pr_err("[SECLOG_ERR C%d] initial_log_addr[%#lx]\n",
-						cpu, sec_log[cpu]->initial_log_addr);
-				pr_err("[SECLOG_ERR C%d] p_log_addr[%#lx]\n",
-						cpu,
-						v_log_addr
-						- (unsigned long)ldata.virt_addr
-						+ ldata.phys_addr);
-
-				/* make panic for debugging */
-				BUG();
 			}
 
 			/* For debug */
@@ -286,7 +252,7 @@ static int exynos_seclog_probe(struct platform_device *pdev)
 
 	/* Set workqueue for Secure log as bottom half */
 	INIT_WORK(&slog_ctx.work, exynos_seclog_worker);
-	slog_ctx.enabled = true;
+	slog_ctx.enabled = false;
 
 	/* Create debugfs for Secure log */
 	slog_ctx.debug_dir = debugfs_create_dir("seclog", NULL);
@@ -354,8 +320,8 @@ detect_ldfw_err:
 	}
 
 	dev_info(&pdev->dev,
-		"Message buffer address[PA : %#lx, VA : %#lx], Message buffer size[%#lx]\n",
-		ldata.phys_addr, ldata.virt_addr, ldata.size);
+		"Message buffer address[%#lx], Message buffer size[%#lx]\n",
+		ldata.phys_addr, ldata.size);
 	dev_info(&pdev->dev, "Exynos Secure Log driver probe done!\n");
 
 	return 0;

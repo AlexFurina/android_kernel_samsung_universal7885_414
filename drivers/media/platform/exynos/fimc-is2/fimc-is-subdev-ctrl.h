@@ -44,7 +44,6 @@ struct fimc_is_subdev_path {
 	struct fimc_is_crop			crop;
 };
 
-/* Caution: Do not exceed 64 */
 enum fimc_is_subdev_id {
 	ENTRY_SENSOR,
 	ENTRY_SSVC0,
@@ -55,24 +54,16 @@ enum fimc_is_subdev_id {
 	ENTRY_3AA,
 	ENTRY_3AC,
 	ENTRY_3AP,
-	ENTRY_3AF,
-	ENTRY_3AG,
 	ENTRY_ISP,
 	ENTRY_IXC,
 	ENTRY_IXP,
-	ENTRY_MEXC, /* Motion Estimation */
 	ENTRY_DRC,
 	ENTRY_DIS,
 	ENTRY_DXC,
 	ENTRY_ODC,
 	ENTRY_DNR,
-	ENTRY_DCP, /* Master Input */
-	ENTRY_DC1S, /* Slave Input */
-	ENTRY_DC0C, /* Master Main Capture */
-	ENTRY_DC1C, /* Slave Main Capture */
-	ENTRY_DC2C, /* Disparity + Confidence + Master */
-	ENTRY_DC3C, /* Master Sub Capture */
-	ENTRY_DC4C, /* Slave Sub Capture */
+	ENTRY_SCC,
+	ENTRY_SCP,
 	ENTRY_MCS,
 	ENTRY_M0P,
 	ENTRY_M1P,
@@ -81,7 +72,8 @@ enum fimc_is_subdev_id {
 	ENTRY_M4P,
 	ENTRY_M5P,
 	ENTRY_VRA,
-	ENTRY_PAF, /* PDP(PATSTAT) RDMA */
+	ENTRY_DCP,
+	ENTRY_SRDZ,
 	ENTRY_END
 };
 
@@ -102,12 +94,6 @@ struct fimc_is_subdev_ops {
 		void *device_data,
 		struct fimc_is_frame *frame,
 		struct camera2_node *node);
-};
-
-enum subdev_ch_mode {
-	SCM_WO_PAF_HW,
-	SCM_W_PAF_HW,
-	SCM_MAX,
 };
 
 struct fimc_is_subdev {
@@ -132,25 +118,18 @@ struct fimc_is_subdev {
 	struct list_head			list;
 
 	/* for internal use */
+	u32					pixelformat;
 	struct fimc_is_framemgr			internal_framemgr;
 	u32					buffer_num;
-	u32					bytes_per_pixel;
 	u32					vc_buffer_offset;
 	struct fimc_is_priv_buf			*pb_subdev[SUBDEV_INTERNAL_BUF_MAX];
+	dma_addr_t				dvaddr_subdev[SUBDEV_INTERNAL_BUF_MAX];
+	ulong					kvaddr_subdev[SUBDEV_INTERNAL_BUF_MAX];
 	char					data_type[15];
 
 	struct fimc_is_video_ctx		*vctx;
 	struct fimc_is_subdev			*leader;
 	const struct fimc_is_subdev_ops		*ops;
-
-	/*
-	 * Parameter for DMA abstraction:
-	 * This value is physical DMA & VC.
-	 * [0]: Bypass PAF HW (Use this when none PD mode is enabled.)
-	 * [1]: Processing PAF HW (Use this when PD mode is enabled.)
-	 */
-	int					dma_ch[SCM_MAX];
-	int					vc_ch[SCM_MAX];
 };
 
 int fimc_is_sensor_subdev_open(struct fimc_is_device_sensor *device,
@@ -173,6 +152,7 @@ int fimc_is_subdev_open(struct fimc_is_subdev *subdev,
 	struct fimc_is_video_ctx *vctx,
 	void *ctl_data);
 int fimc_is_subdev_close(struct fimc_is_subdev *subdev);
+int fimc_is_subdev_reqbuf(struct fimc_is_subdev *subdev);
 int fimc_is_subdev_buffer_queue(struct fimc_is_subdev *subdev, struct vb2_buffer *vb);
 int fimc_is_subdev_buffer_finish(struct fimc_is_subdev *subdev, struct vb2_buffer *vb);
 

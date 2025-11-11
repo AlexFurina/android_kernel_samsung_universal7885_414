@@ -1192,7 +1192,7 @@ static int set_consumer_device_supply(struct regulator_dev *rdev,
 				      const char *consumer_dev_name,
 				      const char *supply)
 {
-	struct regulator_map *node;
+	struct regulator_map *node, *new_node;
 	int has_dev;
 
 	if (supply == NULL)
@@ -1203,6 +1203,22 @@ static int set_consumer_device_supply(struct regulator_dev *rdev,
 	else
 		has_dev = 0;
 
+	new_node = kzalloc(sizeof(struct regulator_map), GFP_KERNEL);
+	if (new_node == NULL)
+		return -ENOMEM;
+
+	new_node->regulator = rdev;
+	new_node->supply = supply;
+
+	if (has_dev) {
+		new_node->dev_name = kstrdup(consumer_dev_name, GFP_KERNEL);
+		if (new_node->dev_name == NULL) {
+			kfree(new_node);
+			return -ENOMEM;
+		}
+	}
+
+	mutex_lock(&regulator_list_mutex);
 	list_for_each_entry(node, &regulator_map_list, list) {
 		if (node->dev_name && consumer_dev_name) {
 			if (strcmp(node->dev_name, consumer_dev_name) != 0)
@@ -1220,26 +1236,19 @@ static int set_consumer_device_supply(struct regulator_dev *rdev,
 			 node->regulator->desc->name,
 			 supply,
 			 dev_name(&rdev->dev), rdev_get_name(rdev));
-		return -EBUSY;
+		goto fail;
 	}
 
-	node = kzalloc(sizeof(struct regulator_map), GFP_KERNEL);
-	if (node == NULL)
-		return -ENOMEM;
+	list_add(&new_node->list, &regulator_map_list);
+	mutex_unlock(&regulator_list_mutex);
 
-	node->regulator = rdev;
-	node->supply = supply;
-
-	if (has_dev) {
-		node->dev_name = kstrdup(consumer_dev_name, GFP_KERNEL);
-		if (node->dev_name == NULL) {
-			kfree(node);
-			return -ENOMEM;
-		}
-	}
-
-	list_add(&node->list, &regulator_map_list);
 	return 0;
+
+fail:
+	mutex_unlock(&regulator_list_mutex);
+	kfree(new_node->dev_name);
+	kfree(new_node);
+	return -EBUSY;
 }
 
 static void unset_regulator_supplies(struct regulator_dev *rdev)
@@ -4081,33 +4090,35 @@ regulator_register(const struct regulator_desc *regulator_desc,
 	else if (regulator_desc->supply_name)
 		rdev->supply_name = regulator_desc->supply_name;
 
-	/*
-	 * Attempt to resolve the regulator supply, if specified,
-	 * but don't return an error if we fail because we will try
-	 * to resolve it again later as more regulators are added.
-	 */
-	if (regulator_resolve_supply(rdev))
-		rdev_dbg(rdev, "unable to resolve supply\n");
-
 	ret = set_machine_constraints(rdev, constraints);
+	if (ret == -EPROBE_DEFER) {
+		/* Regulator might be in bypass mode and so needs its supply
+		 * to set the constraints */
+		/* FIXME: this currently triggers a chicken-and-egg problem
+		 * when creating -SUPPLY symlink in sysfs to a regulator
+		 * that is just being created */
+		ret = regulator_resolve_supply(rdev);
+		if (!ret)
+			ret = set_machine_constraints(rdev, constraints);
+		else
+			rdev_dbg(rdev, "unable to resolve supply early: %pe\n",
+				 ERR_PTR(ret));
+	}
 	if (ret < 0)
 		goto wash;
 
 	/* add consumers devices */
 	if (init_data) {
-		mutex_lock(&regulator_list_mutex);
 		for (i = 0; i < init_data->num_consumer_supplies; i++) {
 			ret = set_consumer_device_supply(rdev,
 				init_data->consumer_supplies[i].dev_name,
 				init_data->consumer_supplies[i].supply);
 			if (ret < 0) {
-				mutex_unlock(&regulator_list_mutex);
 				dev_err(dev, "Failed to set supply %s\n",
 					init_data->consumer_supplies[i].supply);
 				goto unset_supplies;
 			}
 		}
-		mutex_unlock(&regulator_list_mutex);
 	}
 
 	if (!rdev->desc->ops->get_voltage &&
@@ -4173,6 +4184,107 @@ void regulator_unregister(struct regulator_dev *rdev)
 	device_unregister(&rdev->dev);
 }
 EXPORT_SYMBOL_GPL(regulator_unregister);
+
+#ifdef CONFIG_SEC_PM_DEBUG
+struct rdev_check_data {
+	struct regulator_dev *parent;
+	int level;
+};
+
+static void regulator_show_enabled_subtree(struct regulator_dev *rdev,
+					int level);
+
+static int regulator_show_enabled_children(struct device *dev, void *data)
+{
+	struct regulator_dev *rdev = dev_to_rdev(dev);
+	struct rdev_check_data *check_data = data;
+
+	if (rdev->supply && rdev->supply->rdev == check_data->parent)
+		regulator_show_enabled_subtree(rdev, check_data->level + 1);
+
+	return 0;
+}
+
+static void regulator_show_enabled_subtree(struct regulator_dev *rdev,
+					int level)
+{
+	struct regulation_constraints *c;
+	struct rdev_check_data check_data;
+
+	if (!rdev)
+		return;
+	if (rdev->use_count <= 0)
+		goto out;
+	pr_cont("%*s%-*s %3d %4d ",
+		   level * 3 + 1, "",
+		   30 - level * 3, rdev_get_name(rdev),
+		   rdev->use_count, rdev->constraints->initial_mode);
+
+	c = rdev->constraints;
+	if (c) {
+		switch (rdev->desc->type) {
+		case REGULATOR_VOLTAGE:
+			pr_cont("%5dmV %5dmV\n",
+				   c->min_uV / 1000, c->max_uV / 1000);
+			break;
+		case REGULATOR_CURRENT:
+			pr_cont("%5dmA %5dmA\n",
+				   c->min_uA / 1000, c->max_uA / 1000);
+			break;
+		}
+	}
+#if 0
+	struct regulator *consumer;
+
+	list_for_each_entry(consumer, &rdev->consumer_list, list) {
+		if (consumer->dev && consumer->dev->class == &regulator_class)
+			continue;
+
+		pr_cont("%*s%-*s ",
+			   (level + 1) * 3 + 1, "",
+			   30 - (level + 1) * 3,
+			   consumer->dev ? dev_name(consumer->dev) : "deviceless");
+
+		switch (rdev->desc->type) {
+		case REGULATOR_VOLTAGE:
+			pr_cont("%14dmV %5dmV\n",
+				   consumer->voltage[PM_SUSPEND_ON].min_uV / 1000,
+				   consumer->voltage[PM_SUSPEND_ON].max_uV / 1000);
+			break;
+		case REGULATOR_CURRENT:
+			pr_cont("\n");
+			break;
+		}
+	}
+#endif
+out:
+	check_data.level = level;
+	check_data.parent = rdev;
+
+	class_for_each_device(&regulator_class, NULL, &check_data,
+			      regulator_show_enabled_children);
+}
+
+static int _regulator_show_enabled(struct device *dev, void *data)
+{
+	struct regulator_dev *rdev = dev_to_rdev(dev);
+
+	if (!rdev->supply)
+		regulator_show_enabled_subtree(rdev, 0);
+
+	return 0;
+}
+
+int regulator_show_enabled(void)
+{
+	pr_info(" regulator                      use mode     min     max\n");
+	pr_info("--------------------------------------------------------\n");
+
+	return class_for_each_device(&regulator_class, NULL, NULL,
+				     _regulator_show_enabled);
+}
+EXPORT_SYMBOL_GPL(regulator_show_enabled);
+#endif /* CONFIG_SEC_PM_DEBUG */
 
 static int _regulator_suspend_prepare(struct device *dev, void *data)
 {

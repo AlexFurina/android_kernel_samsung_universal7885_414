@@ -28,7 +28,6 @@
 #include <linux/slab.h>
 
 #include "gnss_prj.h"
-#include "gnss_utils.h"
 
 #define WAKE_TIME   (HZ/2) /* 500 msec */
 
@@ -37,10 +36,8 @@ static void exynos_build_header(struct io_device *iod, struct link_device *ld,
 
 static inline void iodev_lock_wlock(struct io_device *iod)
 {
-	if (iod->waketime > 0 && !wake_lock_active(&iod->wakelock)) {
-		wake_unlock(&iod->wakelock);
+	if (iod->waketime > 0 && !wake_lock_active(&iod->wakelock))
 		wake_lock_timeout(&iod->wakelock, iod->waketime);
-	}
 }
 
 static inline int queue_skb_to_iod(struct sk_buff *skb, struct io_device *iod)
@@ -70,10 +67,10 @@ static inline int rx_frame_with_link_header(struct sk_buff *skb)
 	hdr = (struct exynos_link_header *)skb->data;
 	skb_pull(skb, EXYNOS_HEADER_SIZE);
 
-#ifdef DEBUG_GNSS_IPC_PKT
 	/* Print received data from GNSS */
+	/*
 	gnss_log_ipc_pkt(skb, RX);
-#endif
+	*/
 
 	return queue_skb_to_iod(skb, skbpriv(skb)->iod);
 }
@@ -249,12 +246,6 @@ static int io_dev_recv_skb_single_from_link_dev(struct io_device *iod,
 {
 	int err;
 
-	if (unlikely(atomic_read(&iod->opened) <= 0)) {
-		gif_err_limited("%s<-%s: ERR! %s is not opened\n",
-			iod->name, ld->name, iod->name);
-		return -ENODEV;
-	}
-
 	iodev_lock_wlock(iod);
 
 	if (skbpriv(skb)->lnk_hdr)
@@ -317,7 +308,7 @@ static unsigned int misc_poll(struct file *filp, struct poll_table_struct *wait)
 
 static int valid_cmd_arg(unsigned int cmd, unsigned long arg)
 {
-	switch (cmd) {
+	switch(cmd) {
 	case GNSS_IOCTL_RESET:
 	case GNSS_IOCTL_LOAD_FIRMWARE:
 	case GNSS_IOCTL_REQ_FAULT_INFO:
@@ -351,7 +342,7 @@ static int send_bcmd(struct io_device *iod, unsigned long arg)
 		goto bcmd_exit;
 	}
 
-	gif_info("flags : %d, cmd_id : %d, param1 : %d, param2 : %d(0x%x)\n",
+	gif_debug("flags : %d, cmd_id : %d, param1 : %d, param2 : %d(0x%x)\n",
 			bcmd_args.flags, bcmd_args.cmd_id, bcmd_args.param1,
 			bcmd_args.param2, bcmd_args.param2);
 	err = gc->ops.req_bcmd(gc, bcmd_args.cmd_id, bcmd_args.flags,
@@ -377,10 +368,27 @@ static int gnss_load_firmware(struct io_device *iod,
 {
 	struct link_device *ld = iod->ld;
 	int err = 0;
+	u32 boot_without_mbox = ld->gnss_data->boot_without_mbox;
 
-	gif_info("Load Firmware - fw size : %d, fw_offset : %d\n",
+	gif_debug("Load Firmware - fw size : %d, fw_offset : %d\n",
 			firmware_arg.firmware_size, firmware_arg.offset);
 
+	/* Use boot_without_mbox when can't use mailbox.
+	 * Instead of using mailbox to set bcmd,
+	 * set autorun command at the start of reserved memory.
+	 * Autorun command will occupy 0x10 memory.
+	 * So, the firmware_arg.offset will be 0x10 because of autorun command.
+	 */
+	if (boot_without_mbox && firmware_arg.offset == 0) {
+		if (!ld->set_autorun_cmd) {
+			gif_err("No set_autorun_cmd method\n");
+			err = -EFAULT;
+			goto load_firmware_exit;
+		}
+
+		firmware_arg.offset = AUTO_RUN_CMD_SIZE;
+		ld->set_autorun_cmd(ld, firmware_arg.firmware_size);
+	}
 	if (!ld->copy_reserved_from_user) {
 		gif_err("No copy_reserved_from_user method\n");
 		err = -EFAULT;
@@ -533,6 +541,17 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		skb_queue_purge(&iod->sk_rx_q);
 		return 0;
 
+	case GNSS_IOCTL_RELEASE_RESET:
+		gif_err("%s: GNSS_IOCTL_RELEASE_RESET\n", iod->name);
+
+		if (!gc->ops.gnss_release_reset) {
+			gif_err("%s: !gc->ops.gnss_release_reset\n", iod->name);
+			return -EINVAL;
+		}
+		gc->ops.gnss_release_reset(gc);
+		msleep(50);
+		return 0;
+
 	case GNSS_IOCTL_REQ_FAULT_INFO:
 		gif_err("%s: GNSS_IOCTL_REQ_FAULT_INFO\n", iod->name);
 
@@ -559,11 +578,11 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return size;
 
 	case GNSS_IOCTL_REQ_BCMD:
-		gif_info("%s: GNSS_IOCTL_REQ_BCMD\n", iod->name);
+		gif_debug("%s: GNSS_IOCTL_REQ_BCMD\n", iod->name);
 		return send_bcmd(iod, arg);
 
 	case GNSS_IOCTL_LOAD_FIRMWARE:
-		gif_info("%s: GNSS_IOCTL_LOAD_FIRMWARE\n", iod->name);
+		gif_debug("%s: GNSS_IOCTL_LOAD_FIRMWARE\n", iod->name);
 		return parsing_load_firmware(iod, arg);
 
 	case GNSS_IOCTL_READ_FIRMWARE:
@@ -654,10 +673,10 @@ static long misc_compat_ioctl(struct file *filp,
 
 	switch (cmd) {
 	case GNSS_IOCTL_LOAD_FIRMWARE:
-		gif_info("%s: GNSS_IOCTL_LOAD_FIRMWARE (32-bit)\n", iod->name);
+		gif_debug("%s: GNSS_IOCTL_LOAD_FIRMWARE (32-bit)\n", iod->name);
 		return parsing_load_firmware32(iod, realarg);
 	case GNSS_IOCTL_READ_FIRMWARE:
-		gif_info("%s: GNSS_IOCTL_READ_FIRMWARE (32-bit)\n", iod->name);
+		gif_debug("%s: GNSS_IOCTL_READ_FIRMWARE (32-bit)\n", iod->name);
 		return parsing_read_firmware32(iod, realarg);
 	}
 	return misc_ioctl(filp, cmd, realarg);
@@ -685,7 +704,7 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 
 	skb = alloc_skb(tx_bytes, GFP_KERNEL);
 	if (!skb) {
-		gif_err("%s: ERR! alloc_skb fail (tx_bytes:%ld)\n",
+		gif_debug("%s: ERR! alloc_skb fail (tx_bytes:%ld)\n",
 			iod->name, tx_bytes);
 		return -ENOMEM;
 	}
@@ -819,7 +838,7 @@ int exynos_init_gnss_io_device(struct io_device *iod)
 	iod->link_header = true;
 
 	/* Get data from link device */
-	gif_info("%s: init\n", iod->name);
+	gif_debug("%s: init\n", iod->name);
 	iod->recv_skb = io_dev_recv_skb_from_link_dev;
 	iod->recv_skb_single = io_dev_recv_skb_single_from_link_dev;
 
@@ -835,7 +854,7 @@ int exynos_init_gnss_io_device(struct io_device *iod)
 
 	ret = misc_register(&iod->miscdev);
 	if (ret)
-		gif_err("%s: ERR! misc_register failed\n", iod->name);
+		gif_debug("%s: ERR! misc_register failed\n", iod->name);
 
 	return ret;
 }

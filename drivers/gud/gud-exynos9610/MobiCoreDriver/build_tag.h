@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2013-2018 TRUSTONIC LIMITED
  * All Rights Reserved.
@@ -13,5 +14,5 @@
  */
 #ifndef MOBICORE_COMPONENT_BUILD_TAG
 #define MOBICORE_COMPONENT_BUILD_TAG \
-	"t-base-Exynos-Android-410a-V003-20180920_200500_55985_85552"
+	"t-base-Exynos_64-Android-500a-V005-20190919_114111_73510_99867"
 #endif

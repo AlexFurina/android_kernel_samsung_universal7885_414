@@ -140,6 +140,7 @@ enum
 	TCP_MIB_INERRS,				/* InErrs */
 	TCP_MIB_OUTRSTS,			/* OutRsts */
 	TCP_MIB_CSUMERRORS,			/* InCsumErrors */
+	TCP_MIB_RTONULLSKB,			/* RtoNullSkb */
 	__TCP_MIB_MAX
 };
 
@@ -278,6 +279,7 @@ enum
 	LINUX_MIB_TCPKEEPALIVE,			/* TCPKeepAlive */
 	LINUX_MIB_TCPMTUPFAIL,			/* TCPMTUPFail */
 	LINUX_MIB_TCPMTUPSUCCESS,		/* TCPMTUPSuccess */
+	LINUX_MIB_TCPWQUEUETOOBIG,		/* TCPWqueueTooBig */
 	__LINUX_MIB_MAX
 };
 

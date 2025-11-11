@@ -220,6 +220,27 @@ static inline struct page *dio_get_page(struct dio *dio,
 	return dio->pages[sdio->head];
 }
 
+/*
+ * Warn about a page cache invalidation failure during a direct io write.
+ */
+void dio_warn_stale_pagecache(struct file *filp)
+{
+	static DEFINE_RATELIMIT_STATE(_rs, 86400 * HZ, DEFAULT_RATELIMIT_BURST);
+	char pathname[128];
+	struct inode *inode = file_inode(filp);
+	char *path;
+
+	errseq_set(&inode->i_mapping->wb_err, -EIO);
+	if (__ratelimit(&_rs)) {
+		path = file_path(filp, pathname, sizeof(pathname));
+		if (IS_ERR(path))
+			path = "(unknown)";
+		pr_crit("Page cache invalidation failure on direct I/O.  Possible data corruption due to collision with buffered I/O!\n");
+		pr_crit("File: %s PID: %d Comm: %.20s\n", path, current->pid,
+			current->comm);
+	}
+}
+
 /**
  * dio_complete() - called when all DIO BIO I/O has been completed
  * @offset: the byte offset in the file of the completed operation
@@ -291,7 +312,8 @@ static ssize_t dio_complete(struct dio *dio, ssize_t ret, unsigned int flags)
 		err = invalidate_inode_pages2_range(dio->inode->i_mapping,
 					offset >> PAGE_SHIFT,
 					(offset + ret - 1) >> PAGE_SHIFT);
-		WARN_ON_ONCE(err);
+		if (err)
+			dio_warn_stale_pagecache(dio->iocb->ki_filp);
 	}
 
 	if (!(dio->flags & DIO_SKIP_DIO_COUNT))
@@ -438,7 +460,7 @@ dio_bio_alloc(struct dio *dio, struct dio_submit *sdio,
  *
  * bios hold a dio reference between submit_bio and ->end_io.
  */
- #ifdef CONFIG_CRYPTO_DISKCIPHER_DUN
+#ifdef CONFIG_CRYPTO_DISKCIPHER
 static bool is_inode_filesystem_type(const struct inode *inode,
 					const char *fs_type)
 {
@@ -468,17 +490,15 @@ static inline void dio_bio_submit(struct dio *dio, struct dio_submit *sdio)
 
 #if defined(CONFIG_CRYPTO_DISKCIPHER)
 	if (dio->inode && fscrypt_has_encryption_key(dio->inode)) {
-		fscrypt_set_bio(dio->inode, bio, 0);
-		crypto_diskcipher_debug(FS_DIO, bio->bi_opf);
-#if defined(CONFIG_CRYPTO_DISKCIPHER_DUN)
 		 /* device unit number for iv sector */
-		#define PG_DUN(i,p) 										   \
+		#define PG_DUN(i, p)	\
 			((((i)->i_ino & 0xffffffff) << 32) | ((p) & 0xffffffff))
 
 		if (is_inode_filesystem_type(dio->inode, "f2fs"))
 			fscrypt_set_bio(dio->inode, bio, PG_DUN(dio->inode,
 				(sdio->logical_offset_in_bio >> PAGE_SHIFT)));
-#endif
+		else
+			fscrypt_set_bio(dio->inode, bio, 0);
 	}
 #endif
 

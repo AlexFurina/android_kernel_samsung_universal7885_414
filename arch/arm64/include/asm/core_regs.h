@@ -66,6 +66,10 @@
 #define DBGWVRn(n)	(0x800 + (n * 0x10)) /* 64bit */
 #define DBGWCRn(n)	(0x808 + (n * 0x10))
 
+/* PRSR bit filed */
+#define POWER_UP	(1 << 0)
+#define RESET_STATE	(1 << 2)
+
 /* DIDR or ID_AA64DFR0_EL1 bit */
 #define DEBUG_ARCH_V8	(0x6)
 

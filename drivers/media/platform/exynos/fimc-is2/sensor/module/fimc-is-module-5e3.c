@@ -142,7 +142,7 @@ static int sensor_5e3_init(struct v4l2_subdev *subdev, u32 val)
 	struct fimc_is_module_5e3 *module_5e3;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	module_5e3 = module->private_data;
@@ -337,8 +337,8 @@ static int sensor_5e3_s_param(struct v4l2_subdev *subdev, struct v4l2_streamparm
 	struct v4l2_fract *tpf;
 	u64 duration;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!param);
+	BUG_ON(!subdev);
+	BUG_ON(!param);
 
 	pr_info("%s\n", __func__);
 
@@ -404,7 +404,7 @@ int sensor_5e3_stream_on(struct v4l2_subdev *subdev)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	sensor = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!sensor)) {
@@ -436,7 +436,7 @@ int sensor_5e3_stream_off(struct v4l2_subdev *subdev)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	sensor = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!sensor)) {
@@ -476,7 +476,7 @@ int sensor_5e3_s_duration(struct v4l2_subdev *subdev, u64 duration)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	pr_info("%s\n", __func__);
 
@@ -526,7 +526,7 @@ int sensor_5e3_s_exposure(struct v4l2_subdev *subdev, u64 exposure)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	pr_info("%s(%d)\n", __func__, (u32)exposure);
 
@@ -629,7 +629,7 @@ static int sensor_5e3_power_setpin(struct platform_device *pdev,
 	int gpio_reset = 0;
 	int gpio_none = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -694,7 +694,7 @@ int sensor_5e3_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);

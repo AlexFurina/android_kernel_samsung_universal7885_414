@@ -32,9 +32,6 @@
 #if defined(CONFIG_SECURE_CAMERA_USE)
 #include <linux/smc.h>
 #endif
-#ifdef CONFIG_SCHED_EHMP
-#include <linux/ehmp.h>
-#endif
 
 #include "fimc-is-core.h"
 #include "fimc-is-cmd.h"
@@ -57,10 +54,6 @@ extern struct pm_qos_request exynos_isp_qos_int;
 extern struct pm_qos_request exynos_isp_qos_cam;
 extern struct pm_qos_request exynos_isp_qos_mem;
 extern struct pm_qos_request exynos_isp_qos_hpg;
-
-#ifdef CONFIG_SCHED_EHMP
-extern struct gb_qos_request gb_req;
-#endif
 
 int fimc_is_sensor_runtime_suspend(struct device *dev);
 int fimc_is_sensor_runtime_resume(struct device *dev);
@@ -106,7 +99,7 @@ int fimc_is_sensor_g_module(struct fimc_is_device_sensor *device,
 {
 	int ret = 0;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	if (!device->subdev_module) {
 		merr("sub module is NULL", device);
@@ -139,7 +132,7 @@ int fimc_is_sensor_deinit_module(struct fimc_is_module_enum *module)
 	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_sensor_cfg cfg;
 
-	FIMC_BUG(!module->subdev);
+	BUG_ON(!module->subdev);
 
 	sensor = v4l2_get_subdev_hostdata(module->subdev);
 
@@ -188,7 +181,7 @@ static int fimc_is_sensor_g_device(struct platform_device *pdev,
 {
 	int ret = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	*device = (struct fimc_is_device_sensor *)platform_get_drvdata(pdev);
 	if (!*device) {
@@ -217,7 +210,7 @@ struct fimc_is_sensor_cfg * fimc_is_sensor_g_mode(struct fimc_is_device_sensor *
 	struct fimc_is_module_enum *module;
 	int deviation;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(device->subdev_module);
 	if (!module) {
@@ -273,11 +266,16 @@ int fimc_is_sensor_mclk_on(struct fimc_is_device_sensor *device, u32 scenario, u
 {
 	int ret = 0;
 	struct exynos_platform_fimc_is_sensor *pdata;
+#ifdef CONFIG_COMPANION_USE
+	struct fimc_is_core *core;
+	struct fimc_is_device_preproc *device_preproc = NULL;
+	struct fimc_is_module_enum *module_preproc = NULL;
+#endif
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->private_data);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
 
 	pdata = device->pdata;
 
@@ -290,6 +288,20 @@ int fimc_is_sensor_mclk_on(struct fimc_is_device_sensor *device, u32 scenario, u
 		minfo("%s : already clk on", device, __func__);
 		goto p_err;
 	}
+
+#ifdef CONFIG_COMPANION_USE
+	core = device->private_data;
+	device_preproc = &core->preproc;
+	module_preproc = device_preproc->module;
+
+	if (module_preproc != NULL && module_preproc->position == device->position) {
+		if (test_bit(FIMC_IS_PREPROC_MCLK_ON, &device_preproc->state)) {
+			minfo("%s : sensor mclk will on with companion mclk.\n", device, __func__);
+			set_bit(FIMC_IS_SENSOR_MCLK_ON, &device->state);
+			goto p_err;
+		}
+	}
+#endif
 
 	if (!pdata->mclk_on) {
 		merr("mclk_on is NULL", device);
@@ -315,11 +327,16 @@ int fimc_is_sensor_mclk_off(struct fimc_is_device_sensor *device, u32 scenario, 
 {
 	int ret = 0;
 	struct exynos_platform_fimc_is_sensor *pdata;
+#ifdef CONFIG_COMPANION_USE
+	struct fimc_is_core *core;
+	struct fimc_is_device_preproc *device_preproc = NULL;
+	struct fimc_is_module_enum *module_preproc = NULL;
+#endif
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->private_data);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
 
 	pdata = device->pdata;
 
@@ -327,6 +344,19 @@ int fimc_is_sensor_mclk_off(struct fimc_is_device_sensor *device, u32 scenario, 
 		minfo("%s : already clk off", device, __func__);
 		goto p_err;
 	}
+
+#ifdef CONFIG_COMPANION_USE
+	core = device->private_data;
+	device_preproc = &core->preproc;
+	module_preproc = device_preproc->module;
+
+	if (module_preproc != NULL && module_preproc->position == device->position) {
+		if (test_bit(FIMC_IS_PREPROC_MCLK_ON, &device_preproc->state)) {
+			info("%s : companion clk is on. sensor mclk will off with companion mclk\n", __func__);
+			goto p_err;
+		}
+	}
+#endif
 
 	if (!pdata->mclk_off) {
 		merr("mclk_off is NULL", device);
@@ -354,10 +384,10 @@ static int fimc_is_sensor_iclk_on(struct fimc_is_device_sensor *device)
 	struct exynos_platform_fimc_is_sensor *pdata;
 	struct fimc_is_core *core;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->private_data);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
 
 	core = device->private_data;
 	pdata = device->pdata;
@@ -403,10 +433,10 @@ int fimc_is_sensor_iclk_off(struct fimc_is_device_sensor *device)
 	struct exynos_platform_fimc_is_sensor *pdata;
 	struct fimc_is_core *core;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->private_data);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
 
 	core = device->private_data;
 	pdata = device->pdata;
@@ -442,10 +472,10 @@ int fimc_is_sensor_gpio_on(struct fimc_is_device_sensor *device)
 	struct fimc_is_module_enum *module;
 	struct fimc_is_vender *vender;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->private_data);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
 
 	module = NULL;
 	gpio_scenario = GPIO_SCENARIO_ON;
@@ -532,10 +562,10 @@ int fimc_is_sensor_gpio_off(struct fimc_is_device_sensor *device)
 	struct fimc_is_device_preproc *device_preproc = NULL;
 	struct fimc_is_module_enum *module_preproc = NULL;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->private_data);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->private_data);
 
 	module = NULL;
 	gpio_scenario = GPIO_SCENARIO_OFF;
@@ -623,9 +653,9 @@ int fimc_is_sensor_gpio_dbg(struct fimc_is_device_sensor *device)
 	struct fimc_is_module_enum *module;
 	struct exynos_platform_fimc_is_module *pdata;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdev);
-	FIMC_BUG(!device->pdata);
+	BUG_ON(!device);
+	BUG_ON(!device->pdev);
+	BUG_ON(!device->pdata);
 
 	ret = fimc_is_sensor_g_module(device, &module);
 	if (ret) {
@@ -682,7 +712,7 @@ static void fimc_is_sensor_dtp(unsigned long data)
 	unsigned long flags;
 	u32 i;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	if (device->dtp_del_flag) {
 		del_timer(&device->dtp_timer);
@@ -740,7 +770,7 @@ static void fimc_is_sensor_dtp(unsigned long data)
 static int fimc_is_sensor_start(struct fimc_is_device_sensor *device)
 {
 	int ret = 0;
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	if (test_bit(FIMC_IS_SENSOR_DRIVING, &device->state)) {
 		struct v4l2_subdev *subdev;
@@ -792,7 +822,7 @@ static int fimc_is_sensor_stop(struct fimc_is_device_sensor *device)
 {
 	int ret = 0;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	if (test_bit(FIMC_IS_SENSOR_DRIVING, &device->state)) {
 		struct v4l2_subdev *subdev;
@@ -843,8 +873,8 @@ int fimc_is_sensor_subdev_tag(struct fimc_is_device_sensor *device,
 {
 	int ret = 0;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!frame);
+	BUG_ON(!device);
+	BUG_ON(!frame);
 
 	if (frame->stream) {
 		frame->stream->fcount = frame->fcount;
@@ -864,8 +894,8 @@ int fimc_is_sensor_dm_tag(struct fimc_is_device_sensor *device,
 	int ret = 0;
 	u32 hashkey;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!frame);
+	BUG_ON(!device);
+	BUG_ON(!frame);
 
 	hashkey = frame->fcount % FIMC_IS_TIMESTAMP_HASH_KEY;
 	if (frame->shot) {
@@ -893,8 +923,8 @@ static int fimc_is_sensor_notify_by_fstr(struct fimc_is_device_sensor *device, v
 	struct v4l2_control ctrl;
 	u32 cur_frameptr = 0;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!arg);
+	BUG_ON(!device);
+	BUG_ON(!arg);
 
 	device->fcount = *(u32 *)arg;
 	framemgr = GET_FRAMEMGR(device->vctx);
@@ -994,7 +1024,7 @@ static int fimc_is_sensor_notify_by_fend(struct fimc_is_device_sensor *device, v
 	struct fimc_is_video_ctx *vctx;
 	struct fimc_is_frame *frame;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 #ifdef ENABLE_DTP
 	if (device->dtp_check)
@@ -1014,7 +1044,7 @@ static int fimc_is_sensor_notify_by_fend(struct fimc_is_device_sensor *device, v
 		/* get video context */
 		vctx = (frame->subdev) ?
 			((struct fimc_is_subdev *)frame->subdev)->vctx : device->vctx;
-		FIMC_BUG(!vctx);
+		BUG_ON(!vctx);
 
 		/* for debug */
 		DBG_DIGIT_TAG(GROUP_SLOT_MAX, 0, GET_QUEUE(vctx), frame, frame->fcount);
@@ -1033,7 +1063,7 @@ static void fimc_is_sensor_notify(struct v4l2_subdev *subdev,
 	int ret = 0;
 	struct fimc_is_device_sensor *device;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	device = v4l2_get_subdev_hostdata(subdev);
 
@@ -1071,7 +1101,7 @@ static void fimc_is_sensor_instanton(struct work_struct *data)
 	u32 instant_cnt;
 	struct fimc_is_device_sensor *device;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	device = container_of(data, struct fimc_is_device_sensor, instant_work);
 	instant_cnt = device->instant_cnt;
@@ -1138,7 +1168,7 @@ p_err:
 	device->instant_ret = ret;
 }
 
-static int __init fimc_is_sensor_probe(struct platform_device *pdev)
+static int fimc_is_sensor_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	u32 instance = -1;
@@ -1147,7 +1177,7 @@ static int __init fimc_is_sensor_probe(struct platform_device *pdev)
 	struct fimc_is_device_sensor *device;
 	void *pdata;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	if (fimc_is_dev == NULL) {
 		warn("fimc_is_dev is not yet probed(sensor)");
@@ -1323,14 +1353,23 @@ p_err:
 	return ret;
 }
 
+static int fimc_is_sensor_remove(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	info("%s\n", __func__);
+
+	return ret;
+}
+
 int fimc_is_sensor_open(struct fimc_is_device_sensor *device,
 	struct fimc_is_video_ctx *vctx)
 {
 	int ret = 0;
 	int ret_err = 0;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->subdev_csi);
+	BUG_ON(!device);
+	BUG_ON(!device->subdev_csi);
 
 	if (test_bit(FIMC_IS_SENSOR_OPEN, &device->state)) {
 		merr("already open", device);
@@ -1434,8 +1473,8 @@ int fimc_is_sensor_close(struct fimc_is_device_sensor *device)
 	struct fimc_is_device_ischain *ischain;
 	struct fimc_is_group *group_3aa;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->vctx);
+	BUG_ON(!device);
+	BUG_ON(!device->vctx);
 
 	if (!test_bit(FIMC_IS_SENSOR_OPEN, &device->state)) {
 		merr("already close", device);
@@ -1517,10 +1556,10 @@ int fimc_is_sensor_s_input(struct fimc_is_device_sensor *device,
 	struct fimc_is_vender *vender;
 	u32 sensor_index;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->subdev_csi);
-	FIMC_BUG(input >= SENSOR_NAME_END);
+	BUG_ON(!device);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->subdev_csi);
+	BUG_ON(input >= SENSOR_NAME_END);
 
 	if (test_bit(FIMC_IS_SENSOR_S_INPUT, &device->state)) {
 		merr("already s_input", device);
@@ -1618,6 +1657,20 @@ int fimc_is_sensor_s_input(struct fimc_is_device_sensor *device,
 	}
 
 	fimc_is_sensor_peri_init_work(sensor_peri);
+
+	/* set preproc data */
+	if (device->preprocessor && module->ext.preprocessor_con.product_name == device->preprocessor->id) {
+		u32 i2c_channel = module->ext.preprocessor_con.peri_info1.peri_setting.i2c.channel;
+		sensor_peri->subdev_preprocessor = device->subdev_preprocessor;
+		sensor_peri->preprocessor = device->preprocessor;
+		sensor_peri->preprocessor->i2c_lock = &core->i2c_lock[i2c_channel];
+		if (sensor_peri->preprocessor) {
+			set_bit(FIMC_IS_SENSOR_PREPROCESSOR_AVAILABLE, &sensor_peri->peri_state);
+		}
+	} else {
+		sensor_peri->subdev_preprocessor = NULL;
+		sensor_peri->preprocessor = NULL;
+	}
 #endif
 
 	device->pdata->scenario = scenario;
@@ -1663,7 +1716,11 @@ int fimc_is_sensor_s_input(struct fimc_is_device_sensor *device,
 
 		/* DEVFREQ lock */
 		if (int_qos > 0)
+#ifdef CONFIG_SOC_EXYNOS8895
+			pm_qos_add_request(&exynos_isp_qos_int, PM_QOS_INTCAM_THROUGHPUT, int_qos);
+#else
 			pm_qos_add_request(&exynos_isp_qos_int, PM_QOS_DEVICE_THROUGHPUT, int_qos);
+#endif
 		if (mif_qos > 0)
 			pm_qos_add_request(&exynos_isp_qos_mem, PM_QOS_BUS_THROUGHPUT, mif_qos);
 		if (cam_qos > 0)
@@ -1740,11 +1797,11 @@ static int fimc_is_sensor_s_format(void *qdevice,
 	u32 width;
 	u32 height;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->subdev_module);
-	FIMC_BUG(!device->subdev_csi);
-	FIMC_BUG(!device->subdev_flite);
-	FIMC_BUG(!queue);
+	BUG_ON(!device);
+	BUG_ON(!device->subdev_module);
+	BUG_ON(!device->subdev_csi);
+	BUG_ON(!device->subdev_flite);
+	BUG_ON(!queue);
 
 	subdev_module = device->subdev_module;
 	subdev_csi = device->subdev_csi;
@@ -1765,6 +1822,7 @@ static int fimc_is_sensor_s_format(void *qdevice,
 	subdev_format.format.field = format->field;
 	subdev_format.format.width = width;
 	subdev_format.format.height = height;
+	subdev_format.format.reserved[0] = format->bitwidth;
 
 #ifdef ENABLE_IS_CORE
 	if (test_bit(FIMC_IS_SENSOR_DRIVING, &device->state))
@@ -1832,10 +1890,10 @@ int fimc_is_sensor_s_framerate(struct fimc_is_device_sensor *device,
 	struct v4l2_fract *tpf;
 	u32 framerate = 0;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->subdev_module);
-	FIMC_BUG(!device->subdev_csi);
-	FIMC_BUG(!param);
+	BUG_ON(!device);
+	BUG_ON(!device->subdev_module);
+	BUG_ON(!device->subdev_csi);
+	BUG_ON(!param);
 
 	cp = &param->parm.capture;
 	tpf = &cp->timeperframe;
@@ -1910,10 +1968,10 @@ int fimc_is_sensor_s_ctrl(struct fimc_is_device_sensor *device,
 	int ret = 0;
 	struct v4l2_subdev *subdev_module;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->subdev_module);
-	FIMC_BUG(!device->subdev_csi);
-	FIMC_BUG(!ctrl);
+	BUG_ON(!device);
+	BUG_ON(!device->subdev_module);
+	BUG_ON(!device->subdev_csi);
+	BUG_ON(!ctrl);
 
 	subdev_module = device->subdev_module;
 
@@ -1934,8 +1992,8 @@ int fimc_is_sensor_s_bns(struct fimc_is_device_sensor *device,
 	struct v4l2_subdev *subdev_flite;
 	u32 sensor_width, sensor_height;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->subdev_flite);
+	BUG_ON(!device);
+	BUG_ON(!device->subdev_flite);
 
 	subdev_flite = device->subdev_flite;
 
@@ -1964,7 +2022,7 @@ int fimc_is_sensor_s_frame_duration(struct fimc_is_device_sensor *device,
 	struct v4l2_subdev *subdev_module;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	subdev_module = device->subdev_module;
 	if (!subdev_module) {
@@ -2004,7 +2062,7 @@ int fimc_is_sensor_s_exposure_time(struct fimc_is_device_sensor *device,
 	struct v4l2_subdev *subdev_module;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	subdev_module = device->subdev_module;
 	if (!subdev_module) {
@@ -2077,10 +2135,10 @@ int fimc_is_sensor_g_ctrl(struct fimc_is_device_sensor *device,
 	int ret = 0;
 	struct v4l2_subdev *subdev_module;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->subdev_module);
-	FIMC_BUG(!device->subdev_csi);
-	FIMC_BUG(!ctrl);
+	BUG_ON(!device);
+	BUG_ON(!device->subdev_module);
+	BUG_ON(!device->subdev_csi);
+	BUG_ON(!ctrl);
 
 	subdev_module = device->subdev_module;
 
@@ -2097,37 +2155,37 @@ p_err:
 
 int fimc_is_sensor_g_instance(struct fimc_is_device_sensor *device)
 {
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 	return device->instance;
 }
 
 int fimc_is_sensor_g_fcount(struct fimc_is_device_sensor *device)
 {
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 	return device->fcount;
 }
 
 int fimc_is_sensor_g_framerate(struct fimc_is_device_sensor *device)
 {
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 	return device->image.framerate;
 }
 
 int fimc_is_sensor_g_width(struct fimc_is_device_sensor *device)
 {
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 	return device->image.window.width;
 }
 
 int fimc_is_sensor_g_height(struct fimc_is_device_sensor *device)
 {
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 	return device->image.window.height;
 }
 
 int fimc_is_sensor_g_bns_width(struct fimc_is_device_sensor *device)
 {
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	if (device->image.window.otf_width)
 		return device->image.window.otf_width;
@@ -2137,7 +2195,7 @@ int fimc_is_sensor_g_bns_width(struct fimc_is_device_sensor *device)
 
 int fimc_is_sensor_g_bns_height(struct fimc_is_device_sensor *device)
 {
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 	if (device->image.window.otf_height)
 		return device->image.window.otf_height;
 
@@ -2150,7 +2208,7 @@ int fimc_is_sensor_g_bns_ratio(struct fimc_is_device_sensor *device)
 	u32 sensor_width, sensor_height;
 	u32 bns_width, bns_height;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	sensor_width = fimc_is_sensor_g_width(device);
 	sensor_height = fimc_is_sensor_g_height(device);
@@ -2168,8 +2226,8 @@ int fimc_is_sensor_g_bratio(struct fimc_is_device_sensor *device)
 	int binning = 0;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->subdev_module);
+	BUG_ON(!device);
+	BUG_ON(!device->subdev_module);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(device->subdev_module);
 	if (!module) {
@@ -2222,21 +2280,27 @@ int fimc_is_sensor_register_itf(struct fimc_is_device_sensor *device)
 #ifndef DISABLE_LIB
 	register_sensor_interface register_sensor_itf =
 		(register_sensor_interface)SENSOR_REGISTER_FUNC_ADDR;
+#ifdef CONFIG_COMPANION_DIRECT_USE
+#ifdef USE_RTA_BINARY
+	register_sensor_interface register_preprocessor_itf =
+		(register_sensor_interface)PREPROC_REGISTER_FUNC_ADDR;
+#endif
+#endif
 #endif
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	subdev = device->subdev_module;
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!module);
+	BUG_ON(!module);
 
 	sensor_peri = (struct fimc_is_device_sensor_peri *)module->private_data;
-	FIMC_BUG(!sensor_peri);
+	BUG_ON(!sensor_peri);
 
 	pdata = module->pdata;
-	FIMC_BUG(!pdata);
+	BUG_ON(!pdata);
 
 #if !defined(DISABLE_LIB)
 	register_sensor_itf = (register_sensor_interface)SENSOR_REGISTER_FUNC_ADDR;
@@ -2265,6 +2329,26 @@ int fimc_is_sensor_register_itf(struct fimc_is_device_sensor *device)
 		err("[SEN:%d] register_sensor_itf(rta) failed(%d)", module->sensor_id, ret);
 		goto p_err;
 	}
+
+#ifdef CONFIG_COMPANION_DIRECT_USE
+	if (test_bit(FIMC_IS_SENSOR_PREPROCESSOR_AVAILABLE, &sensor_peri->peri_state) &&
+			pdata->preprocessor_product_name != PREPROCESSOR_NAME_NOTHING) {
+		dbg("%s(%d): call register_preprocessor_itf \n", __func__, __LINE__);
+
+		register_preprocessor_itf = (register_sensor_interface)PREPROC_REGISTER_FUNC_ADDR;
+#ifdef ENABLE_FPSIMD_FOR_USER
+		fpsimd_get();
+		ret = register_preprocessor_itf((void *)&sensor_peri->preprocessor_inferface);
+		fpsimd_put();
+#else
+		ret = register_preprocessor_itf((void *)&sensor_peri->preprocessor_inferface);
+#endif
+		if (ret < 0) {
+			err("register_preprocessor_itf failed(%d)", ret);
+			goto p_err;
+		}
+	}
+#endif
 #endif
 #endif
 
@@ -2283,7 +2367,7 @@ int fimc_is_sensor_subdev_buffer_queue(struct fimc_is_device_sensor *device,
 	struct v4l2_subdev *subdev_csi;
 	struct fimc_is_subdev *subdev = NULL;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	subdev_csi = device->subdev_csi;
 	if (unlikely(!subdev_csi)) {
@@ -2349,7 +2433,7 @@ int fimc_is_sensor_buffer_queue(struct fimc_is_device_sensor *device,
 	struct fimc_is_framemgr *framemgr;
 	struct v4l2_subdev *subdev_flite, *subdev_csi;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	subdev_flite = device->subdev_flite;
 	if (unlikely(!subdev_flite)) {
@@ -2468,8 +2552,8 @@ static int fimc_is_sensor_back_start(void *qdevice,
 	struct v4l2_subdev *subdev_flite;
 	struct fimc_is_device_flite *flite;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->subdev_flite);
+	BUG_ON(!device);
+	BUG_ON(!device->subdev_flite);
 
 	subdev_flite = device->subdev_flite;
 	enable = FLITE_ENABLE_FLAG;
@@ -2484,13 +2568,6 @@ static int fimc_is_sensor_back_start(void *qdevice,
 	if (ret) {
 		merr("hw_camif_cfg is error(%d)", device, ret);
 		ret = -EINVAL;
-		goto p_err;
-	}
-
-	ret = v4l2_subdev_call(device->subdev_module, video,
-				s_routing, 0, 0, 0);
-	if (ret) {
-		merr("failed at s_routing for module(%d)", device, ret);
 		goto p_err;
 	}
 
@@ -2536,8 +2613,8 @@ static int fimc_is_sensor_back_stop(void *qdevice,
 	struct fimc_is_device_sensor *device = qdevice;
 	struct v4l2_subdev *subdev_flite;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->subdev_flite);
+	BUG_ON(!device);
+	BUG_ON(!device->subdev_flite);
 
 	enable = 0;
 	subdev_flite = device->subdev_flite;
@@ -2558,6 +2635,19 @@ static int fimc_is_sensor_back_stop(void *qdevice,
 		goto p_err;
 	}
 
+#if defined(CONFIG_SECURE_CAMERA_USE)
+		if (device->pdata->scenario == SENSOR_SCENARIO_SECURE) {
+	/* HACK :: smc code is not prepared 	ret = exynos_smc(MC_SECURE_CAMERA_UNPREPARE, 0, 0, 0); */
+			if(ret != 0) {
+				merr("[SMC] MC_SECURE_CAMERA_UNPREPARE fail(%d)\n", device, ret);
+			} else {
+				minfo("[SMC] Call MC_SECURE_CAMERA_UNPREPARE ret(%d) / smc_state(%d->%d)\n",
+							device, ret, device->smc_state, FIMC_IS_SENSOR_SMC_UNPREPARE);
+				device->smc_state = FIMC_IS_SENSOR_SMC_UNPREPARE;
+			}
+		}
+#endif
+
 	clear_bit(FIMC_IS_SENSOR_S_CONFIG, &device->state);
 	clear_bit(FIMC_IS_SENSOR_BACK_START, &device->state);
 
@@ -2575,9 +2665,9 @@ int fimc_is_sensor_front_start(struct fimc_is_device_sensor *device,
 	struct v4l2_subdev *subdev_csi;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->pdata);
-	FIMC_BUG(!device->subdev_csi);
+	BUG_ON(!device);
+	BUG_ON(!device->pdata);
+	BUG_ON(!device->subdev_csi);
 
 	if (test_bit(FIMC_IS_SENSOR_FRONT_START, &device->state)) {
 		merr("already front start", device);
@@ -2679,7 +2769,7 @@ int fimc_is_sensor_front_stop(struct fimc_is_device_sensor *device)
 	int ret = 0;
 	struct v4l2_subdev *subdev_csi;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	if (!test_bit(FIMC_IS_SENSOR_FRONT_START, &device->state)) {
 		mwarn("already front stop", device);
@@ -2699,18 +2789,6 @@ int fimc_is_sensor_front_stop(struct fimc_is_device_sensor *device)
 	ret = fimc_is_subdev_internal_stop((void *)device, FIMC_IS_DEVICE_SENSOR);
 	if (ret)
 		merr("subdev internal stop is fail(%d)", device, ret);
-#if defined(CONFIG_SECURE_CAMERA_USE)
-	if (device->pdata->scenario == SENSOR_SCENARIO_SECURE) {
-/* HACK :: smc code is not prepared		ret = exynos_smc(MC_SECURE_CAMERA_UNPREPARE, 0, 0, 0); */
-		if(ret != 0) {
-			merr("[SMC] MC_SECURE_CAMERA_UNPREPARE fail(%d)\n", device, ret);
-		} else {
-			minfo("[SMC] Call MC_SECURE_CAMERA_UNPREPARE ret(%d) / smc_state(%d->%d)\n",
-						device, ret, device->smc_state, FIMC_IS_SENSOR_SMC_UNPREPARE);
-			device->smc_state = FIMC_IS_SENSOR_SMC_UNPREPARE;
-		}
-	}
-#endif
 
 	set_bit(FIMC_IS_SENSOR_BACK_NOWAIT_STOP, &device->state);
 	clear_bit(FIMC_IS_SENSOR_FRONT_START, &device->state);
@@ -2826,9 +2904,6 @@ int fimc_is_sensor_runtime_suspend(struct device *dev)
 #if defined(CONFIG_HMP_VARIABLE_SCALE)
 		if (core->resourcemgr.dvfs_ctrl.cur_hmp_bst)
 			set_hmp_boost(0);
-#elif defined(CONFIG_SCHED_EHMP)
-		if (core->resourcemgr.dvfs_ctrl.cur_hmp_bst)
-			gb_qos_update_request(&gb_req, 0);
 #endif
 	}
 #endif
@@ -2913,6 +2988,8 @@ static const struct of_device_id exynos_fimc_is_sensor_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_match);
 
 static struct platform_driver fimc_is_sensor_driver = {
+	.probe		= fimc_is_sensor_probe,
+	.remove 	= fimc_is_sensor_remove,
 	.driver = {
 		.name	= FIMC_IS_SENSOR_DEV_NAME,
 		.owner	= THIS_MODULE,
@@ -2932,6 +3009,8 @@ static struct platform_device_id fimc_is_sensor_driver_ids[] = {
 MODULE_DEVICE_TABLE(platform, fimc_is_sensor_driver_ids);
 
 static struct platform_driver fimc_is_sensor_driver = {
+	.probe		= fimc_is_sensor_probe,
+	.remove 	= __devexit_p(fimc_is_sensor_remove),
 	.id_table	= fimc_is_sensor_driver_ids,
 	.driver	  = {
 		.name	= FIMC_IS_SENSOR_DEV_NAME,
@@ -2943,17 +3022,19 @@ static struct platform_driver fimc_is_sensor_driver = {
 
 static int __init fimc_is_sensor_init(void)
 {
-	int ret;
-
-	ret = platform_driver_probe(&fimc_is_sensor_driver,
-				fimc_is_sensor_probe);
+	int ret = platform_driver_register(&fimc_is_sensor_driver);
 	if (ret)
-		err("failed to probe %s driver: %d\n",
-			FIMC_IS_SENSOR_DEV_NAME, ret);
+		err("platform_driver_register failed: %d\n", ret);
 
 	return ret;
 }
-device_initcall_sync(fimc_is_sensor_init);
+late_initcall(fimc_is_sensor_init);
+
+static void __exit fimc_is_sensor_exit(void)
+{
+	platform_driver_unregister(&fimc_is_sensor_driver);
+}
+module_exit(fimc_is_sensor_exit);
 
 MODULE_AUTHOR("Gilyeon lim<kilyeon.im@samsung.com>");
 MODULE_DESCRIPTION("Exynos FIMC_IS_SENSOR driver");

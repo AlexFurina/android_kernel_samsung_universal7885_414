@@ -37,24 +37,6 @@
 
 #include "phy-exynos-usbdrd.h"
 #include "phy-exynos-debug.h"
-/*
-extern int sm5713_get_usb_connect(void);
-*/
-
-static void exynos_usbdrd_check_connection(struct exynos_usbdrd_phy *phy_drd)
-{
-#if 0
-	int usb_side;
-
-	usb_side = sm5713_get_usb_connect();
-	dev_info(phy_drd->dev, "USB is plugged in %d side...\n", usb_side);
-
-	if (usb_side == 1) /* front */
-		phy_drd->usbphy_info.used_phy_port = 0;
-	else if (usb_side == 0)
-		phy_drd->usbphy_info.used_phy_port = 1;
-#endif
-}
 
 static int exynos_usbdrd_clk_prepare(struct exynos_usbdrd_phy *phy_drd)
 {
@@ -408,68 +390,14 @@ static unsigned int exynos_rate_to_clk(struct exynos_usbdrd_phy *phy_drd)
 	return 0;
 }
 
-
-static void exynos_usbdrd_usb_txco_enable(struct phy_usb_instance *inst, int on)
-{
-	struct exynos_usbdrd_phy *phy_drd = to_usbdrd_phy(inst);
-	void __iomem *base;
-	u32	reg;
-
-	base = ioremap(0x11860000, 0x100000);
-	if(!base) {
-		dev_err(phy_drd->dev, "[%s] Unable to map I/O memory\n",
-							__func__);
-		return;
-	}
-	reg = readl(base + EXYNOS_USBDEV_PHY_CONTROL);
-
-	dev_info(phy_drd->dev, "[%s] ++USB DEVCTRL reg 0x%x \n",
-							__func__, reg);
-
-	if (!on) {
-		reg |= ENABLE_TCXO_BUF_MASK;
-	} else {
-		reg &= ~ENABLE_TCXO_BUF_MASK;
-	}
-	writel(reg, base + EXYNOS_USBDEV_PHY_CONTROL);
-
-	reg = readl(base + EXYNOS_USBDEV_PHY_CONTROL);
-	dev_info(phy_drd->dev, "[%s] --USB DEVCTRL reg 0x%x \n",
-							__func__, reg);
-	iounmap(base);
-}
-
 static void exynos_usbdrd_pipe3_phy_isol(struct phy_usb_instance *inst,
 					unsigned int on, unsigned int mask)
 {
-	struct exynos_usbdrd_phy *phy_drd = to_usbdrd_phy(inst);
-	unsigned int val;
-
-	if (phy_drd->usb3phy_isolation == 1)
-		return ;
-
-	if (!inst->reg_pmu)
-		return;
-
-	val = on ? 0 : mask;
-
-	dev_info(phy_drd->dev, "[%s] val : 0x%x / mask : 0x%x \n",
-							__func__, val, mask);
-	regmap_update_bits(inst->reg_pmu, inst->pmu_offset,
-			   mask, val);
-
-	/* Enable TCXO_USB */
-	val = on ? 0 : ENABLE_TCXO_BUF_MASK;
-	regmap_update_bits(inst->reg_pmu, inst->pmu_offset,
-			   ENABLE_TCXO_BUF_MASK, val);
-
-	/* exynos_usbdrd_usb_txco_enable(inst, on); */
 }
 
 static void exynos_usbdrd_utmi_phy_isol(struct phy_usb_instance *inst,
 					unsigned int on, unsigned int mask)
 {
-	struct exynos_usbdrd_phy *phy_drd = to_usbdrd_phy(inst);
 	unsigned int val;
 
 	if (!inst->reg_pmu)
@@ -477,12 +405,8 @@ static void exynos_usbdrd_utmi_phy_isol(struct phy_usb_instance *inst,
 
 	val = on ? 0 : mask;
 
-	dev_info(phy_drd->dev, "[%s] val : 0x%x / mask : 0x%x \n",
-						__func__, val, mask);
 	regmap_update_bits(inst->reg_pmu, inst->pmu_offset,
 			   mask, val);
-
-	exynos_usbdrd_usb_txco_enable(inst, on);
 }
 
 /*
@@ -523,7 +447,6 @@ exynos_usbdrd_utmi_set_refclk(struct phy_usb_instance *inst)
 	return reg;
 }
 
-#ifdef OLD_FASHIONED_PHY_TUNE
 /*
  * Sets the default PHY tuning values for high-speed connection.
  */
@@ -807,7 +730,6 @@ static int exynos_usbdrd_fill_sstune(struct exynos_usbdrd_phy *phy_drd,
 
 	return 0;
 }
-#endif
 
 static int exynos_usbdrd_fill_hstune_param(struct exynos_usbdrd_phy *phy_drd,
 				struct device_node *node)
@@ -826,9 +748,6 @@ static int exynos_usbdrd_fill_hstune_param(struct exynos_usbdrd_phy *phy_drd,
 	dev_info(dev, "%s hs tune cnt = %d\n", __func__, res[0]);
 
 	hs_tune_param = devm_kzalloc(dev, size*res[0], GFP_KERNEL);
-	if (hs_tune_param == NULL)
-		return -ENOMEM;
-
 	phy_drd->usbphy_info.tune_param = hs_tune_param;
 
 	for_each_child_of_node(node, child) {
@@ -842,7 +761,8 @@ static int exynos_usbdrd_fill_hstune_param(struct exynos_usbdrd_phy *phy_drd,
 
 		ret = of_property_read_u32_array(child, "tune_value", res, 2);
 		if (ret == 0) {
-			hs_tune_param[param_index].value = res[0];
+			phy_drd->hs_tune_param_value[param_index][0] = res[0];
+			phy_drd->hs_tune_param_value[param_index][1] = res[1];
 		} else {
 			dev_err(dev, "failed to read hs tune value from %s node\n", child->name);
 			return -EINVAL;
@@ -875,9 +795,6 @@ static int exynos_usbdrd_fill_sstune_param(struct exynos_usbdrd_phy *phy_drd,
 	dev_info(dev, "%s ss tune cnt = %d\n", __func__, res[0]);
 
 	ss_tune_param = devm_kzalloc(dev, size*res[0], GFP_KERNEL);
-	if (ss_tune_param == NULL)
-		return -ENOMEM;
-
 	phy_drd->usbphy_sub_info.tune_param = ss_tune_param;
 	for_each_child_of_node(node, child) {
 		ret = of_property_read_string(child, "tune_name", &name);
@@ -890,7 +807,8 @@ static int exynos_usbdrd_fill_sstune_param(struct exynos_usbdrd_phy *phy_drd,
 
 		ret = of_property_read_u32_array(child, "tune_value", res, 2);
 		if (ret == 0) {
-			ss_tune_param[param_index].value = res[0];
+			phy_drd->ss_tune_param_value[param_index][0] = res[0];
+			phy_drd->ss_tune_param_value[param_index][1] = res[1];
 		} else {
 			dev_err(dev, "failed to read ss tune value from %s node\n", child->name);
 			return -EINVAL;
@@ -1076,7 +994,6 @@ static int exynos_usbdrd_get_phyinfo(struct exynos_usbdrd_phy *phy_drd)
 	if (ret < 0)
 		dev_err(dev, "can't get phy refsel\n");
 
-#ifdef OLD_FASHIONED_PHY_TUNE
 	/*
 	 * use PHY of synopsys
 	 */
@@ -1097,7 +1014,7 @@ static int exynos_usbdrd_get_phyinfo(struct exynos_usbdrd_phy *phy_drd)
 	 */
 	tune_node = of_parse_phandle(dev->of_node, "hs_tune_info", 0);
 	if (tune_node == NULL)
-		dev_info(dev, "don't need usbphy tuning info for high speed\n");
+		dev_info(dev, "don't need usbphy tuning info for super speed\n");
 
 	if (of_device_is_available(tune_node)) {
 		ret = exynos_usbdrd_fill_hstune(phy_drd, tune_node);
@@ -1105,21 +1022,6 @@ static int exynos_usbdrd_get_phyinfo(struct exynos_usbdrd_phy *phy_drd)
 			dev_err(dev, "can't fill high speed tuning info\n");
 			return -EINVAL;
 		}
-	}
-#endif
-
-	/*
-	 * use PHY of synopsys
-	 */
-	tune_node = of_parse_phandle(dev->of_node, "ss_tune_param", 0);
-	if (tune_node != NULL) {
-		ret = exynos_usbdrd_fill_sstune_param(phy_drd, tune_node);
-		if (ret < 0) {
-			dev_err(dev, "can't fill super speed tuning param\n");
-			return -EINVAL;
-		}
-	} else {
-		dev_info(dev, "don't need usbphy tuning param for super speed\n");
 	}
 
 	/*
@@ -1173,26 +1075,16 @@ static int exynos_usbdrd_get_iptype(struct exynos_usbdrd_phy *phy_drd)
 		break;
 	}
 
-	if (!of_property_read_u32(dev->of_node, "usb3phy-isolation", &value)) {
-		if (value == 1)
-			dev_info(dev, "USB3.0 PHY Isolation is ENABLED!!!\n");
-		phy_drd->usb3phy_isolation = value;
-	} else {
-		phy_drd->usb3phy_isolation = 0;
-	}
-
 	return 0;
 }
 
 static void exynos_usbdrd_pipe3_init(struct exynos_usbdrd_phy *phy_drd)
 {
-	if (phy_drd->usb3phy_isolation == 1) {
-		dev_info(phy_drd->dev, "USB3.0 PHY is isolated...\n");
-		return ;
-	}
+#if 0
+	phy_exynos_usb_v3p1_pipe_ready(&phy_drd->usbphy_info);
 
-	exynos_usbdrd_check_connection(phy_drd);
-	phy_exynos_usb_v3p1_enable(&phy_drd->usbphy_info);
+	phy_exynos_usb_v3p1_enable(&phy_drd->usbphy_sub_info);
+#endif
 }
 
 static void exynos_usbdrd_utmi_init(struct exynos_usbdrd_phy *phy_drd)
@@ -1222,18 +1114,8 @@ static void exynos_usbdrd_utmi_init(struct exynos_usbdrd_phy *phy_drd)
 	}
 
 	phy_exynos_usb_v3p1_enable(&phy_drd->usbphy_info);
-	/*
-	 * The below function is used to block USB3.0 PHY. If you don't want to
-	 * use USB3.0 PHY, add this function and comment phy_exynos_usbv3p1_pipe
-	 * _ready().
-	 *
-	 * phy_exynos_usb_v3p1_pipe_ovrd(&phy_drd->usbphy_info);
-	 */
 
-	if (phy_drd->usb3phy_isolation == 1)
-		phy_exynos_usb_v3p1_pipe_ovrd(&phy_drd->usbphy_info);
-	else
-		phy_exynos_usb_v3p1_pipe_ready(&phy_drd->usbphy_info);
+	phy_exynos_usb_v3p1_pipe_ovrd(&phy_drd->usbphy_info);
 
 	if (phy_drd->use_phy_umux) {
 		/* USB User MUX enable */
@@ -1276,9 +1158,13 @@ static int exynos_usbdrd_phy_init(struct phy *phy)
 	return 0;
 }
 
+static void __exynos_usbdrd_phy_shutdown(struct exynos_usbdrd_phy *phy_drd)
+{
+	phy_exynos_usb_v3p1_disable(&phy_drd->usbphy_info);
+}
+
 static void exynos_usbdrd_pipe3_exit(struct exynos_usbdrd_phy *phy_drd)
 {
-	pr_info("%s : Do nothing...\n", __func__);
 }
 
 static void exynos_usbdrd_utmi_exit(struct exynos_usbdrd_phy *phy_drd)
@@ -1310,31 +1196,33 @@ static int exynos_usbdrd_phy_exit(struct phy *phy)
 static void exynos_usbdrd_pipe3_tune(struct exynos_usbdrd_phy *phy_drd,
 							int phy_state)
 {
-	struct exynos_usb_tune_param *ss_tune_param =
-					phy_drd->usbphy_info.ss_tune_param;
-	int i = 0;
-
-	if (phy_drd->usb3phy_isolation == 1)
-		return ;
-
-	exynos_usbdrd_check_connection(phy_drd);
-
-	dev_info(phy_drd->dev, "%s %s %d\n", __func__, ss_tune_param[0].name,
-		ss_tune_param[0].value);
-
-	for (i = 0; ss_tune_param[i].value != EXYNOS_USB_TUNE_LAST; i++)
-		phy_exynos_usb_v3p1_tune_each(&phy_drd->usbphy_info,
-				ss_tune_param[i].name, ss_tune_param[i].value);
 }
 
 static void exynos_usbdrd_utmi_tune(struct exynos_usbdrd_phy *phy_drd,
 							int phy_state)
 {
 	struct exynos_usb_tune_param *hs_tune_param = phy_drd->usbphy_info.tune_param;
+	int i;
 
-	dev_info(phy_drd->dev, "%s %s %d\n", __func__, hs_tune_param[0].name,
-		hs_tune_param[0].value);
 
+	if (phy_state >= OTG_STATE_A_IDLE) {
+		/* for host mode */
+		for (i = 0; hs_tune_param[i].value != EXYNOS_USB_TUNE_LAST; i++) {
+			if (i == EXYNOS_DRD_MAX_TUNEPARAM_NUM)
+				break;
+			hs_tune_param[i].value =
+					phy_drd->hs_tune_param_value[i][USBPHY_MODE_HOST];
+		}
+	} else {
+		/* for device mode */
+		for (i = 0; hs_tune_param[i].value != EXYNOS_USB_TUNE_LAST; i++) {
+			if (i == EXYNOS_DRD_MAX_TUNEPARAM_NUM)
+				break;
+			hs_tune_param[i].value =
+					phy_drd->hs_tune_param_value[i][USBPHY_MODE_DEV];
+		}
+
+	}
 	phy_exynos_usb_v3p1_tune(&phy_drd->usbphy_info);
 
 	/* USB3P1 CAL code doesn't provide late_enable api */
@@ -1514,6 +1402,18 @@ static int exynos_usbdrd_phy_probe(struct platform_device *pdev)
 	if (IS_ERR(phy_drd->reg_phy))
 		return PTR_ERR(phy_drd->reg_phy);
 
+	/* Both has_other_phy and has_combo_phy can't be enabled at the same time. It's alternative. */
+	if (!of_property_read_u32(dev->of_node, "has_other_phy", &ret)) {
+		if (ret) {
+			res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+			phy_drd->reg_phy2 = devm_ioremap_resource(dev, res);
+			if (IS_ERR(phy_drd->reg_phy2))
+				return PTR_ERR(phy_drd->reg_phy2);
+		} else {
+			dev_err(dev, "It has not the other phy\n");
+		}
+	}
+
 	ret = exynos_usbdrd_get_iptype(phy_drd);
 	if (ret) {
 		dev_err(dev, "%s: Failed to get ip_type\n", __func__);
@@ -1552,6 +1452,7 @@ static int exynos_usbdrd_phy_probe(struct platform_device *pdev)
 						dev->of_node->name, ret);
 		goto err;
 	}
+	pmu_mask = BIT(pmu_mask);
 
 	dev_vdbg(dev, "Creating usbdrd_phy phy\n");
 	phy_drd->phy_port =  of_get_named_gpio(dev->of_node,
@@ -1627,25 +1528,6 @@ static int exynos_usbdrd_phy_probe(struct platform_device *pdev)
 	if (ret)
 		goto err;
 
-	/*
-	 * Both has_other_phy and has_combo_phy can't be enabled at the same time.
-	 * It's alternative.
-	 */
-	if (!of_property_read_u32(dev->of_node, "has_other_phy", &ret)) {
-		if (ret) {
-			res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
-			phy_drd->reg_phy2 = devm_ioremap_resource(dev, res);
-			if (IS_ERR(phy_drd->reg_phy2))
-				return PTR_ERR(phy_drd->reg_phy2);
-
-			phy_drd->usbphy_info.regs_base_2nd = phy_drd->reg_phy2;
-			phy_drd->usbphy_info.ss_tune_param =
-					phy_drd->usbphy_sub_info.tune_param;
-		} else {
-			dev_err(dev, "It has not the other phy\n");
-		}
-	}
-
 	phy_provider = devm_of_phy_provider_register(dev,
 						     exynos_usbdrd_phy_xlate);
 	if (IS_ERR(phy_provider)) {
@@ -1662,7 +1544,49 @@ err:
 	return ret;
 }
 
+#ifdef CONFIG_PM
+static int exynos_usbdrd_phy_resume(struct device *dev)
+{
+	int ret;
+	struct exynos_usbdrd_phy *phy_drd = dev_get_drvdata(dev);
+	struct phy_usb_instance *inst;
+
+	/*
+	 * There is issue, when USB3.0 PHY is in active state
+	 * after resume. This leads to increased power consumption
+	 * if no USB drivers use the PHY.
+	 *
+	 * The following code shutdowns the PHY, so it is in defined
+	 * state (OFF) after resume. If any USB driver already got
+	 * the PHY at this time, we do nothing and just exit.
+	 */
+
+	dev_dbg(dev, "%s\n", __func__);
+
+	inst = &phy_drd->phys[0];
+	inst->phy_cfg->phy_isol(inst, 0, inst->pmu_mask);
+	ret = exynos_usbdrd_clk_enable(phy_drd, false);
+	if (ret) {
+		dev_err(phy_drd->dev, "%s: Failed to enable clk\n", __func__);
+		return ret;
+	}
+
+	__exynos_usbdrd_phy_shutdown(phy_drd);
+
+	exynos_usbdrd_clk_disable(phy_drd, false);
+	inst->phy_cfg->phy_isol(inst, 1, inst->pmu_mask);
+
+	return 0;
+}
+
+static const struct dev_pm_ops exynos_usbdrd_phy_dev_pm_ops = {
+	.resume	= exynos_usbdrd_phy_resume,
+};
+
+#define EXYNOS_USBDRD_PHY_PM_OPS	(&(exynos_usbdrd_phy_dev_pm_ops))
+#else
 #define EXYNOS_USBDRD_PHY_PM_OPS	NULL
+#endif
 
 static struct platform_driver phy_exynos_usbdrd = {
 	.probe	= exynos_usbdrd_phy_probe,

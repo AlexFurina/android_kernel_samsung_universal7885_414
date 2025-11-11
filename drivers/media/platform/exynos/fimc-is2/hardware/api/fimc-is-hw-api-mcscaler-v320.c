@@ -621,11 +621,7 @@ void fimc_is_scaler_set_poly_scaler_v_coef(void __iomem *base_addr, u32 output_i
 	}
 }
 
-void fimc_is_scaler_set_poly_scaler_coef(void __iomem *base_addr,
-	u32 output_id,
-	u32 hratio,
-	u32 vratio,
-	enum exynos_sensor_position sensor_position)
+void fimc_is_scaler_set_poly_scaler_coef(void __iomem *base_addr, u32 output_id, u32 hratio, u32 vratio)
 {
 	u32 h_coef = 0;
 	u32 v_coef = 0;
@@ -942,12 +938,12 @@ void fimc_is_scaler_set_otf_out_path(void __iomem *base_addr, u32 output_id)
 	/* not support */
 }
 
-void fimc_is_scaler_set_rdma_format(void __iomem *base_addr, u32 hw_id, u32 dma_in_format)
+void fimc_is_scaler_set_rdma_format(void __iomem *base_addr, u32 dma_in_format)
 {
 	/* not support */
 }
 
-void fimc_is_scaler_set_wdma_format(void __iomem *base_addr, u32 hw_id, u32 output_id, u32 dma_out_format)
+void fimc_is_scaler_set_wdma_format(void __iomem *base_addr, u32 output_id, u32 dma_out_format)
 {
 	switch (output_id) {
 	case MCSC_OUTPUT0:
@@ -1947,7 +1943,7 @@ u32 fimc_is_scaler_handle_extended_intr(u32 status)
 
 	if (status & (1 << INTR_MC_SCALER_SHADOW_COPY_FINISH_OVF)) {
 		err_hw("[MCSC]Shadow Register Copy Overflow!! (0x%x)", status);
-		FIMC_BUG(1);
+		BUG_ON(1);
 
 		/* TODO: Shadow copy overflow recovery logic */
 	}
@@ -1972,107 +1968,4 @@ void fimc_is_scaler_dump(void __iomem *base_addr)
 		sfrinfo("[DUMP] reg:[%s][0x%04X], value:[0x%08X]\n",
 			mcsc_regs[i].reg_name, mcsc_regs[i].sfr_offset, reg_value);
 	}
-}
-
-void fimc_is_scaler_rdma_start(void __iomem *base_addr, u32 hw_id)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_rdma_2bit_addr(void __iomem *base_addr,
-	u32 y_2bit_addr, u32 cbcr_2bit_addr, int buf_index)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_rdma_2bit_stride(void __iomem *base_addr, u32 y_2bit_stride, u32 uv_2bit_stride)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_rdma_10bit_type(void __iomem *base_addr, u32 dma_in_10bit_type)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_wdma_10bit_type(void __iomem *base_addr, u32 output_id, u32 img_10bit_type)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_wdma_2bit_addr(void __iomem *base_addr, u32 output_id,
-	u32 y_2bit_addr, u32 cbcr_2bit_addr, int buf_index)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_wdma_2bit_stride(void __iomem *base_addr, u32 output_id,
-	u32 y_2bit_stride, u32 uv_2bit_stride)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_get_ysum_result(void __iomem *base_addr, u32 *luma_sum_msb, u32 *luma_sum_lsb)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_poly_round_mode(void __iomem *base_addr, u32 output_id, u32 mode)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_post_scaler_coef(void __iomem *base_addr, u32 output_id, u32 hratio, u32 vratio)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_post_round_mode(void __iomem *base_addr, u32 output_id, u32 mode)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_ds_src_size(void __iomem *base_addr, u32 width, u32 height)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_ds_dst_size(void __iomem *base_addr, u32 width, u32 height)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_ds_scaling_ratio(void __iomem *base_addr, u32 hratio, u32 vratio)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_ds_init_phase_offset(void __iomem *base_addr, u32 h_offset, u32 v_offset)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_ds_gamma_table_enable(void __iomem *base_addr, u32 ds_gamma_enable)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_ds_enable(void __iomem *base_addr, u32 ds_enable)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_ysum_input_sourece_enable(void __iomem *base_addr, u32 output_id, bool ysum_enable)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_ysum_enable(void __iomem *base_addr, bool ysum_enable)
-{
-	/* Not Support */
-}
-
-void fimc_is_scaler_set_ysum_image_size(void __iomem *base_addr, u32 width, u32 height, u32 start_x, u32 start_y)
-{
-	/* Not Support */
 }

@@ -25,12 +25,25 @@
 #include "./cal_9610/dsim_cal.h"
 #endif
 
+#if defined(CONFIG_EXYNOS_DECON_LCD_S6E3HA2K)
+#include "./panels/s6e3ha2k_param.h"
+#elif defined(CONFIG_EXYNOS_DECON_LCD_S6E3HF4)
+#include "./panels/s6e3hf4_param.h"
+#elif defined(CONFIG_EXYNOS_DECON_LCD_EMUL_DISP)
+#include "./panels/emul_disp_param.h"
+#elif defined(CONFIG_EXYNOS_DECON_LCD_S6E3HA6)
+#include "./panels/s6e3ha6_param.h"
+#elif defined(CONFIG_EXYNOS_DECON_LCD_S6E3AA2)
+#include "./panels/s6e3aa2_param.h"
+#elif defined(CONFIG_EXYNOS_DECON_LCD_S6E3FA0)
+#include "./panels/s6e3fa0_param.h"
+#endif
+
 extern int dsim_log_level;
 
 #define DSIM_MODULE_NAME			"exynos-dsim"
 #define MAX_DSIM_CNT				2
 #define DSIM_DDI_ID_LEN				3
-#define DSIM_DDI_TYPE_LEN 			50
 
 #define DSIM_PIXEL_FORMAT_RGB24			0x3E
 #define DSIM_PIXEL_FORMAT_RGB18_PACKED		0x1E
@@ -40,7 +53,7 @@ extern int dsim_log_level;
 #define MAX_DSIM_DATALANE_CNT			4
 
 #define MIPI_WR_TIMEOUT				msecs_to_jiffies(50)
-#define MIPI_RD_TIMEOUT				msecs_to_jiffies(50)
+#define MIPI_RD_TIMEOUT				msecs_to_jiffies(100)
 
 #define dsim_err(fmt, ...)							\
 	do {									\
@@ -80,10 +93,7 @@ extern struct dsim_lcd_driver s6e3ha8_mipi_lcd_driver;
 extern struct dsim_lcd_driver s6e3aa2_mipi_lcd_driver;
 extern struct dsim_lcd_driver s6e3fa0_mipi_lcd_driver;
 extern struct dsim_lcd_driver s6e3fa7_mipi_lcd_driver;
-extern struct dsim_lcd_driver nt36672a_mipi_lcd_driver;
-extern struct dsim_lcd_driver default_mipi_lcd_driver;
-extern struct dsim_lcd_driver hix83112a_mipi_lcd_driver;
-extern struct dsim_lcd_driver nov36672a_mipi_lcd_driver;
+extern struct dsim_lcd_driver ea8076_mipi_lcd_driver;
 
 /* define video timer interrupt */
 enum {
@@ -197,8 +207,6 @@ struct dsim_resources {
 	void __iomem *phy_regs_ex;
 	struct regulator *regulator_1p8v;
 	struct regulator *regulator_3p3v;
-	struct pinctrl *pinctrl;
-	struct pinctrl_state *lcd_reset_sleep;
 };
 
 struct dsim_device {
@@ -239,16 +247,6 @@ struct dsim_device {
 	int esd_test;
 	bool esd_recovering;
 #endif
-	u32 ddi_id;
-	char ddi_device_type[DSIM_DDI_TYPE_LEN];
-	struct mutex bl_lock;
-	int max_brightness;
-	int brightness;
-	int log_brightness;
-
-	unsigned int ddi_seq_size;
-	unsigned char ddi_seq[512];
-	int user_brightness;
 };
 
 struct dsim_lcd_driver {
@@ -412,8 +410,6 @@ static inline bool IS_DSIM_OFF_STATE(struct dsim_device *dsim)
 #define DSIM_IOC_FREE_FB_RES		_IOW('D', 11, u32)
 #define DSIM_IOC_DOZE			_IOW('D', 20, u32)
 #define DSIM_IOC_DOZE_SUSPEND		_IOW('D', 21, u32)
-#define DSIM_IOC_HS_CLK_ENABLE		_IOW('D', 30, int)
-#define DSIM_IOC_LPDT_CMD		_IOW('D', 31, int)
 
 #if defined(CONFIG_EXYNOS_READ_ESD_SOLUTION)
 #define DSIM_ESD_OK			0

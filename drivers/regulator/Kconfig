@@ -126,20 +126,19 @@ config REGULATOR_AB8500
 	  signal AB8500 PMIC
 
 config REGULATOR_ARIZONA_LDO1
-	tristate "Cirrus Madera and Wolfson Arizona class devices LDO1"
-	depends on MFD_ARIZONA || MFD_MADERA
+	tristate "Wolfson Arizona class devices LDO1"
+	depends on MFD_ARIZONA
 	depends on SND_SOC
 	help
-	  Support for the LDO1 regulators found on Cirrus Logic Madera codecs
-	  and Wolfson Arizona codecs.
+	  Support for the LDO1 regulators found on Wolfson Arizona class
+	  devices.
 
 config REGULATOR_ARIZONA_MICSUPP
-	tristate "Cirrus Madera and Wolfson Arizona class devices MICSUPP"
-	depends on MFD_ARIZONA || MFD_MADERA
+	tristate "Wolfson Arizona class devices MICSUPP"
+	depends on MFD_ARIZONA
 	depends on SND_SOC
 	help
-	  Support for the MICSUPP regulators found on Cirrus Logic Madera codecs
-	  and Wolfson Arizona codecs
+	  Support for the MICSUPP regulators found on Wolfson Arizona class
 	  devices.
 
 config REGULATOR_AS3711
@@ -737,6 +736,14 @@ config REGULATOR_S2MPS11
 	 Buck converters including Dual-Phase Buck converter, Buck-Boost
 	 converter, various LDOs.
 
+config REGULATOR_S2MPU08
+       tristate "Samsung S2MPU08 voltage regulator"
+       depends on MFD_S2MPU08
+       help
+        This driver supports a Samsung S2MPU08 voltage output regulator
+        via I2C bus. S2MPU08 is comprised of high efficient Buck converters
+        including Dual-Phase Buck converter, Buck-Boost converter, various LDOs.
+
 config REGULATOR_S2MPU09
 	tristate "Samsung S2MPU09 voltage regulator"
 	depends on MFD_S2MPU09
@@ -744,14 +751,6 @@ config REGULATOR_S2MPU09
 	 This driver supports a Samsung S2MPU09 voltage output regulator
 	 via I2C bus. S2MPU09 is comprised of high efficient Buck converters
 	 including Dual-Phase Buck converter, Buck-Boost converter, various LDOs.
-
-config REGULATOR_S2MPU09_BUCK8_1V35
-	tristate "    Set S2MPU09 BUCK8 output 1.35V"
-	depends on REGULATOR_S2MPU09
-	default n
-	help
-	 Enable config to set S2MPU09 BUCK8 output voltage to 1.35V from the
-	 default vaule (1.3V).
 
 config REGULATOR_S2MPB02
 	tristate "Samsung S2MPB02 regulator"

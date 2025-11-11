@@ -436,11 +436,7 @@ void fimc_is_scaler_set_v_init_phase_offset(void __iomem *base_addr, u32 output_
 	}
 }
 
-void fimc_is_scaler_set_poly_scaler_coef(void __iomem *base_addr,
-	u32 output_id,
-	u32 hratio,
-	u32 vratio,
-	enum exynos_sensor_position sensor_position)
+void fimc_is_scaler_set_poly_scaler_coef(void __iomem *base_addr, u32 output_id, u32 hratio, u32 vratio)
 {
 	u32 h_coef;
 	u32 v_coef;
@@ -784,12 +780,12 @@ void fimc_is_scaler_set_otf_out_path(void __iomem *base_addr, u32 output_id)
 	fimc_is_hw_set_field(base_addr, &mcsc_regs[MCSC_R_OTF_OUTPUT_PATH_CTRL], &mcsc_fields[MCSC_F_OTF_OUT_SEL], output_id);
 }
 
-void fimc_is_scaler_set_rdma_format(void __iomem *base_addr, u32 hw_id, u32 dma_in_format)
+void fimc_is_scaler_set_rdma_format(void __iomem *base_addr, u32 dma_in_format)
 {
 	fimc_is_hw_set_field(base_addr, &mcsc_regs[MCSC_R_RDMA_DATA_FORMAT], &mcsc_fields[MCSC_F_RDMA_DATA_FORMAT], dma_in_format);
 }
 
-void fimc_is_scaler_set_wdma_format(void __iomem *base_addr, u32 hw_id, u32 output_id, u32 dma_out_format)
+void fimc_is_scaler_set_wdma_format(void __iomem *base_addr, u32 output_id, u32 dma_out_format)
 {
 	switch (output_id) {
 	case MCSC_OUTPUT0:

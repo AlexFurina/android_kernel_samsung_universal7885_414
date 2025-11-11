@@ -189,7 +189,7 @@ static int sensor_5e6_init(struct v4l2_subdev *subdev, u32 val)
 	struct fimc_is_module_5e6 *module_5e6;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	module_5e6 = module->private_data;
@@ -255,8 +255,8 @@ static int sensor_5e6_s_param(struct v4l2_subdev *subdev, struct v4l2_streamparm
 	struct v4l2_fract *tpf;
 	u64 duration;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!param);
+	BUG_ON(!subdev);
+	BUG_ON(!param);
 
 	pr_info("%s\n", __func__);
 
@@ -322,7 +322,7 @@ int sensor_5e6_stream_on(struct v4l2_subdev *subdev)
 	struct fimc_is_module_enum *module;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!module)) {
@@ -378,7 +378,7 @@ int sensor_5e6_stream_off(struct v4l2_subdev *subdev)
 	struct fimc_is_module_enum *module;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!module)) {
@@ -436,7 +436,7 @@ int sensor_5e6_s_exposure(struct v4l2_subdev *subdev, u64 exposure)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
  
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
     
 	pr_info("%s(%d)\n", __func__, (u32)exposure);
     
@@ -481,7 +481,7 @@ int sensor_5e6_s_again(struct v4l2_subdev *subdev, u64 gain)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
  
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
     
 	pr_info("%s(%d)\n", __func__, (u32)gain);
     
@@ -561,7 +561,7 @@ static int sensor_5e6_power_setpin(struct device *dev,
 	int gpio_none = 0, gpio_reset = 0;
 	int gpio_mclk = 0, gpio_iris_en = 0;
 
-	FIMC_BUG(!dev);
+	BUG_ON(!dev);
 
 	dnode = dev->of_node;
 
@@ -631,7 +631,7 @@ int sensor_5e6_probe(struct i2c_client *client,
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!client);
+	BUG_ON(!client);
 
 	if (fimc_is_dev == NULL) {
 		warn("fimc_is_dev is not yet probed(5e6)");

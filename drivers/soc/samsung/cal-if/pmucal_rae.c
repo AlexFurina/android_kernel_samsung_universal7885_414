@@ -253,6 +253,11 @@ int pmucal_rae_handle_seq(struct pmucal_seq *seq, unsigned int seq_size)
 			if (pmucal_rae_check_condition(&seq[i]))
 				pmucal_rae_write(&seq[i]);
 			break;
+		case PMUCAL_INV_COND_WRITE:
+			if (pmucal_rae_check_condition(&seq[i]))
+				break;
+			pmucal_rae_write(&seq[i]);
+			break;
 		case PMUCAL_WAIT:
 			ret = pmucal_rae_wait(&seq[i]);
 			if (ret)

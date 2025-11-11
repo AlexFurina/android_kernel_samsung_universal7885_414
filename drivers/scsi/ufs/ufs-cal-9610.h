@@ -8,7 +8,10 @@ struct uic_pwr_mode {
 struct ufs_cal_param {
 	void *host;		/* Host adaptor */
 	u8 available_lane;
-	u8 target_lane;
+	u8 connected_tx_lane;
+	u8 connected_rx_lane;
+	u8 active_tx_lane;
+	u8 active_rx_lane;
 	u32 mclk_rate;
 	u8 board;
 	struct uic_pwr_mode *pmd;
@@ -22,11 +25,17 @@ typedef enum {
 } ufs_cal_errno;
 
 enum {
-	__BRD_SMDK,
+	__BRD_COMMON,
 	__BRD_UNIV,
+	__BRD_SMDK,
+	__BRD_ASB,
+	__BRD_ZEBU,
 };
+#define BRD_COMMON	(1U << __BRD_COMMON)
 #define BRD_SMDK	(1U << __BRD_SMDK)
 #define BRD_UNIV	(1U << __BRD_UNIV)
+#define BRD_ASB		(1U << __BRD_ASB)
+#define BRD_ZEBU	(1U << __BRD_ZEBU)
 
 /* UFS CAL interface */
 ufs_cal_errno ufs_cal_post_h8_enter(struct ufs_cal_param *p);

@@ -508,6 +508,17 @@ config VIDEO_EXYNOS_SCALER
 	---help---
 	  This is a v4l2 driver for EXYNOS Scaler (MSCL) device.
 
+config SCALER_NO_SOFTRST
+        bool "Ignore SOFT_RESET control"
+        depends on VIDEO_EXYNOS_SCALER
+        default n
+        ---help---
+          This disables SOFT_RESET control for Exynos Scaler initial settings.
+config VIDEO_EXYNOS_G2D1SHOT
+prompt "G2D m2m1shot2 version"
+        bool
+        select MEDIA_M2M1SHOT2
+
 config VIDEO_EXYNOS_SMFC
 	bool "Exynos Still MFC(H/W JPEG CODEC) Driver"
 	depends on VIDEO_DEV && VIDEO_V4L2 && HAS_DMA

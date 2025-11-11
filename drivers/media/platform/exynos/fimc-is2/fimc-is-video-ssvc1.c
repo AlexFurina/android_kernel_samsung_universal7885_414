@@ -45,7 +45,7 @@ int fimc_is_ssxvc1_video_probe(void *data)
 	u32 video_id;
 	u32 instance;
 
-	FIMC_BUG(!data);
+	BUG_ON(!data);
 
 	device = (struct fimc_is_device_sensor *)data;
 	if (!device->pdev) {
@@ -200,10 +200,10 @@ static int fimc_is_ssxvc1_video_close(struct file *file)
 	struct fimc_is_video *video;
 	struct fimc_is_device_sensor *device;
 
-	FIMC_BUG(!file);
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_VIDEO(vctx));
-	FIMC_BUG(!GET_DEVICE(vctx));
+	BUG_ON(!file);
+	BUG_ON(!vctx);
+	BUG_ON(!GET_VIDEO(vctx));
+	BUG_ON(!GET_DEVICE(vctx));
 
 	video = GET_VIDEO(vctx);
 	device = GET_DEVICE(vctx);
@@ -269,7 +269,18 @@ const struct v4l2_file_operations fimc_is_ssxvc1_video_fops = {
 static int fimc_is_ssxvc1_video_querycap(struct file *file, void *fh,
 	struct v4l2_capability *cap)
 {
-	/* Todo : add to query capability code */
+	struct fimc_is_video *video = video_drvdata(file);
+
+	FIMC_BUG(!cap);
+	FIMC_BUG(!video);
+
+	snprintf(cap->driver, sizeof(cap->driver), "%s", video->vd.name);
+	snprintf(cap->card, sizeof(cap->card), "%s", video->vd.name);
+	cap->capabilities |= V4L2_CAP_STREAMING
+			| V4L2_CAP_VIDEO_CAPTURE
+			| V4L2_CAP_VIDEO_CAPTURE_MPLANE;
+	cap->device_caps |= cap->capabilities;
+
 	return 0;
 }
 
@@ -293,8 +304,8 @@ static int fimc_is_ssxvc1_video_set_format_mplane(struct file *file, void *fh,
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!format);
+	BUG_ON(!vctx);
+	BUG_ON(!format);
 
 	mdbgv_ssxvc1("%s\n", vctx, __func__);
 
@@ -344,9 +355,9 @@ static int fimc_is_ssxvc1_video_reqbufs(struct file *file, void *priv,
 	struct fimc_is_device_sensor *device;
 	struct fimc_is_video *video;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_DEVICE(vctx));
-	FIMC_BUG(!GET_VIDEO(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
+	BUG_ON(!GET_VIDEO(vctx));
 
 	mdbgv_ssxvc1("%s(buffers : %d)\n", vctx, __func__, buf->count);
 
@@ -423,11 +434,11 @@ static int fimc_is_ssxvc1_video_prepare(struct file *file, void *priv,
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_frame *frame;
 
-	FIMC_BUG(!buf);
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_FRAMEMGR(vctx));
-	FIMC_BUG(!GET_DEVICE(vctx));
-	FIMC_BUG(!GET_VIDEO(vctx));
+	BUG_ON(!buf);
+	BUG_ON(!vctx);
+	BUG_ON(!GET_FRAMEMGR(vctx));
+	BUG_ON(!GET_DEVICE(vctx));
+	BUG_ON(!GET_VIDEO(vctx));
 
 	device = GET_DEVICE(vctx);
 	framemgr = GET_FRAMEMGR(vctx);
@@ -494,7 +505,7 @@ static int fimc_is_ssxvc1_video_s_input(struct file *file, void *priv,
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	FIMC_BUG(!vctx);
+	BUG_ON(!vctx);
 
 	ret = fimc_is_video_s_input(file, vctx);
 	if (ret) {
@@ -513,8 +524,8 @@ static int fimc_is_ssxvc1_video_g_ctrl(struct file *file, void *priv,
 	struct fimc_is_video_ctx *vctx = file->private_data;
 	struct fimc_is_framemgr *framemgr;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!ctrl);
+	BUG_ON(!vctx);
+	BUG_ON(!ctrl);
 
 	mdbgv_ssxvc1("%s\n", vctx, __func__);
 
@@ -545,8 +556,8 @@ static int fimc_is_ssxvc1_video_s_ctrl(struct file *file, void *priv,
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!ctrl);
+	BUG_ON(!vctx);
+	BUG_ON(!ctrl);
 
 	mdbgv_ssxvc1("%s\n", vctx, __func__);
 
@@ -599,8 +610,8 @@ static int fimc_is_ssxvc1_queue_setup(struct vb2_queue *vbq,
 	struct fimc_is_video *video;
 	struct fimc_is_queue *queue;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!vctx->video);
+	BUG_ON(!vctx);
+	BUG_ON(!vctx->video);
 
 	mdbgv_ssxvc1("%s\n", vctx, __func__);
 
@@ -618,6 +629,21 @@ static int fimc_is_ssxvc1_queue_setup(struct vb2_queue *vbq,
 	return ret;
 }
 
+static int fimc_is_ssxvc1_buffer_prepare(struct vb2_buffer *vb)
+{
+	return fimc_is_queue_prepare(vb);
+}
+
+static inline void fimc_is_ssxvc1_wait_prepare(struct vb2_queue *vbq)
+{
+	fimc_is_queue_wait_prepare(vbq);
+}
+
+static inline void fimc_is_ssxvc1_wait_finish(struct vb2_queue *vbq)
+{
+	fimc_is_queue_wait_finish(vbq);
+}
+
 static int fimc_is_ssxvc1_start_streaming(struct vb2_queue *vbq,
 	unsigned int count)
 {
@@ -626,8 +652,8 @@ static int fimc_is_ssxvc1_start_streaming(struct vb2_queue *vbq,
 	struct fimc_is_queue *queue;
 	struct fimc_is_device_sensor *device;
 
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_DEVICE(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
 
 	mdbgv_ssxvc1("%s\n", vctx, __func__);
 
@@ -651,8 +677,8 @@ static void fimc_is_ssxvc1_stop_streaming(struct vb2_queue *vbq)
 	struct fimc_is_queue *queue;
 	struct fimc_is_device_sensor *device;
 
-	FIMC_BUG_VOID(!vctx);
-	FIMC_BUG_VOID(!GET_DEVICE(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
 
 	mdbgv_ssxvc1("%s\n", vctx, __func__);
 
@@ -674,8 +700,8 @@ static void fimc_is_ssxvc1_buffer_queue(struct vb2_buffer *vb)
 	struct fimc_is_device_sensor *device;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG_VOID(!vctx);
-	FIMC_BUG_VOID(!GET_DEVICE(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
 
 	mvdbgs(3, "%s(%d)\n", vctx, &vctx->queue, __func__, vb->index);
 
@@ -711,15 +737,13 @@ static void fimc_is_ssxvc1_buffer_finish(struct vb2_buffer *vb)
 	struct fimc_is_device_sensor *device;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG_VOID(!vctx);
-	FIMC_BUG_VOID(!GET_DEVICE(vctx));
+	BUG_ON(!vctx);
+	BUG_ON(!GET_DEVICE(vctx));
 
 	mvdbgs(3, "%s(%d)\n", vctx, &vctx->queue, __func__, vb->index);
 
 	device = GET_DEVICE(vctx);
 	subdev = &device->ssvc1;
-
-	fimc_is_queue_buffer_finish(vb);
 
 	ret = fimc_is_subdev_buffer_finish(subdev, vb);
 	if (ret) {
@@ -730,13 +754,12 @@ static void fimc_is_ssxvc1_buffer_finish(struct vb2_buffer *vb)
 
 const struct vb2_ops fimc_is_ssxvc1_qops = {
 	.queue_setup		= fimc_is_ssxvc1_queue_setup,
-	.buf_init		= fimc_is_queue_buffer_init,
-	.buf_cleanup		= fimc_is_queue_buffer_cleanup,
-	.buf_prepare		= fimc_is_queue_buffer_prepare,
+	.buf_init		= fimc_is_buffer_init,
+	.buf_prepare		= fimc_is_ssxvc1_buffer_prepare,
 	.buf_queue		= fimc_is_ssxvc1_buffer_queue,
 	.buf_finish		= fimc_is_ssxvc1_buffer_finish,
-	.wait_prepare		= fimc_is_queue_wait_prepare,
-	.wait_finish		= fimc_is_queue_wait_finish,
+	.wait_prepare		= fimc_is_ssxvc1_wait_prepare,
+	.wait_finish		= fimc_is_ssxvc1_wait_finish,
 	.start_streaming	= fimc_is_ssxvc1_start_streaming,
 	.stop_streaming		= fimc_is_ssxvc1_stop_streaming,
 };

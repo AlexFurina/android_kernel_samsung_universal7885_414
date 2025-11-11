@@ -35,6 +35,8 @@
 #include <linux/irqnr.h>
 #include <linux/irq.h>
 #include <linux/irqdesc.h>
+#include <linux/nmi.h>
+#include <linux/sec_debug.h>
 
 struct dbg_snapshot_lastinfo {
 #ifdef CONFIG_DEBUG_SNAPSHOT_FREQ
@@ -108,7 +110,7 @@ struct dbg_snapshot_log_idx {
 #ifdef CONFIG_DEBUG_SNAPSHOT_REGULATOR
 	atomic_t regulator_log_idx;
 #endif
-#ifdef CONFIG_DEBUG_SNAPSHOT_REGULATOR
+#ifdef CONFIG_DEBUG_SNAPSHOT_THERMAL
 	atomic_t thermal_log_idx;
 #endif
 #ifdef CONFIG_DEBUG_SNAPSHOT_I2C
@@ -234,6 +236,35 @@ void __init dbg_snapshot_init_log_idx(void)
 	}
 }
 
+unsigned long sec_debug_get_kevent_index_addr(int type)
+{
+#ifndef CONFIG_DEBUG_SNAPSHOT_MINIMIZED_MODE
+	switch (type) {
+	case DSS_KEVENT_TASK:
+		return virt_to_phys(&(dss_idx.task_log_idx[0]));
+	case DSS_KEVENT_WORK:
+		return virt_to_phys(&(dss_idx.work_log_idx[0]));
+	case DSS_KEVENT_IRQ:
+		return virt_to_phys(&(dss_idx.irq_log_idx[0]));
+#ifdef CONFIG_DEBUG_SNAPSHOT_FREQ
+	case DSS_KEVENT_FREQ:
+		return virt_to_phys(&(dss_idx.freq_log_idx));
+#endif
+	case DSS_KEVENT_IDLE:
+		return virt_to_phys(&(dss_idx.cpuidle_log_idx[0]));
+	case DSS_KEVENT_THRM:
+		return virt_to_phys(&(dss_idx.thermal_log_idx));
+#ifdef CONFIG_DEBUG_SNAPSHOT_ACPM
+	case DSS_KEVENT_ACPM:
+		return virt_to_phys(&(dss_idx.acpm_log_idx));
+#endif
+	default:
+		return 0;
+	}
+#endif
+	return 0;
+}
+
 bool dbg_snapshot_dumper_one(void *v_dumper, char *line, size_t size, size_t *len)
 {
 	bool ret = false;
@@ -242,6 +273,10 @@ bool dbg_snapshot_dumper_one(void *v_dumper, char *line, size_t size, size_t *le
 	unsigned long rem_nsec;
 	u64 ts;
 	struct dss_dumper *dumper = (struct dss_dumper *)v_dumper;
+	struct dbg_snapshot_item *item = &dss_items[dss_desc.kevents_num];
+
+	if (!dss_base.enabled || !item->entry.enabled)
+		return false;
 
 	if (!line || size < SZ_128 ||
 		dumper->cur_cpu >= NR_CPUS)
@@ -379,8 +414,7 @@ bool dbg_snapshot_dumper_one(void *v_dumper, char *line, size_t size, size_t *le
 	case DSS_FLAG_SPINLOCK:
 	{
 		unsigned int jiffies_local;
-		char callstack[CONFIG_DEBUG_SNAPSHOT_CALLSTACK][KSYM_NAME_LEN];
-		int en, i;
+		int en;
 		u16 next, owner;
 
 		array_size = ARRAY_SIZE(dss_log->spinlock[0]) - 1;
@@ -394,22 +428,13 @@ bool dbg_snapshot_dumper_one(void *v_dumper, char *line, size_t size, size_t *le
 
 		jiffies_local = dss_log->spinlock[cpu][idx].jiffies;
 		en = dss_log->spinlock[cpu][idx].en;
-		for (i = 0; i < CONFIG_DEBUG_SNAPSHOT_CALLSTACK; i++)
-			lookup_symbol_name((unsigned long)dss_log->spinlock[cpu][idx].caller[i],
-						callstack[i]);
-
 		next = dss_log->spinlock[cpu][idx].next;
 		owner = dss_log->spinlock[cpu][idx].owner;
 
-		*len = snprintf(line, size, "[%8lu.%09lu][%04d:CPU%u] next:%8x,  owner:%8x  jiffies:%12u,  %3s\n"
-					    "callstack: %s\n"
-					    "           %s\n"
-					    "           %s\n"
-					    "           %s\n",
+		*len = snprintf(line, size, "[%8lu.%09lu][%04d:CPU%u] next:%8x,  owner:%8x  jiffies:%12u,  %3s\n",
 						(unsigned long)ts, rem_nsec / NSEC_PER_USEC, idx, cpu,
 						next, owner, jiffies_local,
-						en == DSS_FLAG_IN ? "IN" : "OUT",
-						callstack[0], callstack[1], callstack[2], callstack[3]);
+						en == DSS_FLAG_IN ? "IN" : "OUT");
 		break;
 	}
 #endif
@@ -477,9 +502,7 @@ bool dbg_snapshot_dumper_one(void *v_dumper, char *line, size_t size, size_t *le
 	case DSS_FLAG_PRINTK:
 	{
 		char *log;
-		char callstack[CONFIG_DEBUG_SNAPSHOT_CALLSTACK][KSYM_NAME_LEN];
 		unsigned int cpu;
-		int i;
 
 		array_size = ARRAY_SIZE(dss_log->printk) - 1;
 		if (!dumper->active) {
@@ -491,21 +514,14 @@ bool dbg_snapshot_dumper_one(void *v_dumper, char *line, size_t size, size_t *le
 		cpu = dss_log->printk[idx].cpu;
 		rem_nsec = do_div(ts, NSEC_PER_SEC);
 		log = dss_log->printk[idx].log;
-		for (i = 0; i < CONFIG_DEBUG_SNAPSHOT_CALLSTACK; i++)
-			lookup_symbol_name((unsigned long)dss_log->printk[idx].caller[i],
-						callstack[i]);
-
-		*len = snprintf(line, size, "[%8lu.%09lu][%04d:CPU%u] log:%s, callstack:%s, %s, %s, %s\n",
-						(unsigned long)ts, rem_nsec / NSEC_PER_USEC, idx, cpu,
-						log, callstack[0], callstack[1], callstack[2], callstack[3]);
+		*len = snprintf(line, size, "[%8lu.%09lu][%04d:CPU%u] log:%s\n",
+						(unsigned long)ts, rem_nsec / NSEC_PER_USEC, idx, cpu, log);
 		break;
 	}
 	case DSS_FLAG_PRINTKL:
 	{
-		char callstack[CONFIG_DEBUG_SNAPSHOT_CALLSTACK][KSYM_NAME_LEN];
 		size_t msg, val;
 		unsigned int cpu;
-		int i;
 
 		array_size = ARRAY_SIZE(dss_log->printkl) - 1;
 		if (!dumper->active) {
@@ -518,13 +534,8 @@ bool dbg_snapshot_dumper_one(void *v_dumper, char *line, size_t size, size_t *le
 		rem_nsec = do_div(ts, NSEC_PER_SEC);
 		msg = dss_log->printkl[idx].msg;
 		val = dss_log->printkl[idx].val;
-		for (i = 0; i < CONFIG_DEBUG_SNAPSHOT_CALLSTACK; i++)
-			lookup_symbol_name((unsigned long)dss_log->printkl[idx].caller[i],
-						callstack[i]);
-
-		*len = snprintf(line, size, "[%8lu.%09lu][%04d:CPU%u] msg:%zx, val:%zx, callstack: %s, %s, %s, %s\n",
-						(unsigned long)ts, rem_nsec / NSEC_PER_USEC, idx, cpu,
-						msg, val, callstack[0], callstack[1], callstack[2], callstack[3]);
+		*len = snprintf(line, size, "[%8lu.%09lu][%04d:CPU%u] msg:%zx, val:%zx\n",
+						(unsigned long)ts, rem_nsec / NSEC_PER_USEC, idx, cpu, msg, val);
 		break;
 	}
 #endif
@@ -780,6 +791,10 @@ static void dbg_snapshot_print_last_cpuidle(int cpu)
 static void dbg_snapshot_print_lastinfo(void)
 {
 	int cpu;
+	struct dbg_snapshot_item *item = &dss_items[dss_desc.kevents_num];
+
+	if (!dss_base.enabled || !item->entry.enabled)
+		return;
 
 	pr_info("<last info>\n");
 	for (cpu = 0; cpu < DSS_NR_CPUS; cpu++) {
@@ -1029,6 +1044,10 @@ static void dbg_snapshot_print_freqinfo(void)
 	char *freq_name;
 	unsigned int i;
 	unsigned long old_freq, target_freq;
+	struct dbg_snapshot_item *item = &dss_items[dss_desc.kevents_num];
+
+	if (!dss_base.enabled || !item->entry.enabled)
+		return;
 
 	pr_info("\n<freq info>\n");
 
@@ -1069,7 +1088,7 @@ void dbg_snapshot_freq(int type, unsigned long old_freq, unsigned long target_fr
 		dss_log->freq[i].time = cpu_clock(cpu);
 		dss_log->freq[i].cpu = cpu;
 		dss_log->freq[i].freq_name = dss_freq_name[type];
-		dss_log->freq[i].type = type;
+		dss_log->freq[i].freq_type = type;
 		dss_log->freq[i].old_freq = old_freq;
 		dss_log->freq[i].target_freq = target_freq;
 		dss_log->freq[i].en = en;
@@ -1085,6 +1104,10 @@ static void dbg_snapshot_print_irq(void)
 {
 	int i, j;
 	u64 sum = 0;
+	struct dbg_snapshot_item *item = &dss_items[dss_desc.kevents_num];
+
+	if (!dss_base.enabled || !item->entry.enabled)
+		return;
 
 	for_each_possible_cpu(i) {
 		sum += kstat_cpu_irqs_sum(i);
@@ -1405,5 +1428,218 @@ void dbg_snapshot_printkl(size_t msg, size_t val)
 				(void *)((size_t)return_address(j));
 		}
 	}
+}
+#endif
+
+#if defined(CONFIG_DEBUG_SNAPSHOT_THERMAL) && defined(CONFIG_SEC_PM_DEBUG)
+#include <linux/debugfs.h>
+
+static int exynos_ss_thermal_show(struct seq_file *m, void *unused)
+{
+	struct dbg_snapshot_item *item = &dss_items[dss_desc.kevents_num];
+	unsigned long idx, size;
+	unsigned long rem_nsec;
+	u64 ts;
+	int i;
+
+	if (unlikely(!dss_base.enabled || !item->entry.enabled))
+		return 0;
+
+	seq_puts(m, "time\t\t\ttemperature\tcooling_device\t\tmax_frequency\n");
+
+	size = ARRAY_SIZE(dss_log->thermal);
+	idx = atomic_read(&dss_idx.thermal_log_idx);
+
+	for (i = 0; i < size; i++, idx--) {
+		idx &= size - 1;
+
+		ts = dss_log->thermal[idx].time;
+		if (!ts)
+			break;
+
+		rem_nsec = do_div(ts, NSEC_PER_SEC);
+
+		seq_printf(m, "[%8lu.%06lu]\t%u\t\t%-16s\t%u\n",
+				(unsigned long)ts, rem_nsec / NSEC_PER_USEC,
+				dss_log->thermal[idx].temp,
+				dss_log->thermal[idx].cooling_device,
+				dss_log->thermal[idx].cooling_state);
+	}
+
+	return 0;
+}
+
+static int exynos_ss_thermal_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, exynos_ss_thermal_show, NULL);
+}
+
+static const struct file_operations thermal_fops = {
+	.owner = THIS_MODULE,
+	.open = exynos_ss_thermal_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static struct dentry *debugfs_ess_root;
+
+static int __init exynos_ss_debugfs_init(void)
+{
+	debugfs_ess_root = debugfs_create_dir("exynos-ss", NULL);
+	if (!debugfs_ess_root) {
+		pr_err("Failed to create exynos-ss debugfs\n");
+		return 0;
+	}
+
+	debugfs_create_file("thermal", 0444, debugfs_ess_root, NULL,
+			&thermal_fops);
+
+	return 0;
+}
+
+late_initcall(exynos_ss_debugfs_init);
+#endif /* CONFIG_DEBUG_SNAPSHOT_THERMAL && CONFIG_SEC_PM_DEBUG */
+
+#if defined(CONFIG_HARDLOCKUP_DETECTOR_OTHER_CPU)			\
+	&& defined(CONFIG_SEC_DEBUG)
+#define for_each_generated_irq_in_snapshot(idx, i, max, base, cpu)							\
+	for (i = 0, idx = base; i < max; ++i, idx = (base - i) & (ARRAY_SIZE(dss_log->irq[0]) - 1))		\
+		if (dss_log->irq[cpu][idx].en == DSS_FLAG_IN)
+
+static inline void dbg_snapshot_get_busiest_irq(struct hardlockup_info *hl_info, unsigned long start_idx, int cpu)
+{
+	#define MAX_BUF 5
+	int i, j, idx, max_count = 20;
+	int buf_count = 0;
+	int max_irq_idx = 0;
+
+	struct irq_info_buf {
+		unsigned int occurrences;
+		int irq;
+		void *fn;
+		unsigned long long total_duration;
+		unsigned long long last_time;
+	};
+
+	struct irq_info_buf i_buf[MAX_BUF] = {{0,},};
+
+	for_each_generated_irq_in_snapshot(idx, i, max_count, start_idx, cpu) {
+		for (j = 0; j < buf_count; j++) {
+			if (i_buf[j].irq == dss_log->irq[cpu][idx].irq) {
+				i_buf[j].total_duration += (i_buf[j].last_time - dss_log->irq[cpu][idx].time);
+				i_buf[j].last_time = dss_log->irq[cpu][idx].time;
+				i_buf[j].occurrences++;
+				break;
+			}
+		}
+
+		if (j == buf_count && buf_count < MAX_BUF) {
+			i_buf[buf_count].irq = dss_log->irq[cpu][idx].irq;
+			i_buf[buf_count].fn = dss_log->irq[cpu][idx].fn;
+			i_buf[buf_count].occurrences = 0;
+			i_buf[buf_count].total_duration = 0;
+			i_buf[buf_count].last_time = dss_log->irq[cpu][idx].time;
+			buf_count++;
+		} else if (buf_count == MAX_BUF) {
+			pr_info("Buffer overflow. Various irqs were generated!!\n");
+		}
+	}
+
+	for (i = 1; i < buf_count; i++) {
+		if (i_buf[max_irq_idx].occurrences < i_buf[i].occurrences)
+			max_irq_idx = i;
+	}
+
+	hl_info->irq_info.irq = i_buf[max_irq_idx].irq;
+	hl_info->irq_info.fn = i_buf[max_irq_idx].fn;
+	hl_info->irq_info.avg_period = i_buf[max_irq_idx].total_duration / i_buf[max_irq_idx].occurrences;
+}
+
+void dbg_snapshot_get_hardlockup_info(unsigned int cpu,  void *info)
+{
+	struct hardlockup_info *hl_info = info;
+	unsigned long cpuidle_idx, irq_idx, task_idx;
+	unsigned long long cpuidle_delay_time, irq_delay_time, task_delay_time;
+	unsigned long long curr, thresh;
+
+	thresh = get_hardlockup_thresh();
+	curr = local_clock();
+
+	cpuidle_idx = atomic_read(&dss_idx.cpuidle_log_idx[cpu]) & (ARRAY_SIZE(dss_log->cpuidle[0]) - 1);
+	cpuidle_delay_time = curr - dss_log->cpuidle[cpu][cpuidle_idx].time;
+
+	if (dss_log->cpuidle[cpu][cpuidle_idx].en == DSS_FLAG_IN
+		&& cpuidle_delay_time > thresh) {
+		hl_info->delay_time = cpuidle_delay_time;
+		hl_info->cpuidle_info.mode = dss_log->cpuidle[cpu][cpuidle_idx].modes;
+		hl_info->hl_type = HL_IDLE_STUCK;
+		return;
+	}
+
+	irq_idx = atomic_read(&dss_idx.irq_log_idx[cpu]) & (ARRAY_SIZE(dss_log->irq[0]) - 1);
+	irq_delay_time = curr - dss_log->irq[cpu][irq_idx].time;
+
+	if (dss_log->irq[cpu][irq_idx].en == DSS_FLAG_IN
+		&& irq_delay_time > thresh) {
+
+		hl_info->delay_time = irq_delay_time;
+
+		if (dss_log->irq[cpu][irq_idx].irq < 0) {				// smc calls have negative irq number
+			hl_info->smc_info.cmd = dss_log->irq[cpu][irq_idx].irq;
+			hl_info->hl_type = HL_SMC_CALL_STUCK;
+			return;
+		} else {
+			hl_info->irq_info.irq = dss_log->irq[cpu][irq_idx].irq;
+			hl_info->irq_info.fn = dss_log->irq[cpu][irq_idx].fn;
+			hl_info->hl_type = HL_IRQ_STUCK;
+			return;
+		}
+	}
+
+	task_idx = atomic_read(&dss_idx.task_log_idx[cpu]) & (ARRAY_SIZE(dss_log->task[0]) - 1);
+	task_delay_time = curr - dss_log->task[cpu][task_idx].time;
+
+	if (task_delay_time > thresh) {
+		hl_info->delay_time = task_delay_time;
+		if (irq_delay_time > thresh) {
+			strncpy(hl_info->task_info.task_comm,
+				dss_log->task[cpu][task_idx].task_comm,
+				TASK_COMM_LEN - 1);
+			hl_info->task_info.task_comm[TASK_COMM_LEN - 1] = '\0';
+			hl_info->hl_type = HL_TASK_STUCK;
+			return;
+		} else {
+			dbg_snapshot_get_busiest_irq(hl_info, irq_idx, cpu);
+			hl_info->hl_type = HL_IRQ_STORM;
+			return;
+		}
+	}
+
+	hl_info->hl_type = HL_UNKNOWN_STUCK;
+}
+
+void dbg_snapshot_get_softlockup_info(unsigned int cpu, void *info)
+{
+	struct softlockup_info *sl_info = info;
+	unsigned long task_idx;
+	unsigned long long task_delay_time;
+	unsigned long long curr, thresh;
+
+	thresh = get_dss_softlockup_thresh();
+	curr = local_clock();
+	task_idx = atomic_read(&dss_idx.task_log_idx[cpu]) & (ARRAY_SIZE(dss_log->task[0]) - 1);
+	task_delay_time = curr - dss_log->task[cpu][task_idx].time;
+	sl_info->delay_time = task_delay_time;
+
+	strncpy(sl_info->task_info.task_comm,
+		dss_log->task[cpu][task_idx].task_comm,
+		TASK_COMM_LEN - 1);
+	sl_info->task_info.task_comm[TASK_COMM_LEN - 1] = '\0';
+
+	if (task_delay_time > thresh)
+		sl_info->sl_type = SL_TASK_STUCK;
+	else
+		sl_info->sl_type = SL_UNKNOWN_STUCK;
 }
 #endif

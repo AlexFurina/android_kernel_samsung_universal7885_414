@@ -58,7 +58,7 @@ EXPORT_SYMBOL(exynos_pmu_update);
  * cpu address offset : ((cluster id << 2) | (cpu id)) * 0x8
  */
 
-#ifdef CONFIG_SOC_EXYNOS9810
+/*#ifdef CONFIG_SOC_EXYNOS9810
 #define CPU_PER_OFFSET		0x8
 #define phy_cluster(cpu)	!MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 1)
 #else
@@ -69,15 +69,41 @@ EXPORT_SYMBOL(exynos_pmu_update);
 #define phy_cpu(cpu)	MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 0)
 
 #define pmu_cpu_offset(cpu)	(((phy_cluster(cpu) << 2)| phy_cpu(cpu)) * CPU_PER_OFFSET)
-
+*/
+#define phy_cluster(cpu)        MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 1)
 #define PMU_CPU_CONFIG_BASE			0x2000
 #define PMU_CPU_STATUS_BASE			0x2004
 #define CPU_LOCAL_PWR_CFG			0xF
+
+#define CLUSTER0_CORES_CNT      (2)
+#define CLUSTER2_CORES_CNT      (2)
+unsigned int pmu_cpu_offset(unsigned int mpidr)
+{
+        unsigned int cluster = MPIDR_AFFINITY_LEVEL(mpidr, 1);
+        unsigned int offset = 0;
+        unsigned int cpuid = 0;
+
+        // It's base on the PMU's offset.
+        switch (cluster) {
+        case 1:
+                cpuid += CLUSTER2_CORES_CNT;
+        case 2:
+                cpuid += CLUSTER0_CORES_CNT;
+        case 0:
+                cpuid += MPIDR_AFFINITY_LEVEL(mpidr, 0);
+                break;
+        }
+
+        offset = 0x80 * cpuid;
+
+        return offset;
+}
+
 static void pmu_cpu_ctrl(unsigned int cpu, int enable)
 {
 	unsigned int offset;
-
-	offset = pmu_cpu_offset(cpu);
+	unsigned int mpidr = cpu_logical_map(cpu);
+	offset = pmu_cpu_offset(mpidr);
 	regmap_update_bits(pmureg, PMU_CPU_CONFIG_BASE + offset,
 			CPU_LOCAL_PWR_CFG,
 			enable ? CPU_LOCAL_PWR_CFG : 0);
@@ -86,20 +112,19 @@ static void pmu_cpu_ctrl(unsigned int cpu, int enable)
 static int pmu_cpu_state(unsigned int cpu)
 {
 	unsigned int offset, val = 0;
-
-	offset = pmu_cpu_offset(cpu);
+	unsigned int mpidr = cpu_logical_map(cpu);
+	offset = pmu_cpu_offset(mpidr);
 	regmap_read(pmureg, PMU_CPU_STATUS_BASE + offset, &val);
 
 	return ((val & CPU_LOCAL_PWR_CFG) == CPU_LOCAL_PWR_CFG);
 }
 
-#define CLUSTER_ADDR_OFFSET			0x8
-#define PMU_NONCPU_CONFIG_BASE			0x2040
-#define PMU_NONCPU_STATUS_BASE			0x2044
-#define PMU_MEMORY_CLUSTER1_NONCPU_STATUS	0x2380
-#define MEMORY_CLUSTER_ADDR_OFFSET		0x21C
+#define CLUSTER_ADDR_OFFSET			0x20
+#define PMU_CPUSEQ_OPTION_BASE			0x2488
+#define PMU_NONCPU_STATUS_BASE			0x2404
+#define PMU_L2_STATUS_BASE			0x2604
 #define NONCPU_LOCAL_PWR_CFG			0xF
-#define SHARED_CACHE_LOCAL_PWR_CFG		0x1
+#define L2_LOCAL_PWR_CFG			0x7
 
 static void pmu_cluster_ctrl(unsigned int cpu, int enable)
 {
@@ -107,9 +132,8 @@ static void pmu_cluster_ctrl(unsigned int cpu, int enable)
 
 	offset = phy_cluster(cpu) * CLUSTER_ADDR_OFFSET;
 	regmap_update_bits(pmureg,
-			PMU_NONCPU_CONFIG_BASE + offset,
-			NONCPU_LOCAL_PWR_CFG,
-			enable ? NONCPU_LOCAL_PWR_CFG : 0);
+			PMU_CPUSEQ_OPTION_BASE + offset,
+			1,enable);
 }
 
 static bool pmu_noncpu_state(unsigned int cpu)
@@ -124,17 +148,17 @@ static bool pmu_noncpu_state(unsigned int cpu)
 	return !!(noncpu_stat & NONCPU_LOCAL_PWR_CFG);
 }
 
-static int pmu_shared_cache_state(unsigned int cpu)
+static int pmu_l2_state(unsigned int cpu)
 {
 	unsigned int shared_stat = 0;
 	unsigned int offset;
 
-	offset = phy_cluster(cpu) * MEMORY_CLUSTER_ADDR_OFFSET;
+	offset = phy_cluster(cpu) * CLUSTER_ADDR_OFFSET;
 
 	regmap_read(pmureg,
-		PMU_MEMORY_CLUSTER1_NONCPU_STATUS + offset, &shared_stat);
+		PMU_L2_STATUS_BASE + offset, &shared_stat);
 
-	return (shared_stat & SHARED_CACHE_LOCAL_PWR_CFG);
+	return (shared_stat & L2_LOCAL_PWR_CFG);
 }
 
 static void exynos_cpu_up(unsigned int cpu)
@@ -164,7 +188,7 @@ static void exynos_cluster_down(unsigned int cpu)
 
 static int exynos_cluster_state(unsigned int cpu)
 {
-	return pmu_shared_cache_state(cpu) &&
+	return pmu_l2_state(cpu) &&
 			pmu_noncpu_state(cpu);
 }
 
@@ -187,28 +211,52 @@ int exynos_check_cp_status(void)
 	return val;
 }
 
+#define PMU_CPU_RESET_BASE		(0x200C)
+#define DISABLE_WDT_CPUPORESET		BIT(12)
+#define DISABLE_CORERESET		BIT(9)
+#define DISABLE_CPUPORESET		BIT(8)
+#define DISABLE_RESET			(DISABLE_WDT_CPUPORESET	\
+					| DISABLE_CORERESET 	\
+					| DISABLE_CPUPORESET)
+void exynos_cpu_reset_enable(unsigned int cpu)
+{
+	unsigned int mpidr = cpu_logical_map(cpu);
+	unsigned int offset;
+
+	offset = pmu_cpu_offset(mpidr);
+	regmap_update_bits(pmureg, PMU_CPU_RESET_BASE + offset,
+			DISABLE_RESET, 0);
+}
+
+void exynos_cpu_reset_disable(unsigned int cpu)
+{
+	unsigned int mpidr = cpu_logical_map(cpu);
+	unsigned int offset;
+
+	offset = pmu_cpu_offset(mpidr);
+	regmap_update_bits(pmureg, PMU_CPU_RESET_BASE + offset,
+			DISABLE_RESET, DISABLE_RESET);
+}
+
 static struct bus_type exynos_info_subsys = {
 	.name = "exynos_info",
 	.dev_name = "exynos_info",
 };
 
-#define NR_CPUS_PER_CLUSTER		4
 static ssize_t core_status_show(struct kobject *kobj,
 			struct kobj_attribute *attr, char *buf)
 {
 	ssize_t n = 0;
-	int cpu;
+	int cpu = 0;
 
 	for_each_possible_cpu(cpu) {
-		/*
-		 * Each cluster has four cores.
-		 * "cpu % NR_CPUS_PER_CLUSTER == 0" means that
-		 * the cpu is a first one of each cluster.
-		 */
-		if (!(cpu % NR_CPUS_PER_CLUSTER)) {
-			n += scnprintf(buf + n, 26, "%s shared_cache : %d\n",
+		unsigned int mpidr = cpu_logical_map(cpu);
+		unsigned int phy_cpu = MPIDR_AFFINITY_LEVEL(mpidr, 0);
+
+		if (!phy_cpu) {
+			n += scnprintf(buf + n, 24, "%s L2 : %d\n",
 				(!cpu) ? "boot" : "nonboot",
-				pmu_shared_cache_state(cpu));
+				pmu_l2_state(cpu));
 
 			n += scnprintf(buf + n, 24, "%s Noncpu : %d\n",
 				(!cpu) ? "boot" : "nonboot",
@@ -238,10 +286,15 @@ static const struct attribute_group *cs_sysfs_groups[] = {
 	NULL,
 };
 
+#include <linux/delay.h>
+#include <linux/notifier.h>
+#include <linux/cpu.h>
+
 static int exynos_pmu_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-
+	//debug statements
+	printk("%s started",__func__);
 	pmureg = syscon_regmap_lookup_by_phandle(dev->of_node,
 						"samsung,syscon-phandle");
 	if (IS_ERR(pmureg)) {
@@ -252,7 +305,9 @@ static int exynos_pmu_probe(struct platform_device *pdev)
 	if (subsys_system_register(&exynos_info_subsys,
 					cs_sysfs_groups))
 		pr_err("Fail to register exynos_info subsys\n");
-
+	/*FIXME uncomment during hotplug feature*/
+	//register_cpus_notifier(&exynos_pmu_cpus_nb);
+	printk("%s completed",__func__);
 	return 0;
 }
 

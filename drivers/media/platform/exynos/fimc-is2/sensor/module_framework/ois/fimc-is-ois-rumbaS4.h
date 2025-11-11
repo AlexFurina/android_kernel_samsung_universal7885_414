@@ -18,7 +18,7 @@
 #define OIS_FW_UPDATE_ERROR_STATUS	0x1163
 
 #define OIS_BIN_HEADER				28657
-#define OIS_BOOT_FW_SIZE			4096
+#define OIS_BOOT_FW_SIZE			(1024 * 4)
 #define OIS_FW_SIZE					(1024 * 24)
 #define FW_TRANS_SIZE				256
 

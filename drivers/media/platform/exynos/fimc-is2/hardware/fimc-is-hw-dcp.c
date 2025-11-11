@@ -21,10 +21,12 @@ static int fimc_is_hw_dcp_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	int ret = 0;
 	struct fimc_is_hw_dcp *hw_dcp = NULL;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (test_bit(HW_OPEN, &hw_ip->state))
 		return 0;
+
+	*size = sizeof(struct fimc_is_hw_dcp);
 
 	frame_manager_probe(hw_ip->framemgr, FRAMEMGR_ID_HW | hw_ip->id, "HWDCP");
 	frame_manager_open(hw_ip->framemgr, FIMC_IS_MAX_HW_FRAME);
@@ -47,6 +49,7 @@ static int fimc_is_hw_dcp_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
 #else
 	ret = get_lib_func(LIB_FUNC_DCP, (void **)&hw_dcp->lib_func);
 #endif
+	msdbg_hw(2, "lib_interface_func is set\n", instance, hw_ip);
 
 	if (!hw_dcp->lib_func) {
 		mserr_hw("func_dcp(null)", instance, hw_ip);
@@ -54,7 +57,6 @@ static int fimc_is_hw_dcp_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
 		ret = -EINVAL;
 		goto err_lib_func;
 	}
-	msinfo_hw("get_lib_func is set\n", instance, hw_ip);
 
 	hw_dcp->lib_support = &gPtr_lib_support;
 	hw_dcp->lib[instance].func   = hw_dcp->lib_func;
@@ -67,15 +69,11 @@ static int fimc_is_hw_dcp_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	}
 
 	set_bit(HW_OPEN, &hw_ip->state);
-	msdbg_hw(2, "open: [G:0x%x], framemgr[%s]", instance, hw_ip,
-		GROUP_ID(group->id), hw_ip->framemgr->name);
-
 	return 0;
 
 err_chain_create:
 err_lib_func:
 	vfree(hw_ip->priv_info);
-	hw_ip->priv_info = NULL;
 err_alloc:
 	frame_manager_close(hw_ip->framemgr);
 	frame_manager_close(hw_ip->framemgr_late);
@@ -88,9 +86,9 @@ static int fimc_is_hw_dcp_init(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	int ret = 0;
 	struct fimc_is_hw_dcp *hw_dcp = NULL;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!hw_ip->priv_info);
-	FIMC_BUG(!group);
+	BUG_ON(!hw_ip);
+	BUG_ON(!hw_ip->priv_info);
+	BUG_ON(!group);
 
 	hw_dcp = (struct fimc_is_hw_dcp *)hw_ip->priv_info;
 
@@ -118,8 +116,8 @@ static int fimc_is_hw_dcp_deinit(struct fimc_is_hw_ip *hw_ip, u32 instance)
 	int ret = 0;
 	struct fimc_is_hw_dcp *hw_dcp;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip);
+	BUG_ON(!hw_ip->priv_info);
 
 	hw_dcp = (struct fimc_is_hw_dcp *)hw_ip->priv_info;
 
@@ -129,35 +127,35 @@ static int fimc_is_hw_dcp_deinit(struct fimc_is_hw_ip *hw_ip, u32 instance)
 	return ret;
 }
 
-static int fimc_is_hw_dcp_close(struct fimc_is_hw_ip *hw_ip, u32 instance)
+int fimc_is_hw_dcp_close(struct fimc_is_hw_ip *hw_ip, u32 instance)
 {
 	int ret = 0;
 	struct fimc_is_hw_dcp *hw_dcp;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit(HW_OPEN, &hw_ip->state))
 		return 0;
 
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip->priv_info);
 	hw_dcp = (struct fimc_is_hw_dcp *)hw_ip->priv_info;
 
 	fimc_is_lib_isp_chain_destroy(hw_ip, &hw_dcp->lib[instance], instance);
 	vfree(hw_ip->priv_info);
-	hw_ip->priv_info = NULL;
 	frame_manager_close(hw_ip->framemgr);
 	frame_manager_close(hw_ip->framemgr_late);
 
 	clear_bit(HW_OPEN, &hw_ip->state);
+	msinfo_hw("close (%d)\n", instance, hw_ip, atomic_read(&hw_ip->rsccount));
 
 	return ret;
 }
 
-static int fimc_is_hw_dcp_enable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map)
+int fimc_is_hw_dcp_enable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map)
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
@@ -172,14 +170,14 @@ static int fimc_is_hw_dcp_enable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulon
 	return ret;
 }
 
-static int fimc_is_hw_dcp_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map)
+int fimc_is_hw_dcp_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map)
 {
 	int ret = 0;
-	long timetowait;
+	u32 timetowait;
 	struct fimc_is_hw_dcp *hw_dcp;
 	struct dcp_param_set *param_set;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
@@ -187,7 +185,7 @@ static int fimc_is_hw_dcp_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulo
 	msinfo_hw("dcp_disable: Vvalid(%d)\n", instance, hw_ip,
 		atomic_read(&hw_ip->status.Vvalid));
 
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip->priv_info);
 	hw_dcp = (struct fimc_is_hw_dcp *)hw_ip->priv_info;
 	param_set = &hw_dcp->param_set[instance];
 
@@ -196,7 +194,7 @@ static int fimc_is_hw_dcp_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulo
 		FIMC_IS_HW_STOP_TIMEOUT);
 
 	if (!timetowait) {
-		mserr_hw("wait FRAME_END timeout (%ld)", instance,
+		mserr_hw("wait FRAME_END timeout (%u)", instance,
 			hw_ip, timetowait);
 		ret = -ETIME;
 	}
@@ -204,14 +202,11 @@ static int fimc_is_hw_dcp_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulo
 	param_set->fcount = 0;
 	if (test_bit(HW_RUN, &hw_ip->state)) {
 		fimc_is_lib_isp_stop(hw_ip, &hw_dcp->lib[instance], instance);
+		clear_bit(HW_RUN, &hw_ip->state);
 	} else {
 		msdbg_hw(2, "already disabled\n", instance, hw_ip);
 	}
 
-	if (atomic_read(&hw_ip->rsccount) > 1)
-		return 0;
-
-	clear_bit(HW_RUN, &hw_ip->state);
 	clear_bit(HW_CONFIG, &hw_ip->state);
 
 	return ret;
@@ -223,6 +218,12 @@ static void fimc_is_hw_dcp_check_param(struct dcp_param *param,
 	if (param->control.cmd != param_set->control.cmd) {
 		*lindex |= LOWBIT_OF(PARAM_DCP_CONTROL);
 		*hindex |= HIGHBIT_OF(PARAM_DCP_CONTROL);
+	}
+
+	if ((param->config.rectification_bypass != param_set->config.rectification_bypass)
+		|| (param->config.fusion_bypass!= param_set->config.fusion_bypass)) {
+		*lindex |= LOWBIT_OF(PARAM_DCP_CONFIG);
+		*hindex |= HIGHBIT_OF(PARAM_DCP_CONFIG);
 	}
 
 	if (param->dma_input_m.cmd != param_set->dma_input_m.cmd) {
@@ -245,36 +246,159 @@ static void fimc_is_hw_dcp_check_param(struct dcp_param *param,
 		*hindex |= HIGHBIT_OF(PARAM_DCP_OUTPUT_SLAVE);
 	}
 
-	if (param->dma_output_m_ds.cmd != param_set->dma_output_m_ds.cmd) {
-		*lindex |= LOWBIT_OF(PARAM_DCP_OUTPUT_MASTER_DS);
-		*hindex |= HIGHBIT_OF(PARAM_DCP_OUTPUT_MASTER_DS);
-	}
-
-	if (param->dma_output_s_ds.cmd != param_set->dma_output_s_ds.cmd) {
-		*lindex |= LOWBIT_OF(PARAM_DCP_OUTPUT_SLAVE_DS);
-		*hindex |= HIGHBIT_OF(PARAM_DCP_OUTPUT_SLAVE_DS);
-	}
-
-	if (param->dma_input_disparity.cmd != param_set->dma_input_disparity.cmd) {
-		*lindex |= LOWBIT_OF(PARAM_DCP_INPIT_DISPARITY);
-		*hindex |= HIGHBIT_OF(PARAM_DCP_INPIT_DISPARITY);
-	}
-
-	if (param->dma_output_disparity.cmd != param_set->dma_output_disparity.cmd) {
+	if (param->output_disparity.cmd != param_set->output_disparity.cmd) {
 		*lindex |= LOWBIT_OF(PARAM_DCP_OUTPUT_DISPARITY);
 		*hindex |= HIGHBIT_OF(PARAM_DCP_OUTPUT_DISPARITY);
 	}
+
+	if (param->output_disparity_stat.cmd != param_set->output_disparity_stat.cmd) {
+		*lindex |= LOWBIT_OF(PARAM_DCP_OUTPUT_DISPARITY_STAT);
+		*hindex |= HIGHBIT_OF(PARAM_DCP_OUTPUT_DISPARITY_STAT);
+	}
+
+	if (param->dma_output_f.cmd != param_set->dma_output_f.cmd) {
+		*lindex |= LOWBIT_OF(PARAM_DCP_OUTPUT_FUSION);
+		*hindex |= HIGHBIT_OF(PARAM_DCP_OUTPUT_FUSION);
+	}
+
 }
 
-static void fimc_is_hw_dcp_update_param(struct dcp_param *param,
-	struct dcp_param_set *param_set, u32 lindex, u32 hindex, u32 instance)
+int fimc_is_hw_dcp_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
+	ulong hw_map)
 {
-	param_set->instance_id = instance;
+	int ret = 0;
+	struct fimc_is_hw_dcp *hw_dcp;
+	struct dcp_param_set *param_set;
+	struct is_region *region;
+	struct dcp_param *param;
+	u32 lindex, hindex;
+	u32 i = 0;
 
+	BUG_ON(!hw_ip);
+	BUG_ON(!frame);
+
+	msdbgs_hw(2, "[F:%d]shot\n", frame->instance, hw_ip, frame->fcount);
+
+	if (!test_bit(hw_ip->id, &hw_map))
+		return 0;
+
+	if (!test_bit(HW_INIT, &hw_ip->state)) {
+		mserr_hw("not initialized!!\n", frame->instance, hw_ip);
+		return -EINVAL;
+	}
+
+	BUG_ON(!hw_ip->priv_info);
+	hw_dcp = (struct fimc_is_hw_dcp *)hw_ip->priv_info;
+	param_set = &hw_dcp->param_set[frame->instance];
+	region = hw_ip->region[frame->instance];
+	BUG_ON(!region);
+
+	param = &region->parameter.dcp;
+
+	if (frame->type == SHOT_TYPE_INTERNAL) {
+		hw_ip->internal_fcount = frame->fcount;
+		mserr_hw("[F:%d]frame->type(%d) invalid\n", frame->instance, hw_ip, frame->fcount,
+			frame->type);
+		return 0;
+	} else {
+		BUG_ON(!frame->shot);
+		/* per-frame control
+		 * check & update size from region */
+		lindex = frame->shot->ctl.vendor_entry.lowIndexParam;
+		hindex = frame->shot->ctl.vendor_entry.highIndexParam;
+
+		if (hw_ip->internal_fcount) {
+			hw_ip->internal_fcount = 0;
+			fimc_is_hw_dcp_check_param(param, param_set, &lindex, &hindex);
+		}
+	}
+
+	fimc_is_hw_dcp_update_param(param, param_set, lindex, hindex);
+
+	/* TODO: DMA settings */
+	for (i = 0; i < DCP_DMA_MAX; i++) {
+		param_set->input_dva[i] = 0;
+		param_set->output_dva[i] = 0;
+	}
+
+	if (param_set->dma_input_m.cmd != DMA_INPUT_COMMAND_DISABLE) {
+		param_set->input_dva[DCP_DMA_MASTER_C] = frame->dvaddr_buffer[DCP_DMA_MASTER_C];
+		if (!frame->dvaddr_buffer[DCP_DMA_MASTER_C]) {
+			mserr_hw("[F:%d]dvaddr_buffer[0] is zero", frame->instance, hw_ip,
+				frame->fcount);
+			BUG_ON(1);
+		}
+	}
+
+	param_set->instance_id = frame->instance;
+	param_set->fcount = frame->fcount;
+
+	if (param_set->control.cmd == CONTROL_COMMAND_STOP)
+		return 0;
+	else if (param_set->control.cmd == CONTROL_COMMAND_START)
+		set_bit(hw_ip->id, &frame->core_flag);
+
+	if (frame->shot) {
+		ret = fimc_is_lib_isp_set_ctrl(hw_ip, &hw_dcp->lib[param_set->instance_id], frame);
+		if (ret)
+			mserr_hw("set_ctrl fail", frame->instance, hw_ip);
+	}
+
+	fimc_is_lib_isp_shot(hw_ip, &hw_dcp->lib[frame->instance],
+			param_set, frame->shot);
+
+	set_bit(HW_CONFIG, &hw_ip->state);
+
+	return ret;
+}
+
+int fimc_is_hw_dcp_set_param(struct fimc_is_hw_ip *hw_ip, struct is_region *region,
+	u32 lindex, u32 hindex, u32 instance, ulong hw_map)
+{
+	int ret = 0;
+	struct fimc_is_hw_dcp *hw_dcp;
+	struct dcp_param *param = NULL;
+
+	BUG_ON(!hw_ip);
+	BUG_ON(!region);
+
+	if (!test_bit_variables(hw_ip->id, &hw_map))
+		return 0;
+
+	if (!test_bit(HW_INIT, &hw_ip->state)) {
+		msdbg_hw(2, "not initialized\n", instance, hw_ip);
+		return -EINVAL;
+	}
+
+	BUG_ON(!hw_ip->priv_info);
+	hw_dcp = (struct fimc_is_hw_dcp *)hw_ip->priv_info;
+
+	hw_ip->region[instance] = region;
+	hw_ip->lindex[instance] = lindex;
+	hw_ip->hindex[instance] = hindex;
+
+	/* set full-bypass */
+	param = &(hw_ip->region[instance]->parameter.dcp);
+
+	fimc_is_hw_dcp_update_param(param, &hw_dcp->param_set[instance],
+				lindex, hindex);
+
+	return ret;
+}
+
+void fimc_is_hw_dcp_update_param(struct dcp_param *param,
+	struct dcp_param_set *param_set, u32 lindex, u32 hindex)
+{
 	if ((lindex & LOWBIT_OF(PARAM_DCP_CONTROL))
 		|| (hindex & HIGHBIT_OF(PARAM_DCP_CONTROL))) {
 		memcpy(&param_set->control, &param->control,
 			sizeof(struct param_control));
+	}
+
+	if ((lindex & LOWBIT_OF(PARAM_DCP_CONFIG))
+		|| (hindex & HIGHBIT_OF(PARAM_DCP_CONFIG))) {
+		memcpy(&param_set->config, &param->config,
+			sizeof(struct param_dcp_config));
 	}
 
 	if ((lindex & LOWBIT_OF(PARAM_DCP_INPUT_MASTER))
@@ -301,263 +425,38 @@ static void fimc_is_hw_dcp_update_param(struct dcp_param *param,
 			sizeof(struct param_dma_output));
 	}
 
-	if ((lindex & LOWBIT_OF(PARAM_DCP_OUTPUT_MASTER_DS))
-		|| (hindex & HIGHBIT_OF(PARAM_DCP_OUTPUT_MASTER_DS))) {
-		memcpy(&param_set->dma_output_m_ds, &param->dma_output_m_ds,
-			sizeof(struct param_dma_output));
-	}
-
-	if ((lindex & LOWBIT_OF(PARAM_DCP_OUTPUT_SLAVE_DS))
-		|| (hindex & HIGHBIT_OF(PARAM_DCP_OUTPUT_SLAVE_DS))) {
-		memcpy(&param_set->dma_output_s_ds, &param->dma_output_s_ds,
-			sizeof(struct param_dma_output));
-	}
-
-	if ((lindex & LOWBIT_OF(PARAM_DCP_INPIT_DISPARITY))
-		|| (hindex & HIGHBIT_OF(PARAM_DCP_INPIT_DISPARITY))) {
-		memcpy(&param_set->dma_input_disparity, &param->dma_input_disparity,
-			sizeof(struct param_dma_output));
-	}
-
 	if ((lindex & LOWBIT_OF(PARAM_DCP_OUTPUT_DISPARITY))
 		|| (hindex & HIGHBIT_OF(PARAM_DCP_OUTPUT_DISPARITY))) {
-		memcpy(&param_set->dma_output_disparity, &param->dma_output_disparity,
+		memcpy(&param_set->output_disparity, &param->output_disparity,
+			sizeof(struct param_dma_output));
+	}
+
+	if ((lindex & LOWBIT_OF(PARAM_DCP_OUTPUT_DISPARITY_STAT))
+		|| (hindex & HIGHBIT_OF(PARAM_DCP_OUTPUT_DISPARITY_STAT))) {
+		memcpy(&param_set->output_disparity_stat, &param->output_disparity_stat,
+			sizeof(struct param_dma_output));
+	}
+
+	if ((lindex & LOWBIT_OF(PARAM_DCP_OUTPUT_FUSION))
+		|| (hindex & HIGHBIT_OF(PARAM_DCP_OUTPUT_FUSION))) {
+		memcpy(&param_set->dma_output_f, &param->dma_output_f,
 			sizeof(struct param_dma_output));
 	}
 }
 
-static int fimc_is_hw_dcp_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
-	ulong hw_map)
-{
-	int ret = 0;
-	int i = 0;
-	int plane;
-	struct fimc_is_hw_dcp *hw_dcp;
-	struct dcp_param_set *param_set;
-	struct is_region *region;
-	struct dcp_param *param;
-	u32 lindex, hindex;
-	bool frame_done = false;
-
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!frame);
-
-	msdbgs_hw(2, "[F:%d]shot\n", frame->instance, hw_ip, frame->fcount);
-
-	if (!test_bit(hw_ip->id, &hw_map))
-		return 0;
-
-	if (!test_bit(HW_INIT, &hw_ip->state)) {
-		mserr_hw("not initialized!!\n", frame->instance, hw_ip);
-		return -EINVAL;
-	}
-
-	fimc_is_hw_g_ctrl(hw_ip, hw_ip->id, HW_G_CTRL_FRM_DONE_WITH_DMA, (void *)&frame_done);
-	if ((!frame_done)
-		|| (!test_bit(ENTRY_DC0C, &frame->out_flag) && !test_bit(ENTRY_DC1C, &frame->out_flag)))
-		set_bit(hw_ip->id, &frame->core_flag);
-
-	FIMC_BUG(!hw_ip->priv_info);
-	hw_dcp = (struct fimc_is_hw_dcp *)hw_ip->priv_info;
-	param_set = &hw_dcp->param_set[frame->instance];
-	region = hw_ip->region[frame->instance];
-	FIMC_BUG(!region);
-
-	param = &region->parameter.dcp;
-
-	if (frame->type == SHOT_TYPE_INTERNAL) {
-		hw_ip->internal_fcount = frame->fcount;
-		mserr_hw("[F:%d]frame->type(%d) invalid\n", frame->instance, hw_ip, frame->fcount,
-			frame->type);
-		return 0;
-	} else {
-		FIMC_BUG(!frame->shot);
-		/* per-frame control
-		 * check & update size from region */
-		lindex = frame->shot->ctl.vendor_entry.lowIndexParam;
-		hindex = frame->shot->ctl.vendor_entry.highIndexParam;
-
-		if (hw_ip->internal_fcount) {
-			hw_ip->internal_fcount = 0;
-			fimc_is_hw_dcp_check_param(param, param_set, &lindex, &hindex);
-		}
-	}
-
-	fimc_is_hw_dcp_update_param(param, param_set, lindex, hindex, frame->instance);
-
-	/* DMA settings */
-	plane = param->dma_input_m.plane;
-	if (param_set->dma_input_m.cmd == DMA_INPUT_COMMAND_ENABLE) {
-		for (i = 0; i < plane; i++) {
-			param_set->input_dva[DCP_DMA_IN_GDC_MASTER][i] =
-				(typeof(**param_set->input_dva))frame->dvaddr_buffer[i];
-			if (param_set->input_dva[DCP_DMA_IN_GDC_MASTER][i] == 0) {
-				mserr_hw("[F:%d]DCP_DMA_IN_GDC_MASTER plane[%d] dva is zero",
-					frame->instance, hw_ip, frame->fcount, i);
-				return -EINVAL;
-			}
-		}
-	}
-
-	/* Slave input */
-	plane = param->dma_input_s.plane;
-	if (param_set->dma_input_s.cmd == DMA_INPUT_COMMAND_ENABLE) {
-		for (i = 0; i < plane; i++) {
-			param_set->input_dva[DCP_DMA_IN_GDC_SLAVE][i] =
-				frame->sourceAddress[i];
-			if (param_set->input_dva[DCP_DMA_IN_GDC_SLAVE][i] == 0) {
-				mserr_hw("[F:%d]DCP_DMA_IN_GDC_SLAVE plane[%d]dva is zero",
-					frame->instance, hw_ip, frame->fcount, i);
-				return -EINVAL;
-			}
-		}
-	}
-
-	/* Master Main output: plane order is [Y, C, Y2, C2] */
-	plane = param->dma_output_m.plane;
-	if (param_set->dma_output_m.cmd == DMA_INPUT_COMMAND_ENABLE) {
-		for (i = 0; i < plane; i++) {
-			param_set->output_dva[DCP_DMA_OUT_MASTER][i] =
-				frame->sccTargetAddress[i];
-			if (param_set->output_dva[DCP_DMA_OUT_MASTER][i] == 0) {
-				mserr_hw("[F:%d]DCP_DMA_OUT_MASTER plane[%d] dva is zero",
-					frame->instance, hw_ip, frame->fcount, i);
-				return -EINVAL;
-			}
-		}
-	}
-
-	/* Slave Main output: plane order is [Y, C] */
-	plane = param->dma_output_s.plane;
-	if (param_set->dma_output_s.cmd == DMA_INPUT_COMMAND_ENABLE) {
-		for (i = 0; i < plane; i++) {
-			param_set->output_dva[DCP_DMA_OUT_SLAVE][i] =
-				frame->scpTargetAddress[i];
-			if (param_set->output_dva[DCP_DMA_OUT_SLAVE][i] == 0) {
-				mserr_hw("[F:%d]DCP_DMA_OUT_SLAVE plane[%d] dva is zero",
-					frame->instance, hw_ip, frame->fcount, i);
-				return -EINVAL;
-			}
-		}
-	}
-
-	/* Disparity */
-	if (param_set->dma_output_disparity.cmd == DMA_INPUT_COMMAND_ENABLE) {
-		/* disparity input: previous data */
-		param_set->input_dva[DCP_DMA_IN_DISPARITY][0] =
-			param_set->output_dva[DCP_DMA_OUT_DISPARITY][0];
-
-		/* disparity output: currnet data */
-		param_set->output_dva[DCP_DMA_OUT_DISPARITY][0] =
-			frame->dxcTargetAddress[0];
-		if (param_set->output_dva[DCP_DMA_OUT_DISPARITY][0] == 0) {
-			mserr_hw("[F:%d]DCP_DMA_OUT_DISPARITY plane[%d] dva is zero",
-				frame->instance, hw_ip, frame->fcount, 0);
-			return -EINVAL;
-		}
-	}
-
-	/* Master Sub output: plane order is [Y, C] */
-	plane = param->dma_output_m_ds.plane;
-	if (param_set->dma_output_m_ds.cmd == DMA_INPUT_COMMAND_ENABLE) {
-		for (i = 0; i < plane; i++) {
-			param_set->output_dva[DCP_DMA_OUT_MASTER_DS][i] =
-				frame->sccTargetAddress[8 + i];
-
-			if (param_set->output_dva[DCP_DMA_OUT_MASTER_DS][i] == 0) {
-				mserr_hw("[F:%d]DCP_DMA_OUT_MASTER_DS plane[%d] dva is zero",
-					frame->instance, hw_ip, frame->fcount, i);
-				return -EINVAL;
-			}
-		}
-	}
-
-	/* Slave Sub output: plane order is [Y, C] */
-	plane = param->dma_output_s_ds.plane;
-	if (param_set->dma_output_s_ds.cmd == DMA_INPUT_COMMAND_ENABLE) {
-		for (i = 0; i < plane; i++) {
-			param_set->output_dva[DCP_DMA_OUT_SLAVE_DS][i] =
-				frame->scpTargetAddress[8 + i];
-			if (param_set->output_dva[DCP_DMA_OUT_SLAVE_DS][i] == 0) {
-				mserr_hw("[F:%d]DCP_DMA_OUT_SLAVE_DS plane[%d] dva is zero",
-					frame->instance, hw_ip, frame->fcount, i);
-				return -EINVAL;
-			}
-		}
-	}
-
-	/* param_set->instance_id = frame->instance; */ /* TODO: remove */
-	param_set->fcount = frame->fcount;
-
-	/* multi-buffer: currently not support HFR */
-	if (frame->num_buffers)
-		hw_ip->num_buffers = frame->num_buffers;
-
-	if (param_set->control.cmd == CONTROL_COMMAND_STOP)
-		return 0;
-
-	if (frame->shot) {
-		ret = fimc_is_lib_isp_set_ctrl(hw_ip, &hw_dcp->lib[frame->instance], frame);
-		if (ret)
-			mserr_hw("set_ctrl fail", frame->instance, hw_ip);
-	}
-
-	fimc_is_lib_isp_shot(hw_ip, &hw_dcp->lib[frame->instance],
-			param_set, frame->shot);
-
-	set_bit(HW_CONFIG, &hw_ip->state);
-
-	return ret;
-}
-
-static int fimc_is_hw_dcp_set_param(struct fimc_is_hw_ip *hw_ip, struct is_region *region,
-	u32 lindex, u32 hindex, u32 instance, ulong hw_map)
-{
-	int ret = 0;
-	struct fimc_is_hw_dcp *hw_dcp;
-	struct dcp_param_set *param_set;
-	struct dcp_param *param = NULL;
-
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!region);
-
-	if (!test_bit_variables(hw_ip->id, &hw_map))
-		return 0;
-
-	if (!test_bit(HW_INIT, &hw_ip->state)) {
-		msdbg_hw(2, "not initialized\n", instance, hw_ip);
-		return -EINVAL;
-	}
-
-	FIMC_BUG(!hw_ip->priv_info);
-	hw_dcp = (struct fimc_is_hw_dcp *)hw_ip->priv_info;
-	param_set = &hw_dcp->param_set[instance];
-
-	hw_ip->region[instance] = region;
-	hw_ip->lindex[instance] = lindex;
-	hw_ip->hindex[instance] = hindex;
-
-	param = &(hw_ip->region[instance]->parameter.dcp);
-
-	fimc_is_hw_dcp_update_param(param, param_set,
-				lindex, hindex, instance);
-
-	return ret;
-}
-
-static int fimc_is_hw_dcp_get_meta(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
+int fimc_is_hw_dcp_get_meta(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
 	ulong hw_map)
 {
 	int ret = 0;
 	struct fimc_is_hw_dcp *hw_dcp;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!frame);
+	BUG_ON(!hw_ip);
+	BUG_ON(!frame);
 
 	if (!test_bit(hw_ip->id, &hw_map))
 		return 0;
 
-	FIMC_BUG(!hw_ip->priv_info);
+	BUG_ON(!hw_ip->priv_info);
 	hw_dcp = (struct fimc_is_hw_dcp *)hw_ip->priv_info;
 
 	ret = fimc_is_lib_isp_get_meta(hw_ip, &hw_dcp->lib[frame->instance], frame);
@@ -567,56 +466,26 @@ static int fimc_is_hw_dcp_get_meta(struct fimc_is_hw_ip *hw_ip, struct fimc_is_f
 	return ret;
 }
 
-static int fimc_is_hw_dcp_frame_ndone(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
+int fimc_is_hw_dcp_frame_ndone(struct fimc_is_hw_ip *hw_ip, struct fimc_is_frame *frame,
 	u32 instance, enum ShotErrorType done_type)
 {
 	int ret = 0;
+	int wq_id, output_id;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!frame);
+	BUG_ON(!hw_ip);
+	BUG_ON(!frame);
 
-	if (test_bit(ENTRY_DC1S, &frame->out_flag)) {
-		ret = fimc_is_hardware_frame_done(hw_ip, frame,
-			WORK_DC1S_FDONE, ENTRY_DC1S, done_type, false);
-	}
-
-
-	if (test_bit(ENTRY_DC0C, &frame->out_flag)) {
-		ret = fimc_is_hardware_frame_done(hw_ip, frame,
-			WORK_DC0C_FDONE, ENTRY_DC0C, done_type, false);
-	}
-
-
-	if (test_bit(ENTRY_DC1C, &frame->out_flag)) {
-		ret = fimc_is_hardware_frame_done(hw_ip, frame,
-			WORK_DC1C_FDONE, ENTRY_DC1C, done_type, false);
-	}
-
-
-	if (test_bit(ENTRY_DC2C, &frame->out_flag)) {
-		ret = fimc_is_hardware_frame_done(hw_ip, frame,
-			WORK_DC2C_FDONE, ENTRY_DC2C, done_type, false);
-	}
-
-	if (test_bit(ENTRY_DC3C, &frame->out_flag)) {
-		ret = fimc_is_hardware_frame_done(hw_ip, frame,
-			WORK_DC3C_FDONE, ENTRY_DC3C, done_type, false);
-	}
-
-	if (test_bit(ENTRY_DC4C, &frame->out_flag)) {
-		ret = fimc_is_hardware_frame_done(hw_ip, frame,
-			WORK_DC4C_FDONE, ENTRY_DC4C, done_type, false);
-	}
-
-	if (test_bit(hw_ip->id, &frame->core_flag)) {
-		ret = fimc_is_hardware_frame_done(hw_ip, frame,
-			-1, FIMC_IS_HW_CORE_END, done_type, false);
-	}
+	wq_id     = -1;
+	output_id = FIMC_IS_HW_CORE_END;
+	if (test_bit(hw_ip->id, &frame->core_flag))
+		ret = fimc_is_hardware_frame_done(hw_ip, frame, wq_id,
+				output_id, done_type, false);
 
 	return ret;
 }
 
-static int fimc_is_hw_dcp_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance, ulong hw_map)
+int fimc_is_hw_dcp_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 index,
+	u32 instance, ulong hw_map)
 {
 	int ret = 0;
 
@@ -624,39 +493,32 @@ static int fimc_is_hw_dcp_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance
 		return 0;
 
 	if (!test_bit(HW_INIT, &hw_ip->state)) {
-		mserr_hw("not initialized!!", instance, hw_ip);
+		msdbg_hw(2, "Not initialized\n", instance, hw_ip);
 		return -ESRCH;
 	}
-
-	set_bit(HW_TUNESET, &hw_ip->state);
 
 	return ret;
 }
 
-static int fimc_is_hw_dcp_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenario,
+int fimc_is_hw_dcp_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenario,
 	u32 instance, ulong hw_map)
 {
 	u32 setfile_index = 0;
 	int ret = 0;
-	struct fimc_is_hw_ip_setfile *setfile;
-	enum exynos_sensor_position sensor_position;
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
 
 	if (!test_bit(HW_INIT, &hw_ip->state)) {
-		mserr_hw("not initialized!!", instance, hw_ip);
+		msdbg_hw(2, "Not initialized\n", instance, hw_ip);
 		return -ESRCH;
 	}
 
-	sensor_position = hw_ip->hardware->sensor_position[instance];
-	setfile = &hw_ip->setfile[sensor_position];
-
-	if (setfile->using_count == 0)
+	if (hw_ip->setfile.using_count == 0)
 		return 0;
 
-	setfile_index = setfile->index[scenario];
-	if (setfile_index >= setfile->using_count) {
+	setfile_index = hw_ip->setfile.index[scenario];
+	if (setfile_index >= hw_ip->setfile.using_count) {
 		mserr_hw("setfile index is out-of-range, [%d:%d]",
 				instance, hw_ip, scenario, setfile_index);
 		return -EINVAL;
@@ -665,23 +527,20 @@ static int fimc_is_hw_dcp_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenari
 	msinfo_hw("setfile (%d) scenario (%d)\n", instance, hw_ip,
 		setfile_index, scenario);
 
+	set_bit(HW_TUNESET, &hw_ip->state);
+
 	return ret;
 }
 
-static int fimc_is_hw_dcp_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance,
+int fimc_is_hw_dcp_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 instance,
 	ulong hw_map)
 {
 	int ret = 0;
-	struct fimc_is_hw_ip_setfile *setfile;
-	enum exynos_sensor_position sensor_position;
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
 
-	sensor_position = hw_ip->hardware->sensor_position[instance];
-	setfile = &hw_ip->setfile[sensor_position];
-
-	if (setfile->using_count == 0)
+	if (hw_ip->setfile.using_count == 0)
 		return 0;
 
 	clear_bit(HW_TUNESET, &hw_ip->state);
@@ -689,7 +548,7 @@ static int fimc_is_hw_dcp_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 instan
 	return ret;
 }
 
-static void fimc_is_hw_dcp_size_dump(struct fimc_is_hw_ip *hw_ip)
+void fimc_is_hw_dcp_size_dump(struct fimc_is_hw_ip *hw_ip)
 {
 	return;
 }
@@ -718,9 +577,9 @@ int fimc_is_hw_dcp_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface *
 	int ret = 0;
 	int hw_slot = -1;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!itf);
-	FIMC_BUG(!itfc);
+	BUG_ON(!hw_ip);
+	BUG_ON(!itf);
+	BUG_ON(!itfc);
 
 	/* initialize device hardware */
 	hw_ip->id   = id;

@@ -42,8 +42,6 @@ int fimc_is_sensor_read8(struct i2c_client *client,
 	u16 addr, u8 *val);
 int fimc_is_sensor_read16(struct i2c_client *client,
 	u16 addr, u16 *val);
-int fimc_is_sensor_read8_size(struct i2c_client *client,
-		void *buf, u16 addr, size_t size);
 int fimc_is_sensor_write(struct i2c_client *client,
 	u8 *buf, u32 size);
 int fimc_is_sensor_addr8_write8(struct i2c_client *client,
@@ -58,4 +56,6 @@ int fimc_is_sensor_write16_array(struct i2c_client *client,
 	u16 addr, u16 *val, u32 num);
 int fimc_is_sensor_write16_burst(struct i2c_client *client,
 	u16 addr, u16 *val, u32 num);
+int fimc_is_sensor_write8_sequential(struct i2c_client *client,
+	u16 addr, u8 *val, u16 num);
 #endif

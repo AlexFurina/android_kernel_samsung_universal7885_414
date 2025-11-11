@@ -44,7 +44,7 @@
 #define DSS_API_MAX_NUM			SZ_2K
 #define DSS_EX_MAX_NUM			SZ_8
 #define DSS_IN_MAX_NUM			SZ_8
-#define DSS_CALLSTACK_MAX_NUM		4
+#define DSS_CALLSTACK_MAX_NUM		CONFIG_DEBUG_SNAPSHOT_CALLSTACK
 #define DSS_ITERATION			5
 #define DSS_NR_CPUS			NR_CPUS
 #define DSS_ITEM_MAX_NUM		10
@@ -71,9 +71,13 @@
 #define DSS_OFFSET_CORE_POWER_STAT	(0x400)
 #define DSS_OFFSET_PANIC_STAT		(0x500)
 #define DSS_OFFSET_CORE_LAST_PC		(0x600)
+
 /* S5P_VA_SS_BASE + 0x700 -- 0x8FF is reserved */
 #define DSS_OFFSET_LINUX_BANNER		(0x700)
-#define DSS_OFFSET_ITEM_INFO		(0x900)
+
+#define DSS_OFFSET_KERNEL_LOG		(0x900)
+#define DSS_OFFSET_PLATFORM_LOG		(0x904)
+#define DSS_OFFSET_KERNEL_EVENT		(0x908)
 
 /* S5P_VA_SS_BASE + 0xC00 -- 0xFFF is reserved */
 #define DSS_OFFSET_PANIC_STRING		(0xC00)
@@ -208,7 +212,7 @@ struct dbg_snapshot_log {
 	struct __freq_log {
 		unsigned long long time;
 		int cpu;
-		int type;
+		int freq_type;
 		char *freq_name;
 		unsigned long old_freq;
 		unsigned long target_freq;
@@ -324,7 +328,7 @@ struct dbg_snapshot_log {
 		struct trace_binder_transaction_base base;
 		struct trace_binder_transaction transaction;
 		struct trace_binder_transaction_error error;
-	} binder[DSS_API_MAX_NUM << 2];
+	} binder[DSS_LOG_MAX_NUM];
 #endif
 
 #ifndef CONFIG_DEBUG_SNAPSHOT_MINIMIZED_MODE
@@ -334,14 +338,14 @@ struct dbg_snapshot_log {
 		size_t msg;
 		size_t val;
 		void *caller[DSS_CALLSTACK_MAX_NUM];
-	} printkl[DSS_API_MAX_NUM];
+	} printkl[DSS_LOG_MAX_NUM];
 
 	struct __printk_log {
 		unsigned long long time;
 		int cpu;
 		char log[DSS_LOG_STRING_LEN];
 		void *caller[DSS_CALLSTACK_MAX_NUM];
-	} printk[DSS_API_MAX_NUM];
+	} printk[DSS_LOG_MAX_NUM];
 #endif
 };
 

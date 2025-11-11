@@ -50,6 +50,7 @@ enum {
 	PHY_PMA_TRSV,
 	PHY_PLL_WAIT,
 	PHY_CDR_WAIT,
+	PHY_CDR_AFC_WAIT,
 	UNIPRO_STD_MIB,
 	UNIPRO_DBG_MIB,
 	UNIPRO_DBG_APB,
@@ -131,175 +132,206 @@ struct ufs_cal_phy_cfg {
 static struct ufs_cal_param *ufs_cal[NUM_OF_UFS_HOST];
 static unsigned long ufs_cal_lock_timeout = 0xFFFFFFFF;
 
-static const struct ufs_cal_phy_cfg init_cfg[] = {
-	{0x9514, 0x00, PMD_ALL, UNIPRO_DBG_PRD, 0},
-
-	{0x200, 0x40, PMD_ALL, PHY_PCS_COMN, 0},
-	{0x12, 0x00, PMD_ALL, PHY_PCS_RX_PRD, 0},
-	{0xAA, 0x00, PMD_ALL, PHY_PCS_TX_PRD, 0},
-	{0x5C, 0x38, PMD_ALL, PHY_PCS_RX, 0},
-	{0x0F, 0x0, PMD_ALL, PHY_PCS_RX, 0},
-	{0x65, 0x01, PMD_ALL, PHY_PCS_RX, 0},
-	{0x69, 0x1, PMD_ALL, PHY_PCS_RX, 0},
-	{0x21, 0x0, PMD_ALL, PHY_PCS_RX, 0},
-	{0x22, 0x0, PMD_ALL, PHY_PCS_RX, 0},
-	{0x84, 0x1, PMD_ALL, PHY_PCS_RX, 0},
-	{0x04, 0x1, PMD_ALL, PHY_PCS_TX, 0},
-	{0x8F, 0x3E, PMD_ALL, PHY_PCS_TX, 0},
-	{0x200, 0x0, PMD_ALL, PHY_PCS_COMN, 0},
-
-	{0x9536, 0x4E20, PMD_ALL, UNIPRO_DBG_MIB, 0},
-	{0x9564, 0x2e820183, PMD_ALL, UNIPRO_DBG_MIB, 0},
-	{0x155E, 0x0, PMD_ALL, UNIPRO_STD_MIB, 0},
-	{0x3000, 0x0, PMD_ALL, UNIPRO_STD_MIB, 0},
-	{0x3001, 0x1, PMD_ALL, UNIPRO_STD_MIB, 0},
-	{0x4021, 0x1, PMD_ALL, UNIPRO_STD_MIB, 0},
-	{0x4020, 0x1, PMD_ALL, UNIPRO_STD_MIB, 0},
-
-	{0x8C, 0x80, PMD_ALL, PHY_PMA_COMN, 0},
-	{0x74, 0x10, PMD_ALL, PHY_PMA_COMN, 0},
-	{0x110, 0xB5, PMD_ALL, PHY_PMA_TRSV, 0},	// 0xBB
-	{0x134, 0x43, PMD_ALL, PHY_PMA_TRSV, 0},	// 0x03
-	{0x16C, 0x20, PMD_ALL, PHY_PMA_TRSV, 0},
-	{0x178, 0xC0, PMD_ALL, PHY_PMA_TRSV, 0},	// 0x80
-	{0x1B0, 0x94, PMD_ALL, PHY_PMA_TRSV, 0},	// 0x14
-	{0xE0, 0x12, PMD_ALL, PHY_PMA_TRSV, 0},		// 0x38
-	{0x164, 0x58, PMD_ALL, PHY_PMA_TRSV, 0},	// 0x50
-	{0x8C, 0xC0, PMD_ALL, PHY_PMA_COMN, 0},
-	{0x8C, 0x00, PMD_ALL, PHY_PMA_COMN, 0},
+static struct ufs_cal_phy_cfg init_cfg[] = {
+	{0x9514, 0x00, PMD_ALL, UNIPRO_DBG_PRD, __BRD_COMMON},
+	{0x200, 0x40, PMD_ALL, PHY_PCS_COMN, __BRD_COMMON},
+	{0x12, 0x00, PMD_ALL, PHY_PCS_RX_PRD, __BRD_COMMON},
+	{0xAA, 0x00, PMD_ALL, PHY_PCS_TX_PRD, __BRD_COMMON},
+	{0x5C, 0x38, PMD_ALL, PHY_PCS_RX, __BRD_COMMON},
+	{0x0F, 0x0, PMD_ALL, PHY_PCS_RX, __BRD_COMMON},
+	{0x65, 0x01, PMD_ALL, PHY_PCS_RX, __BRD_COMMON},
+	{0x69, 0x1, PMD_ALL, PHY_PCS_RX, __BRD_COMMON},
+	{0x21, 0x0, PMD_ALL, PHY_PCS_RX, __BRD_COMMON},
+	{0x22, 0x0, PMD_ALL, PHY_PCS_RX, __BRD_COMMON},
+	{0x84, 0x1, PMD_ALL, PHY_PCS_RX, __BRD_COMMON},
+	{0x04, 0x1, PMD_ALL, PHY_PCS_TX, __BRD_COMMON},
+	{0x8F, 0x3E, PMD_ALL, PHY_PCS_TX, __BRD_COMMON},
+	{0x200, 0x0, PMD_ALL, PHY_PCS_COMN, __BRD_COMMON},
+	{0x9536, 0x4E20, PMD_ALL, UNIPRO_DBG_MIB, __BRD_COMMON},
+	{0x9564, 0x2e820183, PMD_ALL, UNIPRO_DBG_MIB, __BRD_COMMON},
+	{0x155E, 0x0, PMD_ALL, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x3000, 0x0, PMD_ALL, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x3001, 0x1, PMD_ALL, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x4021, 0x1, PMD_ALL, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x4020, 0x1, PMD_ALL, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x8C, 0x80, PMD_ALL, PHY_PMA_COMN, __BRD_COMMON},
+	{0x74, 0x10, PMD_ALL, PHY_PMA_COMN, __BRD_COMMON},
+	{0x110, 0xB5, PMD_ALL, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x134, 0x43, PMD_ALL, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x16C, 0x20, PMD_ALL, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x178, 0xC0, PMD_ALL, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x1B0, 0x94, PMD_ALL, PHY_PMA_TRSV, __BRD_COMMON},
+	{0xE0, 0x12, PMD_ALL, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x164, 0x58, PMD_ALL, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x8C, 0xC0, PMD_ALL, PHY_PMA_COMN, __BRD_COMMON},
+	{0x8C, 0x00, PMD_ALL, PHY_PMA_COMN, __BRD_COMMON},
+	{0x00, 0xC8, PMD_ALL, COMMON_WAIT, __BRD_COMMON},
 	{},
 };
 
 static struct ufs_cal_phy_cfg post_init_cfg[] = {
-	{0x9529, 0x1, PMD_ALL, UNIPRO_DBG_MIB, 0},
-	{0x15A4, 0xFA, PMD_ALL, UNIPRO_STD_MIB, 0},
-	{0x9529, 0x0, PMD_ALL, UNIPRO_DBG_MIB, 0},
-	{0x200, 0x40, PMD_ALL, PHY_PCS_COMN, 0},
-	{0x35, 0x05, PMD_ALL, PHY_PCS_RX, 0},
-	{0x73, 0x01, PMD_ALL, PHY_PCS_RX, 0},
-	{0x41, 0x02, PMD_ALL, PHY_PCS_RX, 0},
-	{0x42, 0xAC, PMD_ALL, PHY_PCS_RX, 0},
-	{0x200, 0x0, PMD_ALL, PHY_PCS_COMN, 0},
+	{0x9529, 0x1, PMD_ALL, UNIPRO_DBG_MIB, __BRD_COMMON},
+	{0x15A4, 0xFA, PMD_ALL, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x9529, 0x0, PMD_ALL, UNIPRO_DBG_MIB, __BRD_COMMON},
+	{0x200, 0x40, PMD_ALL, PHY_PCS_COMN, __BRD_COMMON},
+	{0x35, 0x05, PMD_ALL, PHY_PCS_RX, __BRD_COMMON},
+	{0x73, 0x01, PMD_ALL, PHY_PCS_RX, __BRD_COMMON},
+	{0x41, 0x02, PMD_ALL, PHY_PCS_RX, __BRD_COMMON},
+	{0x42, 0xAC, PMD_ALL, PHY_PCS_RX, __BRD_COMMON},
+	{0x200, 0x0, PMD_ALL, PHY_PCS_COMN, __BRD_COMMON},
 	{},
 };
 
 static struct ufs_cal_phy_cfg calib_of_pwm[] = {
-	{0x2041, 8064, PMD_PWM, UNIPRO_STD_MIB, 0},
-	{0x2042, 28224, PMD_PWM, UNIPRO_STD_MIB, 0},
-	{0x2043, 20160, PMD_PWM, UNIPRO_STD_MIB, 0},
-	{0x15B0, 12000, PMD_PWM, UNIPRO_STD_MIB, 0},
-	{0x15B1, 32000, PMD_PWM, UNIPRO_STD_MIB, 0},
-	{0x15B2, 16000, PMD_PWM, UNIPRO_STD_MIB, 0},
+	{0x2041, 8064, PMD_PWM, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x2042, 28224, PMD_PWM, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x2043, 20160, PMD_PWM, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x15B0, 12000, PMD_PWM, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x15B1, 32000, PMD_PWM, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x15B2, 16000, PMD_PWM, UNIPRO_STD_MIB, __BRD_COMMON},
 
-	{0x7888, 8064, PMD_PWM, UNIPRO_DBG_APB, 0},
-	{0x788C, 28224, PMD_PWM, UNIPRO_DBG_APB, 0},
-	{0x7890, 20160, PMD_PWM, UNIPRO_DBG_APB, 0},
-	{0x78B8, 12000, PMD_PWM, UNIPRO_DBG_APB, 0},
-	{0x78BC, 32000, PMD_PWM, UNIPRO_DBG_APB, 0},
-	{0x78C0, 16000, PMD_PWM, UNIPRO_DBG_APB, 0},
+	{0x7888, 8064, PMD_PWM, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x788C, 28224, PMD_PWM, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x7890, 20160, PMD_PWM, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x78B8, 12000, PMD_PWM, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x78BC, 32000, PMD_PWM, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x78C0, 16000, PMD_PWM, UNIPRO_DBG_APB, __BRD_COMMON},
 
 	//MPHY tuning value
-	{0xC8, 0x40, PMD_PWM, PHY_PMA_TRSV, 0},
-	{0xF0, 0x77, PMD_PWM, PHY_PMA_TRSV, 0},
-	{0x120, 0x80, PMD_PWM, PHY_PMA_TRSV, 0},
-	{0x128, 0x00, PMD_PWM, PHY_PMA_TRSV, 0},
-	{0x12C, 0x00, PMD_PWM, PHY_PMA_TRSV, 0},
-	{0x134, 0x43, PMD_PWM, PHY_PMA_TRSV, 0},
+	{0xC8, 0x40, PMD_PWM, PHY_PMA_TRSV, __BRD_COMMON},
+	{0xF0, 0x77, PMD_PWM, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x120, 0x80, PMD_PWM, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x128, 0x00, PMD_PWM, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x12C, 0x00, PMD_PWM, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x134, 0x43, PMD_PWM, PHY_PMA_TRSV, __BRD_COMMON},
 	{},
 };
 
 static struct ufs_cal_phy_cfg post_calib_of_pwm[] = {
 	{},
 };
+
 static struct ufs_cal_phy_cfg calib_of_hs_rate_a[] = {
-	{0x2041, 8064, PMD_HS, UNIPRO_STD_MIB, 0},
-	{0x2042, 28224, PMD_HS, UNIPRO_STD_MIB, 0},
-	{0x2043, 20160, PMD_HS, UNIPRO_STD_MIB, 0},
-	{0x15B0, 12000, PMD_HS, UNIPRO_STD_MIB, 0},
-	{0x15B1, 32000, PMD_HS, UNIPRO_STD_MIB, 0},
-	{0x15B2, 16000, PMD_HS, UNIPRO_STD_MIB, 0},
+	{0x2041, 8064, PMD_HS, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x2042, 28224, PMD_HS, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x2043, 20160, PMD_HS, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x15B0, 12000, PMD_HS, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x15B1, 32000, PMD_HS, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x15B2, 16000, PMD_HS, UNIPRO_STD_MIB, __BRD_COMMON},
 
-	{0x7888, 8064, PMD_HS, UNIPRO_DBG_APB, 0},
-	{0x788C, 28224, PMD_HS, UNIPRO_DBG_APB, 0},
-	{0x7890, 20160, PMD_HS, UNIPRO_DBG_APB, 0},
-	{0x78B8, 12000, PMD_HS, UNIPRO_DBG_APB, 0},
-	{0x78BC, 32000, PMD_HS, UNIPRO_DBG_APB, 0},
-	{0x78C0, 16000, PMD_HS, UNIPRO_DBG_APB, 0},
+	{0x7888, 8064, PMD_HS, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x788C, 28224, PMD_HS, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x7890, 20160, PMD_HS, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x78B8, 12000, PMD_HS, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x78BC, 32000, PMD_HS, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x78C0, 16000, PMD_HS, UNIPRO_DBG_APB, __BRD_COMMON},
 
-	//MPHY tuning value
-	{0xC8, 0xBC, PMD_HS, PHY_PMA_TRSV, 0},
-	{0xF0, 0x7F, PMD_HS, PHY_PMA_TRSV, 0},
-	{0x120, 0xC0, PMD_HS, PHY_PMA_TRSV, 0},
-	{0x128, 0x08, PMD_HS_G1_L2, PHY_PMA_TRSV, 0},
-	{0x128, 0x02, PMD_HS_G2_L2, PHY_PMA_TRSV, 0},
-	{0x128, 0x00, PMD_HS_G3_L2, PHY_PMA_TRSV, 0},
-	{0x12C, 0x10, PMD_HS_G1_L2|PMD_HS_G3_L2, PHY_PMA_TRSV, 0},
-	{0x12C, 0x00, PMD_HS_G2_L2, PHY_PMA_TRSV, 0},
-	{0x134, 0xd3, PMD_HS_G1_L2, PHY_PMA_TRSV, 0},
-	{0x134, 0x73, PMD_HS_G2_L2, PHY_PMA_TRSV, 0},
-	{0x134, 0x63, PMD_HS_G3_L2, PHY_PMA_TRSV, 0},
+	{0xC8, 0xBC, PMD_HS, PHY_PMA_TRSV, __BRD_COMMON},
+	{0xF0, 0x7F, PMD_HS, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x120, 0xC0, PMD_HS, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x128, 0x08, PMD_HS_G1_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x128, 0x02, PMD_HS_G2_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x128, 0x00, PMD_HS_G3_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x12C, 0x10, PMD_HS_G1_L2|PMD_HS_G3_L2, PHY_PMA_TRSV, __BRD_SMDK},
+	{0x12C, 0x00, PMD_HS_G2_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x134, 0xd3, PMD_HS_G1_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x134, 0x73, PMD_HS_G2_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x134, 0x63, PMD_HS_G3_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	//RX EQ
+	//{0x108, 0x5D, PMD_HS, PHY_PMA_TRSV, __BRD_SMDK},
+	//{0x108, 0x5D, PMD_HS, PHY_PMA_TRSV, __BRD_ASB},
+
+	//{0x10C, 0xD1, PMD_HS, PHY_PMA_TRSV, __BRD_SMDK},
+	//{0x10C, 0xD1, PMD_HS, PHY_PMA_TRSV, __BRD_ASB},
 	{},
 };
 
 static struct ufs_cal_phy_cfg post_calib_of_hs_rate_a[] = {
-	{0x1fc, 0x40, PMD_HS, PHY_CDR_WAIT, 0},
+	{0x1fc, 0x40, PMD_HS, PHY_CDR_AFC_WAIT, __BRD_COMMON},
 	{},
 };
 
 static struct ufs_cal_phy_cfg calib_of_hs_rate_b[] = {
-	{0x2041, 8064, PMD_HS, UNIPRO_STD_MIB, 0},
-	{0x2042, 28224, PMD_HS, UNIPRO_STD_MIB, 0},
-	{0x2043, 20160, PMD_HS, UNIPRO_STD_MIB, 0},
-	{0x15B0, 12000, PMD_HS, UNIPRO_STD_MIB, 0},
-	{0x15B1, 32000, PMD_HS, UNIPRO_STD_MIB, 0},
-	{0x15B2, 16000, PMD_HS, UNIPRO_STD_MIB, 0},
+	{0x2041, 8064, PMD_HS, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x2042, 28224, PMD_HS, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x2043, 20160, PMD_HS, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x15B0, 12000, PMD_HS, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x15B1, 32000, PMD_HS, UNIPRO_STD_MIB, __BRD_COMMON},
+	{0x15B2, 16000, PMD_HS, UNIPRO_STD_MIB, __BRD_COMMON},
 
-	{0x7888, 8064, PMD_HS, UNIPRO_DBG_APB, 0},
-	{0x788C, 28224, PMD_HS, UNIPRO_DBG_APB, 0},
-	{0x7890, 20160, PMD_HS, UNIPRO_DBG_APB, 0},
-	{0x78B8, 12000, PMD_HS, UNIPRO_DBG_APB, 0},
-	{0x78BC, 32000, PMD_HS, UNIPRO_DBG_APB, 0},
-	{0x78C0, 16000, PMD_HS, UNIPRO_DBG_APB, 0},
+	{0x7888, 8064, PMD_HS, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x788C, 28224, PMD_HS, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x7890, 20160, PMD_HS, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x78B8, 12000, PMD_HS, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x78BC, 32000, PMD_HS, UNIPRO_DBG_APB, __BRD_COMMON},
+	{0x78C0, 16000, PMD_HS, UNIPRO_DBG_APB, __BRD_COMMON},
 
 	//MPHY tuning value
-	{0xC8, 0xBC, PMD_HS, PHY_PMA_TRSV, 0},
-	{0xF0, 0x7F, PMD_HS, PHY_PMA_TRSV, 0},
-	{0x120, 0xC0, PMD_HS, PHY_PMA_TRSV, 0},
-	{0x128, 0x08, PMD_HS_G1_L2, PHY_PMA_TRSV, 0},
-	{0x128, 0x02, PMD_HS_G2_L2, PHY_PMA_TRSV, 0},
-	{0x128, 0x00, PMD_HS_G3_L2, PHY_PMA_TRSV, 0},
-	{0x12C, 0x10, PMD_HS_G1_L2|PMD_HS_G3_L2, PHY_PMA_TRSV, 0},
-	{0x12C, 0x00, PMD_HS_G2_L2, PHY_PMA_TRSV, 0},
-	{0x134, 0xd3, PMD_HS_G1_L2, PHY_PMA_TRSV, 0},
-	{0x134, 0x73, PMD_HS_G2_L2, PHY_PMA_TRSV, 0},
-	{0x134, 0x63, PMD_HS_G3_L2, PHY_PMA_TRSV, 0},
+	{0xC8, 0xBC, PMD_HS, PHY_PMA_TRSV, __BRD_COMMON},
+	{0xF0, 0x7F, PMD_HS, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x120, 0xC0, PMD_HS, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x128, 0x08, PMD_HS_G1_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x128, 0x02, PMD_HS_G2_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x128, 0x00, PMD_HS_G3_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x12C, 0x10, PMD_HS_G1_L2|PMD_HS_G3_L2, PHY_PMA_TRSV, __BRD_SMDK},
+	{0x12C, 0x00, PMD_HS_G2_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x134, 0xd3, PMD_HS_G1_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x134, 0x73, PMD_HS_G2_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x134, 0x63, PMD_HS_G3_L2, PHY_PMA_TRSV, __BRD_COMMON},
+	//RX EQ
+	//{0x108, 0x5F, PMD_HS, PHY_PMA_TRSV, __BRD_SMDK},
+	//{0x108, 0x5F, PMD_HS, PHY_PMA_TRSV, __BRD_ASB},
+
+	//{0x10C, 0xD0, PMD_HS, PHY_PMA_TRSV, __BRD_SMDK},
+	//{0x10C, 0xD0, PMD_HS, PHY_PMA_TRSV, __BRD_ASB},
 	{},
 };
 
 static struct ufs_cal_phy_cfg post_calib_of_hs_rate_b[] = {
-	{0x1fc, 0x40, PMD_HS, PHY_CDR_WAIT, 0},
-	{},
-};
-
-static struct ufs_cal_phy_cfg lane1_sq_off[] = {
-	{0x0C4, 0x19, PMD_ALL, PHY_PMA_TRSV_LANE1_SQ_OFF, 0},
-	{0x0E8, 0xFF, PMD_ALL, PHY_PMA_TRSV_LANE1_SQ_OFF, 0},
+	{0x1fc, 0x40, PMD_HS, PHY_CDR_AFC_WAIT, __BRD_COMMON},
 	{},
 };
 
 static struct ufs_cal_phy_cfg post_h8_enter[] = {
-	{0x0C4, 0x99, PMD_ALL, PHY_PMA_TRSV, 0},
-	{0x0E8, 0x7F, PMD_ALL, PHY_PMA_TRSV, 0},
-	{0x004, 0x02, PMD_ALL, PHY_PMA_COMN, 0},
+	{0x0C4, 0x99, PMD_ALL, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x0E8, 0x7F, PMD_ALL, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x0F0, 0x7F, PMD_HS, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x004, 0x02, PMD_ALL, PHY_PMA_COMN, __BRD_COMMON},
 	{},
 };
 
 static struct ufs_cal_phy_cfg pre_h8_exit[] = {
-	{0x004, 0x00, PMD_ALL, PHY_PMA_COMN, 0},
-	{0x0C4, 0xD9, PMD_ALL, PHY_PMA_TRSV, 0},
-	{0x0E8, 0x77, PMD_ALL, PHY_PMA_TRSV, 0},
+	{0x004, 0x3F, PMD_HS, PHY_PMA_COMN, __BRD_COMMON},
+	{0x004, 0x00, PMD_PWM, PHY_PMA_COMN, __BRD_COMMON},
+	{0x0C4, 0xD9, PMD_ALL, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x0E8, 0x77, PMD_ALL, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x00,  0x0A, PMD_HS, COMMON_WAIT, __BRD_COMMON},
+	{0x0F0, 0xFF, PMD_HS, PHY_PMA_TRSV, __BRD_COMMON},
+	{0x1fc, 0x01, PMD_HS, PHY_CDR_AFC_WAIT, __BRD_COMMON},
 	{},
 };
+
+static inline ufs_cal_errno ufs_cal_wait_cdr_afc_check(void *hba,
+			u32 addr, u32 mask, int lane)
+{
+	u32 delay_us = 1;
+	u32 delay2_us = 40;
+	u32 reg = 0;
+	u32 i;
+
+	for (i = 0; i < 100; i++) {
+		ufs_lld_usleep_delay(delay2_us, delay2_us);
+
+		reg = ufs_lld_pma_read(hba, PHY_PMA_TRSV_ADDR(addr, lane));
+		if (mask == (reg & mask))
+			return UFS_CAL_NO_ERROR;
+
+		ufs_lld_usleep_delay(delay_us, delay_us);
+		ufs_lld_pma_write(hba, 0x7F, PHY_PMA_TRSV_ADDR(0xF0, lane));
+		ufs_lld_pma_write(hba, 0xFF, PHY_PMA_TRSV_ADDR(0xF0, lane));
+	}
+	return UFS_CAL_ERROR;
+}
 
 static inline ufs_cal_errno __match_board_by_cfg(u8 board, u8 cfg_board)
 {
@@ -429,7 +461,7 @@ static ufs_cal_errno ufs_cal_config_uic(struct ufs_cal_param *p,
 		return UFS_CAL_INV_ARG;
 
 	for_each_phy_cfg(cfg) {
-		for (i = 0; i < p->target_lane; i++) {
+		for (i = 0; i < p->available_lane; i++) {
 			if (p->board && UFS_CAL_ERROR ==
 					__match_board_by_cfg(p->board, cfg->board))
 				continue;
@@ -481,12 +513,15 @@ static ufs_cal_errno ufs_cal_config_uic(struct ufs_cal_param *p,
 						PHY_PMA_TRSV_ADDR(cfg->addr, i));
 				break;
 			case PHY_PMA_TRSV_LANE1_SQ_OFF:
-				if (i == 1)
-					ufs_lld_pma_write(hba, cfg->val,
-						PHY_PMA_TRSV_ADDR(cfg->addr, i));
+				if (i == 1) {
+					if (p->connected_rx_lane < p->available_lane)
+						ufs_lld_pma_write(hba, cfg->val,
+							PHY_PMA_TRSV_ADDR(cfg->addr, i));
+				}
 				break;
 			case UNIPRO_DBG_APB:
-				ufs_lld_unipro_write(hba, cfg->val, cfg->addr);
+				if (i == 1)
+					ufs_lld_unipro_write(hba, cfg->val, cfg->addr);
 				break;
 			case PHY_PLL_WAIT:
 				if (i == 0) {
@@ -500,6 +535,12 @@ static ufs_cal_errno ufs_cal_config_uic(struct ufs_cal_param *p,
 				if (ufs_cal_wait_cdr_lock(hba,
 						cfg->addr, cfg->val, i) ==
 								UFS_CAL_ERROR)
+					return UFS_CAL_TIMEOUT;
+				break;
+			case PHY_CDR_AFC_WAIT:
+				if (ufs_cal_wait_cdr_afc_check(hba,
+						cfg->addr, cfg->val, i) ==
+						UFS_CAL_ERROR)
 					return UFS_CAL_TIMEOUT;
 				break;
 			case COMMON_WAIT:
@@ -576,17 +617,6 @@ ufs_cal_errno ufs_cal_pre_pmc(struct ufs_cal_param *p)
 		cfg = calib_of_hs_rate_a;
 	else
 		return UFS_CAL_INV_ARG;
-
-	/*
-	 * If a number of target lanes is 1 and a host's
-	 * a number of available lanes is 2,
-	 * you should turn off phy power of lane #1.
-	 *
-	 * This must be modified when a number of avaiable lanes
-	 * would grow in the future.
-	 */
-	if ((p->available_lane == 2) && (p->target_lane == 1))
-		ret = ufs_cal_config_uic(p, lane1_sq_off, NULL);
 
 	ret = ufs_cal_config_uic(p, cfg, p->pmd);
 

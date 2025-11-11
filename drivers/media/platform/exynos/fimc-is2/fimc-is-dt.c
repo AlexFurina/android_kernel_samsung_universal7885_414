@@ -91,6 +91,7 @@ static int parse_gate_info(struct exynos_platform_fimc_is *pdata, struct device_
 	/* gate info */
 	gate_info_np = of_find_node_by_name(np, "clk_gate_ctrl");
 	if (!gate_info_np) {
+		printk(KERN_ERR "%s: can't find fimc_is clk_gate_ctrl node\n", __func__);
 		ret = -ENOENT;
 		goto p_err;
 	}
@@ -142,7 +143,7 @@ static int parse_dvfs_data(struct exynos_platform_fimc_is *pdata, struct device_
 	char buf[64];
 
 	for (i = 0; i < FIMC_IS_SN_END; i++) {
-#if defined(QOS_INTCAM)
+#if defined(CONFIG_SOC_EXYNOS8895)
 		sprintf(buf, "%s%s", fimc_is_dvfs_dt_arr[i].parse_scenario_nm, "int_cam");
 		DT_READ_U32(np, buf, pdata->dvfs_data[index][fimc_is_dvfs_dt_arr[i].scenario_id][FIMC_IS_DVFS_INT_CAM]);
 #endif
@@ -165,7 +166,7 @@ static int parse_dvfs_data(struct exynos_platform_fimc_is *pdata, struct device_
 #ifdef DBG_DUMP_DVFS_DT
 	for (i = 0; i < FIMC_IS_SN_END; i++) {
 		probe_info("---- %s ----\n", fimc_is_dvfs_dt_arr[i].parse_scenario_nm);
-#if defined(QOS_INTCAM)
+#if defined(CONFIG_SOC_EXYNOS8895)
 		probe_info("[%d][%d][INT_CAM] = %d\n", index, i, pdata->dvfs_data[index][i][FIMC_IS_DVFS_INT_CAM]);
 #endif
 		probe_info("[%d][%d][INT] = %d\n", index, i, pdata->dvfs_data[index][i][FIMC_IS_DVFS_INT]);
@@ -220,10 +221,10 @@ int fimc_is_parse_dt(struct platform_device *pdev)
 	struct device *dev;
 	struct device_node *dvfs_np = NULL;
 	struct device_node *vender_np = NULL;
+	struct device_node *sensor_cmn_np = NULL;
 	struct device_node *np;
-	u32 mem_info[2];
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	np = dev->of_node;
@@ -248,32 +249,16 @@ int fimc_is_parse_dt(struct platform_device *pdev)
 	pdata->print_clk = exynos_fimc_is_print_clk;
 
 	if (parse_gate_info(pdata, np) < 0)
-		probe_info("can't parse clock gate info node");
+		probe_err("can't parse clock gate info node");
 
 	of_property_read_u32(np, "chain_config", &core->chain_config);
-	probe_info("FIMC-IS chain configuration: %d\n", core->chain_config);
+	probe_info("FIMC-IS chain configuration: %d", core->chain_config);
 
-	ret = of_property_read_u32_array(np, "secure_mem_info", mem_info, 2);
-	if (ret) {
-		core->secure_mem_info[0] = 0;
-		core->secure_mem_info[1] = 0;
-	} else {
-		core->secure_mem_info[0] = mem_info[0];
-		core->secure_mem_info[1] = mem_info[1];
-	}
-	probe_info("ret(%d) secure_mem_info(%#08lx, %#08lx)", ret,
-		core->secure_mem_info[0], core->secure_mem_info[1]);
+	sensor_cmn_np = of_find_node_by_name(np, "sensor_common_cfg");
+	if (sensor_cmn_np)
+		core->use_csi_dma_split = of_property_read_bool(sensor_cmn_np, "use_csi_dma_split");
 
-	ret = of_property_read_u32_array(np, "non_secure_mem_info", mem_info, 2);
-	if (ret) {
-		core->non_secure_mem_info[0] = 0;
-		core->non_secure_mem_info[1] = 0;
-	} else {
-		core->non_secure_mem_info[0] = mem_info[0];
-		core->non_secure_mem_info[1] = mem_info[1];
-	}
-	probe_info("ret(%d) non_secure_mem_info(%#08lx, %#08lx)", ret,
-		core->non_secure_mem_info[0], core->non_secure_mem_info[1]);
+	probe_info("FIMC-IS CSIS DMA split: %d", core->use_csi_dma_split);
 
 	vender_np = of_find_node_by_name(np, "vender");
 	if (vender_np) {
@@ -306,15 +291,13 @@ p_err:
 
 int fimc_is_sensor_parse_dt(struct platform_device *pdev)
 {
-	int ret;
+	int ret = 0;
 	struct exynos_platform_fimc_is_sensor *pdata;
 	struct device_node *dnode;
 	struct device *dev;
-	int elems;
-	int i;
 
-	FIMC_BUG(!pdev);
-	FIMC_BUG(!pdev->dev.of_node);
+	BUG_ON(!pdev);
+	BUG_ON(!pdev->dev.of_node);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -334,98 +317,31 @@ int fimc_is_sensor_parse_dt(struct platform_device *pdev)
 	ret = of_property_read_u32(dnode, "id", &pdata->id);
 	if (ret) {
 		err("id read is fail(%d)", ret);
-		goto err_read_id;
+		goto p_err;
 	}
 
 	ret = of_property_read_u32(dnode, "scenario", &pdata->scenario);
 	if (ret) {
 		err("scenario read is fail(%d)", ret);
-		goto err_read_scenario;
+		goto p_err;
 	}
 
 	ret = of_property_read_u32(dnode, "csi_ch", &pdata->csi_ch);
 	if (ret) {
 		err("csi_ch read is fail(%d)", ret);
-		goto err_read_csi_ch;
-	}
-
-	ret = of_property_read_u32(dnode, "csi_mux", &pdata->csi_mux);
-	if (ret) {
-		probe_info("skip phy-csi mux data read (%d)", ret);
-	}
-
-	ret = of_property_read_u32(dnode, "multi_ch", &pdata->multi_ch);
-	if (ret) {
-		probe_info("skip multi_ch bool data read (%d)", ret);
-	}
-
-	ret = of_property_read_u32(dnode, "camif_mux_val", &pdata->camif_mux_val);
-	if (ret)
-		probe_info("skip camif sysreg mux default value read (%d)", ret);
-
-	elems = of_property_count_u32_elems(dnode, "dma_ch");
-	if (elems >= CSI_VIRTUAL_CH_MAX) {
-		if (elems % CSI_VIRTUAL_CH_MAX) {
-			err("the length of DMA ch. is not a multiple of VC Max");
-			ret = -EINVAL;
-			goto err_read_dma_ch;
-		}
-
-		if (elems != of_property_count_u32_elems(dnode, "vc_ch")) {
-			err("the length of DMA ch. does not match VC ch.");
-			ret = -EINVAL;
-			goto err_read_vc_ch;
-		}
-
-		pdata->dma_ch = kcalloc(elems, sizeof(*pdata->dma_ch), GFP_KERNEL);
-		if (!pdata->dma_ch) {
-			err("out of memory for DMA ch.");
-			ret = -EINVAL;
-			goto err_alloc_dma_ch;
-		}
-
-		pdata->vc_ch = kcalloc(elems, sizeof(*pdata->vc_ch), GFP_KERNEL);
-		if (!pdata->vc_ch) {
-			err("out of memory for VC ch.");
-			ret = -EINVAL;
-			goto err_alloc_vc_ch;
-		}
-
-		for (i = 0; i < elems; i++) {
-			pdata->dma_ch[i] = -1;
-			pdata->vc_ch[i] = -1;
-		}
-
-		if (!of_property_read_u32_array(dnode, "dma_ch", pdata->dma_ch,
-					elems)) {
-			if (!of_property_read_u32_array(dnode, "vc_ch",
-						pdata->vc_ch,
-						elems)) {
-				pdata->dma_abstract = true;
-				pdata->num_of_ch_mode = elems / CSI_VIRTUAL_CH_MAX;
-			} else {
-				warn("failed to read vc_ch\n");
-			}
-		} else {
-			warn("failed to read dma_ch\n");
-		}
-
-		if (!pdata->dma_abstract) {
-			kfree(pdata->vc_ch);
-			kfree(pdata->dma_ch);
-		}
+		goto p_err;
 	}
 
 	ret = of_property_read_u32(dnode, "flite_ch", &pdata->flite_ch);
 	if (ret) {
 		err("flite_ch read is fail(%d)", ret);
-		goto err_read_flite_ch;
+		goto p_err;
 	}
 
 	ret = of_property_read_u32(dnode, "is_bns", &pdata->is_bns);
 	if (ret) {
 		err("is_bns read is fail(%d)", ret);
-		goto err_read_is_bns;
+		goto p_err;
 	}
 
 	if (of_property_read_bool(dnode, "use_ssvc0_internal"))
@@ -443,23 +359,10 @@ int fimc_is_sensor_parse_dt(struct platform_device *pdev)
 	pdev->id = pdata->id;
 	dev->platform_data = pdata;
 
-	return 0;
+	return ret;
 
-err_read_is_bns:
-err_read_flite_ch:
-	kfree(pdata->vc_ch);
-
-err_alloc_vc_ch:
-	kfree(pdata->dma_ch);
-
-err_alloc_dma_ch:
-err_read_vc_ch:
-err_read_dma_ch:
-err_read_csi_ch:
-err_read_scenario:
-err_read_id:
+p_err:
 	kfree(pdata);
-
 	return ret;
 }
 
@@ -470,8 +373,8 @@ int fimc_is_preprocessor_parse_dt(struct platform_device *pdev)
 	struct device_node *dnode;
 	struct device *dev;
 
-	FIMC_BUG(!pdev);
-	FIMC_BUG(!pdev->dev.of_node);
+	BUG_ON(!pdev);
+	BUG_ON(!pdev->dev.of_node);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -567,38 +470,14 @@ static int parse_ois_data(struct exynos_platform_fimc_is_module *pdata, struct d
 	return 0;
 }
 
-static int parse_mcu_data(struct exynos_platform_fimc_is_module *pdata, struct device_node *dnode)
+static int parse_iris_data(struct exynos_platform_fimc_is_module *pdata, struct device_node *dnode)
 {
 	u32 temp;
 	char *pprop;
 
-	DT_READ_U32(dnode, "product_name", pdata->mcu_product_name);
-	DT_READ_U32(dnode, "i2c_addr", pdata->mcu_i2c_addr);
-	DT_READ_U32(dnode, "i2c_ch", pdata->mcu_i2c_ch);
-
-	return 0;
-}
-
-static int parse_aperture_data(struct exynos_platform_fimc_is_module *pdata, struct device_node *dnode)
-{
-	u32 temp;
-	char *pprop;
-
-	DT_READ_U32(dnode, "product_name", pdata->aperture_product_name);
-	DT_READ_U32(dnode, "i2c_addr", pdata->aperture_i2c_addr);
-	DT_READ_U32(dnode, "i2c_ch", pdata->aperture_i2c_ch);
-
-	return 0;
-}
-
-static int parse_eeprom_data(struct exynos_platform_fimc_is_module *pdata, struct device_node *dnode)
-{
-	u32 temp;
-	char *pprop;
-
-	DT_READ_U32(dnode, "product_name", pdata->eeprom_product_name);
-	DT_READ_U32(dnode, "i2c_addr", pdata->eeprom_i2c_addr);
-	DT_READ_U32(dnode, "i2c_ch", pdata->eeprom_i2c_ch);
+	DT_READ_U32(dnode, "product_name", pdata->iris_product_name);
+	DT_READ_U32(dnode, "i2c_addr", pdata->iris_i2c_addr);
+	DT_READ_U32(dnode, "i2c_ch", pdata->iris_i2c_ch);
 
 	return 0;
 }
@@ -696,6 +575,146 @@ static int parse_internal_vc_data(struct exynos_platform_fimc_is_module *pdata, 
 	return ret;
 }
 
+/* Deprecated. Use  fimc_is_module_parse_dt */
+int fimc_is_sensor_module_parse_dt(struct platform_device *pdev,
+	fimc_is_moudle_dt_callback module_callback)
+{
+	int ret = 0;
+	struct exynos_platform_fimc_is_module *pdata;
+	struct device_node *dnode;
+	struct device_node *af_np;
+	struct device_node *flash_np;
+	struct device_node *preprocessor_np;
+	struct device_node *ois_np;
+	struct device_node *iris_np;
+	struct device_node *power_np;
+	struct device_node *internal_vc_np;
+	struct device *dev;
+
+	BUG_ON(!pdev);
+	BUG_ON(!pdev->dev.of_node);
+	BUG_ON(!module_callback);
+
+	dev = &pdev->dev;
+	dnode = dev->of_node;
+
+	pdata = kzalloc(sizeof(struct exynos_platform_fimc_is_module), GFP_KERNEL);
+	if (!pdata) {
+		probe_err("%s: no memory for platform data", __func__);
+		return -ENOMEM;
+	}
+
+	pdata->gpio_cfg = exynos_fimc_is_module_pins_cfg;
+	pdata->gpio_dbg = exynos_fimc_is_module_pins_dbg;
+
+	ret = of_property_read_u32(dnode, "id", &pdata->id);
+	if (ret) {
+		probe_err("id read is fail(%d)", ret);
+		goto p_err;
+	}
+
+	ret = of_property_read_u32(dnode, "mclk_ch", &pdata->mclk_ch);
+	if (ret) {
+		probe_err("mclk_ch read is fail(%d)", ret);
+		goto p_err;
+	}
+
+	ret = of_property_read_u32(dnode, "sensor_i2c_ch", &pdata->sensor_i2c_ch);
+	if (ret) {
+		probe_err("i2c_ch read is fail(%d)", ret);
+		goto p_err;
+	}
+
+	ret = of_property_read_u32(dnode, "sensor_i2c_addr", &pdata->sensor_i2c_addr);
+	if (ret) {
+		probe_err("i2c_addr read is fail(%d)", ret);
+		goto p_err;
+	}
+
+	ret = of_property_read_u32(dnode, "position", &pdata->position);
+	if (ret) {
+		probe_err("id read is fail(%d)", ret);
+		goto p_err;
+	}
+
+	af_np = of_find_node_by_name(dnode, "af");
+	if (!af_np) {
+		pdata->af_product_name = ACTUATOR_NAME_NOTHING;
+	} else {
+		parse_af_data(pdata, af_np);
+	}
+
+	flash_np = of_find_node_by_name(dnode, "flash");
+	if (!flash_np) {
+		pdata->flash_product_name = FLADRV_NAME_NOTHING;
+	} else {
+		parse_flash_data(pdata, flash_np);
+	}
+
+	preprocessor_np = of_find_node_by_name(dnode, "preprocessor");
+	if (!preprocessor_np) {
+		pdata->preprocessor_product_name = PREPROCESSOR_NAME_NOTHING;
+	} else {
+		parse_preprocessor_data(pdata, preprocessor_np);
+	}
+
+	ois_np = of_find_node_by_name(dnode, "ois");
+	if (!ois_np) {
+		pdata->ois_product_name = OIS_NAME_NOTHING;
+	} else {
+		parse_ois_data(pdata, ois_np);
+	}
+
+	iris_np = of_find_node_by_name(dnode, "iris");
+	if (!iris_np) {
+		pdata->iris_product_name = IRIS_NAME_NOTHING;
+	} else {
+		parse_iris_data(pdata, iris_np);
+	}
+
+	pdata->power_seq_dt = of_property_read_bool(dnode, "use_power_seq");
+	if(pdata->power_seq_dt == true) {
+		power_np = of_find_node_by_name(dnode, "power_seq");
+		if (!power_np) {
+			probe_err("power sequence is not declared to DT");
+			goto p_err;
+		} else {
+			parse_power_seq_data(pdata, power_np);
+		}
+	} else {
+		ret = module_callback(pdev, pdata);
+		if (ret) {
+			probe_err("sensor dt callback is fail(%d)", ret);
+			goto p_err;
+		}
+	}
+
+	pdata->pinctrl = devm_pinctrl_get(dev);
+	if (IS_ERR(pdata->pinctrl)) {
+		probe_err("devm_pinctrl_get is fail");
+		goto p_err;
+	}
+
+	ret = get_pin_lookup_state(pdata->pinctrl, pdata->pin_ctrls);
+	if (ret) {
+		probe_err("get_pin_lookup_state is fail(%d)", ret);
+		goto p_err;
+	}
+
+	internal_vc_np = of_find_node_by_name(dnode, "internal_vc");
+	if (internal_vc_np)
+		parse_internal_vc_data(pdata, internal_vc_np);
+
+	dev->platform_data = pdata;
+
+	return ret;
+
+p_err:
+	kfree(pdata);
+	return ret;
+}
+
+/* New function for module parse dt. Use this instead of fimc_is_sensor_module_parse_dt */
 int fimc_is_module_parse_dt(struct device *dev,
 	fimc_is_moudle_callback module_callback)
 {
@@ -706,15 +725,13 @@ int fimc_is_module_parse_dt(struct device *dev,
 	struct device_node *flash_np;
 	struct device_node *preprocessor_np;
 	struct device_node *ois_np;
-	struct device_node *mcu_np;
-	struct device_node *aperture_np;
+	struct device_node *iris_np;
 	struct device_node *power_np;
 	struct device_node *internal_vc_np;
-	struct device_node *eeprom_np;
 
-	FIMC_BUG(!dev);
-	FIMC_BUG(!dev->of_node);
-	FIMC_BUG(!module_callback);
+	BUG_ON(!dev);
+	BUG_ON(!dev->of_node);
+	BUG_ON(!module_callback);
 
 	dnode = dev->of_node;
 	pdata = kzalloc(sizeof(struct exynos_platform_fimc_is_module), GFP_KERNEL);
@@ -750,26 +767,8 @@ int fimc_is_module_parse_dt(struct device *dev,
 
 	ret = of_property_read_u32(dnode, "position", &pdata->position);
 	if (ret) {
-		probe_err("position read is fail(%d)", ret);
+		probe_err("id read is fail(%d)", ret);
 		goto p_err;
-	}
-
-	ret = of_property_read_u32(dnode, "rom_id", &pdata->rom_id);
-	if (ret) {
-		probe_info("rom_id dt parsing skipped\n");
-		pdata->rom_id = ROM_ID_NOTHING;
-	}
-
-	ret = of_property_read_u32(dnode, "rom_type", &pdata->rom_type);
-	if (ret) {
-		probe_info("rom_type dt parsing skipped\n");
-		pdata->rom_type = 0;
-	}
-
-	ret = of_property_read_u32(dnode, "rom_cal_index", &pdata->rom_cal_index);
-	if (ret) {
-		probe_info("rom_cal_index dt parsing skipped\n");
-		pdata->rom_cal_index = 0;
 	}
 
 	af_np = of_find_node_by_name(dnode, "af");
@@ -800,25 +799,12 @@ int fimc_is_module_parse_dt(struct device *dev,
 		parse_ois_data(pdata, ois_np);
 	}
 
-	mcu_np = of_find_node_by_name(dnode, "mcu");
-	if (!mcu_np) {
-		pdata->mcu_product_name = MCU_NAME_NOTHING;
+	iris_np = of_find_node_by_name(dnode, "iris");
+	if (!iris_np) {
+		pdata->iris_product_name = IRIS_NAME_NOTHING;
 	} else {
-		parse_mcu_data(pdata, mcu_np);
+		parse_iris_data(pdata, iris_np);
 	}
-
-	aperture_np = of_find_node_by_name(dnode, "aperture");
-	if (!aperture_np) {
-		pdata->aperture_product_name = APERTURE_NAME_NOTHING;
-	} else {
-		parse_aperture_data(pdata, aperture_np);
-	}
-
-	eeprom_np = of_find_node_by_name(dnode, "eeprom");
-	if (!eeprom_np)
-		pdata->eeprom_product_name = EEPROM_NAME_NOTHING;
-	else
-		parse_eeprom_data(pdata, eeprom_np);
 
 	pdata->power_seq_dt = of_property_read_bool(dnode, "use_power_seq");
 	if(pdata->power_seq_dt == true) {
@@ -870,7 +856,7 @@ int fimc_is_spi_parse_dt(struct fimc_is_spi *spi)
 	struct device *dev;
 	struct pinctrl_state *s;
 
-	FIMC_BUG(!spi);
+	BUG_ON(!spi);
 
 	dev = &spi->device->dev;
 

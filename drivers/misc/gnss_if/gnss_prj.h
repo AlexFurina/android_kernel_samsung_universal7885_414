@@ -43,6 +43,10 @@
 #define GNSS_IOCTL_CHANGE_SENSOR_GPIO	_IO(GNSS_IOC_MAGIC, 0x05)
 #define GNSS_IOCTL_CHANGE_TCXO_MODE		_IO(GNSS_IOC_MAGIC, 0x06)
 #define GNSS_IOCTL_SET_SENSOR_POWER		_IO(GNSS_IOC_MAGIC, 0x07)
+#define GNSS_IOCTL_RELEASE_RESET		_IO(GNSS_IOC_MAGIC, 0x08)
+
+#define GNSS_AUTO_RUN 0x40001
+#define AUTO_RUN_CMD_SIZE 0x10
 
 enum sensor_power {
 	SENSOR_OFF,
@@ -288,6 +292,8 @@ struct link_device {
 	/* Method to dump fault info to user */
 	int (*dump_fault_to_user)(struct link_device *ld, \
 					void __user *user_dst, u32 size);
+
+	void (*set_autorun_cmd)(struct link_device *ld, u32 size);
 };
 
 /** rx_alloc_skb - allocate an skbuff and set skb's iod, ld
@@ -348,10 +354,8 @@ struct gnss_ctl {
 	struct wake_lock gc_bcmd_wake_lock;
 
 	int wake_lock_irq;
-	int req_init_irq;
 	struct completion fault_cmpl;
 	struct completion bcmd_cmpl;
-	struct completion req_init_cmpl;
 
 	struct pinctrl *gnss_gpio;
 	struct pinctrl_state *gnss_sensor_gpio;

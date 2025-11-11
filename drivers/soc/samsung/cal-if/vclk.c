@@ -267,7 +267,11 @@ int vclk_set_enable(unsigned int id)
 		if (vclk)
 			ret = ra_set_list_enable(vclk->list, vclk->num_list);
 	} else if (IS_VCLK(id)){
-		ret = 0;
+		vclk = cmucal_get_node(id);
+		if (vclk && vclk->ops && vclk->ops->enable)
+			ret = vclk->ops->enable(id);
+                else
+			ret = 0;
 	} else {
 		ret = ra_set_enable(id, 1);
 	}
@@ -285,7 +289,11 @@ int vclk_set_disable(unsigned int id)
 		if (vclk)
 			ret = ra_set_list_disable(vclk->list, vclk->num_list);
 	} else if (IS_VCLK(id)){
-		ret = 0;
+		vclk = cmucal_get_node(id);
+		if (vclk && vclk->ops && vclk->ops->disable)
+			ret = vclk->ops->disable(id);
+                else
+			ret = 0;
 	} else {
 		ret = ra_set_enable(id, 0);
 	}

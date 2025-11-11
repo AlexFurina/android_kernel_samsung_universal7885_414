@@ -367,17 +367,6 @@ config INPUT_ATI_REMOTE2
 	  To compile this driver as a module, choose M here: the module will be
 	  called ati_remote2.
 
-config INPUT_KEYCHORD
-	tristate "Key chord input driver support"
-	help
-	  Say Y here if you want to enable the key chord driver
-	  accessible at /dev/keychord.  This driver can be used
-	  for receiving notifications when client specified key
-	  combinations are pressed.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called keychord.
-
 config INPUT_KEYSPAN_REMOTE
 	tristate "Keyspan DMR USB remote control"
 	depends on USB_ARCH_HAS_HCD
@@ -862,6 +851,12 @@ config INPUT_DRV2667_HAPTICS
 	  To compile this driver as a module, choose M here: the
 	  module will be called drv2667-haptics.
 
+config FLIP_COVER
+	tristate "Enable HALL"
+	default n
+	help
+	  Enable Hall Feature
+
 config INPUT_HISI_POWERKEY
 	tristate "Hisilicon PMIC ONKEY support"
 	depends on ARCH_HISI || COMPILE_TEST
@@ -870,29 +865,5 @@ config INPUT_HISI_POWERKEY
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called hisi_powerkey.
-
-config INPUT_S2MU106_HAPTIC
-	tristate "s2mu106 haptic driver"
-	default n
-	depends on PWM
-	help
-	 Say Y to include support for System LSI s2mu106
-	 Haptic driver.
-	 The Haptic Motor driver support both ERM and
-	 LRA type actuators.
-
-config SARSENSOR_SX9331
-	bool "SARSENSOR SX9331"
-	default n
-	help
-	  Say Y here if you have a sar sensor SX9325 connected
-	  to your system.If unsure, say N.
-
-config SARSENSOR_SX9325
-	bool "SARSENSOR SX9325"
-	default n
-	help
-	  Say Y here if you have a sar sensor SX9325 connected
-	  to your system.If unsure, say N.
 
 endif

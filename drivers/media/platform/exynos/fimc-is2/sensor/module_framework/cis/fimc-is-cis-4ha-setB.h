@@ -2,7 +2,7 @@
  * Samsung Exynos5 SoC series Sensor driver
  *
  *
- * Copyright (c) 2018 Samsung Electronics Co., Ltd
+ * Copyright (c) 2011 Samsung Electronics Co., Ltd
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -485,7 +485,7 @@ const struct sensor_pll_info_compact sensor_4ha_pllinfo_B_1632x1224_60fps = {
 	1264,				/* frame_length_lines */
 	3688,				/* line_length_pck */
 };
-
+ 
 const struct sensor_pll_info_compact sensor_4ha_pllinfo_B_800x600_120fps = {
 	EXT_CLK_Mhz * 1000 * 1000,	/* ext_clk */
 	910000000,			/* mipi_datarate = OPSYCK */
@@ -507,13 +507,13 @@ static const u32 *sensor_4ha_setfiles_B[] = {
 
 static const u32 sensor_4ha_setfile_B_sizes[] = {
 	/* 16x10 margin */
-	ARRAY_SIZE(sensor_4ha_setfile_B_3264x2448_30fps),
-	ARRAY_SIZE(sensor_4ha_setfile_B_3264x1836_30fps),
-	ARRAY_SIZE(sensor_4ha_setfile_B_3264x1588_30fps),
-	ARRAY_SIZE(sensor_4ha_setfile_B_2448x2448_30fps),
-	ARRAY_SIZE(sensor_4ha_setfile_B_1632x1224_30fps),
-	ARRAY_SIZE(sensor_4ha_setfile_B_1632x1224_60fps),
-	ARRAY_SIZE(sensor_4ha_setfile_B_800x600_120fps),
+	sizeof(sensor_4ha_setfile_B_3264x2448_30fps) / sizeof(sensor_4ha_setfile_B_3264x2448_30fps[0]),
+	sizeof(sensor_4ha_setfile_B_3264x1836_30fps) / sizeof(sensor_4ha_setfile_B_3264x1836_30fps[0]),
+	sizeof(sensor_4ha_setfile_B_3264x1588_30fps) / sizeof(sensor_4ha_setfile_B_3264x1588_30fps[0]),
+	sizeof(sensor_4ha_setfile_B_2448x2448_30fps) / sizeof(sensor_4ha_setfile_B_2448x2448_30fps[0]),
+	sizeof(sensor_4ha_setfile_B_1632x1224_30fps) / sizeof(sensor_4ha_setfile_B_1632x1224_30fps[0]),
+	sizeof(sensor_4ha_setfile_B_1632x1224_60fps) / sizeof(sensor_4ha_setfile_B_1632x1224_60fps[0]),
+	sizeof(sensor_4ha_setfile_B_800x600_120fps) / sizeof(sensor_4ha_setfile_B_800x600_120fps[0]),
 };
 
 static const struct sensor_pll_info_compact *sensor_4ha_pllinfos_B[] = {

@@ -87,7 +87,6 @@ static const struct v4l2_subdev_core_ops core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_routing = sensor_module_s_routing,
 	.s_stream = sensor_module_s_stream,
 	.s_parm = sensor_module_s_param
 };
@@ -117,7 +116,7 @@ static int sensor_module_3p3_power_setpin(struct platform_device *pdev,
 	int gpio_camsensor_core_en = 0;
 #endif
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -199,7 +198,7 @@ static int sensor_module_3p3_power_setpin(struct platform_device *pdev,
 	return 0;
 }
 
-static int __init sensor_module_3p3_probe(struct platform_device *pdev)
+int sensor_module_3p3_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -210,7 +209,7 @@ static int __init sensor_module_3p3_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -339,6 +338,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_3p3_remove(struct platform_device *pdev)
+{
+        int ret = 0;
+
+        info("%s\n", __func__);
+
+        return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_3p3_match[] = {
 	{
 		.compatible = "samsung,sensor-module-3p3",
@@ -348,6 +356,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_3p3_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_3p3_match);
 
 static struct platform_driver sensor_module_3p3_driver = {
+	.probe  = sensor_module_3p3_probe,
+	.remove = sensor_module_3p3_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-3P3",
 		.owner  = THIS_MODULE,
@@ -355,16 +365,4 @@ static struct platform_driver sensor_module_3p3_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_3p3_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_module_3p3_driver,
-				sensor_module_3p3_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_3p3_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_3p3_init);
+module_platform_driver(sensor_module_3p3_driver);

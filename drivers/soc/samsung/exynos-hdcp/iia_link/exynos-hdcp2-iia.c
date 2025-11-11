@@ -13,11 +13,7 @@
 #include <linux/uaccess.h>
 #include <linux/smc.h>
 #include <asm/cacheflush.h>
-#include <linux/exynos_ion.h>
 #include <linux/smc.h>
-#if defined(CONFIG_ION)
-#include <linux/ion.h>
-#endif
 #include "exynos-hdcp2-iia-auth.h"
 #include "../exynos-hdcp2-teeif.h"
 #include "exynos-hdcp2-iia-selftest.h"
@@ -64,7 +60,7 @@ enum hdcp_result hdcp_unwrap_key(char *wkey)
 	int rval = TX_AUTH_SUCCESS;
 
 	rval = teei_wrapped_key(wkey, UNWRAP, HDCP_STATIC_KEY);
-	if (rval < 0) {
+	if (rval) {
 		hdcp_err("Wrap(%d) key failed (0x%08x)\n", UNWRAP, rval);
 		return HDCP_ERROR_UNWRAP_FAIL;
 	}
@@ -99,11 +95,10 @@ enum hdcp_result hdcp_session_open(struct hdcp_sess_info *ss_info)
 
 	hdcp_session_list_add((struct hdcp_session_node *)new_ss_node, (struct hdcp_session_list *)&g_hdcp_session_list);
 
-/* TODO: Only for IIA */
-#if 0
+	/* TODO: Only for IIA */
+	/* It would be okay to call this here in both(dp, iia) cases */
 	if (hdcp_unwrap_key(ss_info->wkey))
 		return HDCP_ERROR_WRAP_FAIL;
-#endif
 
 	return HDCP_SUCCESS;
 }
@@ -396,7 +391,7 @@ enum hdcp_result hdcp_link_stream_manage(struct hdcp_stream_info *stream_info)
 enum hdcp_result hdcp_wrap_key(struct hdcp_wrapped_key *key_info)
 {
 	int rval = TX_AUTH_SUCCESS;
-	char key_str[HDCP_WRAP_MAX_SIZE];
+	char key_str[HDCP_WRAP_MAX_SIZE] = {0};
 
 	if (key_info->key_len <= HDCP_WRAP_KEY)
 		memcpy(key_str, key_info->key, HDCP_WRAP_KEY);
@@ -404,7 +399,7 @@ enum hdcp_result hdcp_wrap_key(struct hdcp_wrapped_key *key_info)
 		return HDCP_ERROR_WRONG_SIZE;
 
 	rval = teei_wrapped_key(key_str, key_info->wrapped, key_info->key_len);
-	if (rval < 0) {
+	if (rval) {
 		hdcp_err("Wrap(%d) key failed (0x%08x)\n",key_info->wrapped, rval);
 		return HDCP_ERROR_WRAP_FAIL;
 	}

@@ -158,12 +158,12 @@ static int fimc_is_ischain_scp_start(struct fimc_is_device_ischain *device,
 	struct fimc_is_group *group;
 	u32 crange;
 
-	FIMC_BUG(!queue);
-	FIMC_BUG(!queue->framecfg.format);
+	BUG_ON(!queue);
+	BUG_ON(!queue->framecfg.format);
 
 	fimc_is_ischain_scp_adjust_crop(device, scp_param, &otcrop->w, &otcrop->h);
 
-	if (queue->framecfg.quantization == V4L2_QUANTIZATION_FULL_RANGE) {
+	if (queue->framecfg.colorspace == V4L2_COLORSPACE_JPEG) {
 		crange = SCALER_OUTPUT_YUV_RANGE_FULL;
 		mdbg_pframe("CRange:W\n", device, subdev, frame);
 	} else {
@@ -296,11 +296,11 @@ static int fimc_is_ischain_scp_tag(struct fimc_is_subdev *subdev,
 
 	device = (struct fimc_is_device_ischain *)device_data;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!GET_SUBDEV_QUEUE(subdev));
-	FIMC_BUG(!ldr_frame);
-	FIMC_BUG(!ldr_frame->shot);
+	BUG_ON(!device);
+	BUG_ON(!subdev);
+	BUG_ON(!GET_SUBDEV_QUEUE(subdev));
+	BUG_ON(!ldr_frame);
+	BUG_ON(!ldr_frame->shot);
 
 #ifdef DBG_STREAMING
 	mdbgd_ischain("SCP TAG(request %d)\n", device, node->request);

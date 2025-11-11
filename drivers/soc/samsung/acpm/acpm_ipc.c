@@ -29,7 +29,7 @@
 
 static struct acpm_ipc_info *acpm_ipc;
 static struct workqueue_struct *debug_logging_wq;
-static struct workqueue_struct *update_log_wq;
+//static struct workqueue_struct *update_log_wq;
 static struct acpm_debug_info *acpm_debug;
 static bool is_acpm_stop_log = false;
 static bool acpm_stop_log_req = false;
@@ -55,7 +55,7 @@ u32 acpm_get_mifdn_count(void)
 	return acpm_initdata->mifdn_count;
 }
 
-void acpm_get_inform(void)
+/*void acpm_get_inform(void)
 {
 	int i;
 	u32 user;
@@ -83,7 +83,7 @@ void acpm_get_inform(void)
 		acpm_initdata->inform3[i] = 0;
 	}
 }
-
+*/
 void acpm_ramdump(void)
 {
 #ifdef CONFIG_DEBUG_SNAPSHOT_ACPM
@@ -106,7 +106,7 @@ void timestamp_write(void)
 		acpm_debug->timestamps[tmp_index] = sched_clock();
 
 		__raw_writel(tmp_index, acpm_debug->time_index);
-		exynos_acpm_timer_clear();
+		//exynos_acpm_timer_clear();
 
 		spin_unlock(&acpm_debug->lock);
 	}
@@ -190,10 +190,10 @@ void acpm_log_print(void)
 		 * index: [26:22]
 		 * apm systick count: [15:0]
 		 */
-		id = (log_header & (0xF << LOG_ID_SHIFT)) >> LOG_ID_SHIFT;
+		id = (log_header & (0x7 << LOG_ID_SHIFT)) >> LOG_ID_SHIFT;
 		log_level = (log_header & (0x1 << LOG_LEVEL)) >> LOG_LEVEL;
 		index = (log_header & (0x1f << LOG_TIME_INDEX)) >> LOG_TIME_INDEX;
-		count = log_header & 0xffff;
+		count = log_header & 0x7fffff;
 
 		/* string length: log_buff_size - header(4) - integer_data(4) */
 		memcpy_align_4(str, acpm_debug->log_buff_base + (acpm_debug->log_buff_size * rear) + 4,
@@ -250,11 +250,6 @@ void acpm_log_print(void)
 void acpm_stop_log(void)
 {
 	acpm_stop_log_req = true;
-}
-
-static void acpm_update_log(struct work_struct *work)
-{
-	acpm_log_print();
 }
 
 static void acpm_debug_logging(struct work_struct *work)
@@ -579,28 +574,20 @@ int acpm_ipc_send_data_sync(unsigned int channel_id, struct ipc_config *cfg)
 }
 
 /* EXYNOS9610 PMU_DBGCORE */
-#define PMU_DBGCORE_INTR_ENABLE			(0x430)
-#define PMU_DBGCORE_INTR			(0x434)
+//#define PMU_DBGCORE_INTR			(0x434)
 
 /* PMU_DBGCORE BIT FIELD */
-#define CLUSTER0_WDTRESET_ENABLE		(1 << 0)
-#define WRESET_ENABLE				(1 << 7)
-#define INTR_ACK				(1 << 31)
+//#define INTR_ACK				(1 << 31)
 
-void exynos9610_disable_pmu_dbg_intr(void)
+/*void exynos9610_disable_pmu_dbg_intr(void)
 {
 	u32 reg;
-
-	/* PMU_DBGCORE interrupt disable */
-	exynos_pmu_read(PMU_DBGCORE_INTR_ENABLE, &reg);
-	reg &= ~(CLUSTER0_WDTRESET_ENABLE | WRESET_ENABLE);
-	exynos_pmu_write(PMU_DBGCORE_INTR_ENABLE, reg);
-
+*/
 	/* PMU_DBGCORE ack */
-	exynos_pmu_read(PMU_DBGCORE_INTR, &reg);
+/*	exynos_pmu_read(PMU_DBGCORE_INTR, &reg);
 	reg |= INTR_ACK;
 	exynos_pmu_write(PMU_DBGCORE_INTR, reg);
-}
+}*/
 
 int acpm_ipc_send_data(unsigned int channel_id, struct ipc_config *cfg)
 {
@@ -711,13 +698,13 @@ retry:
 			acpm_ramdump();
 
 			/* To prevent WARM reset stuck, HOST-AP set ACK bit */
-			exynos9610_disable_pmu_dbg_intr();
+			//exynos9610_disable_pmu_dbg_intr();
 
 			BUG_ON(timeout_flag);
 			return -ETIMEDOUT;
 		}
-
-		queue_work(update_log_wq, &acpm_debug->update_log_work);
+		acpm_log_print();
+		//queue_work(update_log_wq, &acpm_debug->update_log_work);
 	}
 
 	return 0;
@@ -892,8 +879,8 @@ static int acpm_ipc_probe(struct platform_device *pdev)
 
 	channel_init();
 
-	update_log_wq = create_freezable_workqueue("acpm_update_log");
-	INIT_WORK(&acpm_debug->update_log_work, acpm_update_log);
+	//update_log_wq = create_freezable_workqueue("acpm_update_log");
+	//INIT_WORK(&acpm_debug->update_log_work, acpm_update_log);
 
 	if (acpm_debug->period) {
 		debug_logging_wq = create_freezable_workqueue("acpm_debug_logging");

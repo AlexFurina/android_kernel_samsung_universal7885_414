@@ -92,7 +92,6 @@ struct shmem_link_device {
 
 	/* for logging SHMEM dump */
 	//struct trace_data_queue trace_list;
-	unsigned int rx_int_count;
 
 	/* to hold/release "cp_wakeup" for PM (power-management) */
 	//struct delayed_work cp_sleep_dwork;

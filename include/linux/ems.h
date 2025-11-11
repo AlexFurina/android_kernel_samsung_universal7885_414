@@ -11,117 +11,254 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/kobject.h>
+#include <linux/sched.h>
 #include <linux/plist.h>
 #include <linux/sched/idle.h>
-#include <linux/sched/topology.h>
 
-struct gb_qos_request {
-	struct plist_node node;
-	char *name;
-	bool active;
-};
+struct rq;
 
-#define LEAVE_BAND	0
-
-struct task_band {
-	int id;
-	pid_t tgid;
-	raw_spinlock_t lock;
-
-	struct list_head members;
-	int member_count;
-	struct cpumask playable_cpus;
-
-	unsigned long util;
-	unsigned long last_update_time;
+enum {
+	STATES_FREQ = 0,
+	STATES_PMQOS,
+	NUM_OF_REQUESTS,
 };
 
 #ifdef CONFIG_SCHED_EMS
-extern struct kobject *ems_kobj;
-extern unsigned int get_cpu_max_capacity(unsigned int cpu);
-
-/* task util initialization */
-extern void exynos_init_entity_util_avg(struct sched_entity *se);
-
-/* active balance */
-extern int exynos_need_active_balance(enum cpu_idle_type idle,
-				struct sched_domain *sd, int src_cpu, int dst_cpu);
-
-/* wakeup balance */
+/*
+ * core
+ */
 extern int
-exynos_wakeup_balance(struct task_struct *p, int prev_cpu, int sd_flag, int sync);
+exynos_select_task_rq(struct task_struct *p, int prev_cpu, int sd_flag, int sync, int wakeup, int sch);
+extern int ems_can_migrate_task(struct task_struct *p, int dst_cpu);
+extern void sysbusy_boost(void);
+extern void init_ems(void);
 
-/* ontime migration */
+
+/*
+ * init util
+ */
+extern void post_init_entity_multi_load(struct sched_entity *se, u64 now);
+
+
+/*
+ * energy model
+ */
+extern void init_sched_energy_table(struct cpumask *cpus, int table_size,
+				unsigned long *f_table, unsigned int *v_table,
+				int max_f, int min_f);
+extern void rebuild_sched_energy_table(struct cpumask *cpus, int clipped_freq,
+						int max_freq, int type);
+extern void update_capacity(int cpu, bool init);
+
+/*
+ * multi load
+ */
+extern void init_multi_load(struct sched_entity *se);
+
+extern void set_task_rq_multi_load(struct sched_entity *se, struct cfs_rq *prev, struct cfs_rq *next);
+extern void update_tg_cfs_multi_load(struct cfs_rq *cfs_rq, struct sched_entity *se, struct cfs_rq *gcfs_rq);
+extern int update_cfs_rq_multi_load(u64 now, struct cfs_rq *cfs_rq);
+extern void attach_entity_multi_load(struct cfs_rq *cfs_rq, struct sched_entity *se);
+extern void detach_entity_multi_load(struct cfs_rq *cfs_rq, struct sched_entity *se);
+extern int update_multi_load_se(u64 now, struct cfs_rq *cfs_rq, struct sched_entity *se);
+extern void sync_entity_multi_load(struct cfs_rq *cfs_rq, struct sched_entity *se);
+extern void remove_entity_multi_load(struct cfs_rq *cfs_rq, struct sched_entity *se);
+extern void init_cfs_rq_multi_load(struct cfs_rq *cfs_rq);
+extern void migrate_entity_multi_load(struct sched_entity *se);
+
+extern void util_est_enqueue_multi_load(struct cfs_rq *cfs_rq, struct task_struct *p);
+extern void util_est_dequeue_multi_load(struct cfs_rq *cfs_rq, struct task_struct *p, bool task_sleep);
+extern void util_est_update(struct task_struct *p, int prev_util_est, int next_util_est);
+extern void set_part_period_start(struct rq *rq);
+extern void update_cpu_active_ratio(struct rq *rq, struct task_struct *p, int type);
+extern void part_cpu_active_ratio(unsigned long *util, unsigned long *max, int cpu);
+
+
+/*
+ * ontime migration
+ */
+extern int ontime_can_migrate_task(struct task_struct *p, int dst_cpu);
 extern void ontime_migration(void);
-extern int ontime_can_migration(struct task_struct *p, int cpu);
-extern void ontime_update_load_avg(u64 delta, int cpu, unsigned long weight, struct sched_avg *sa);
-extern void ontime_new_entity_load(struct task_struct *parent, struct sched_entity *se);
-extern void ontime_trace_task_info(struct task_struct *p);
 
-/* load balance trigger */
-extern bool lbt_overutilized(int cpu, int level);
+
+/*
+ * load balance
+ */
+extern struct list_head *lb_cfs_tasks(struct rq *rq, int sse);
+extern void lb_add_cfs_task(struct rq *rq, struct sched_entity *se);
+extern int lb_check_priority(int src_cpu, int dst_cpu);
+extern struct list_head *lb_prefer_cfs_tasks(int src_cpu, int dst_cpu);
+extern int lb_need_active_balance(enum cpu_idle_type idle,
+				struct sched_domain *sd, int src_cpu, int dst_cpu);
+extern bool lb_sibling_overutilized(int dst_cpu, struct sched_domain *sd,
+					struct cpumask *lb_cpus);
+extern bool lbt_overutilized(int cpu, int level, enum cpu_idle_type idle);
 extern void update_lbt_overutil(int cpu, unsigned long capacity);
+extern void lb_update_misfit_status(struct task_struct *p, struct rq *rq, unsigned long task_h_load);
 
-/* global boost */
-extern void gb_qos_update_request(struct gb_qos_request *req, u32 new_value);
+/*
+ * Core sparing
+ */
+extern void ecs_update(void);
+extern int ecs_is_sparing_cpu(int cpu);
+#else /* CONFIG_SCHED_EMS */
 
-/* task band */
-extern void sync_band(struct task_struct *p, bool join);
-extern void newbie_join_band(struct task_struct *newbie);
-extern int alloc_bands(void);
-extern void update_band(struct task_struct *p, long old_util);
-extern int band_playing(struct task_struct *p, int cpu);
-#else
-static inline void exynos_init_entity_util_avg(struct sched_entity *se) { }
+/*
+ * core
+ */
+static inline int
+exynos_select_task_rq(struct task_struct *p, int prev_cpu, int sd_flag, int sync, int wakeup, int sch)
+{
+	return -1;
+}
+static inline int ems_can_migrate_task(struct task_struct *p, int dst_cpu) { return 1; }
+static inline void sysbusy_boost(void) { }
+static inline void init_ems(void) { }
 
-static inline int exynos_need_active_balance(enum cpu_idle_type idle,
+
+/*
+ * init util
+ */
+static inline void post_init_entity_multi_load(struct sched_entity *se, u64 now) { }
+
+
+/*
+ * energy model
+ */
+static inline void init_sched_energy_table(struct cpumask *cpus, int table_size,
+				unsigned long *f_table, unsigned int *v_table,
+				int max_f, int min_f) { }
+static inline void rebuild_sched_energy_table(struct cpumask *cpus, int clipped_freq,
+						int max_freq, int type) { }
+static inline void update_capacity(int cpu, bool init) { }
+
+/*
+ * multi load
+ */
+static inline void init_multi_load(struct sched_entity *se) { }
+
+static inline void set_task_rq_multi_load(struct sched_entity *se, struct cfs_rq *prev, struct cfs_rq *next) { }
+static inline void update_tg_cfs_multi_load(struct cfs_rq *cfs_rq, struct sched_entity *se, struct cfs_rq *gcfs_rq) { }
+static inline int update_cfs_rq_multi_load(u64 now, struct cfs_rq *cfs_rq) { return 0; }
+static inline void attach_entity_multi_load(struct cfs_rq *cfs_rq, struct sched_entity *se) { }
+static inline void detach_entity_multi_load(struct cfs_rq *cfs_rq, struct sched_entity *se) { }
+static inline int update_multi_load_se(u64 now, struct cfs_rq *cfs_rq, struct sched_entity *se) { return 0; }
+static inline void sync_entity_multi_load(struct cfs_rq *cfs_rq, struct sched_entity *se) { }
+static inline void remove_entity_multi_load(struct cfs_rq *cfs_rq, struct sched_entity *se) { }
+static inline void init_cfs_rq_multi_load(struct cfs_rq *cfs_rq) { }
+static inline void migrate_entity_multi_load(struct sched_entity *se) { }
+
+static inline void util_est_enqueue_multi_load(struct cfs_rq *cfs_rq, struct task_struct *p) { }
+static inline void util_est_dequeue_multi_load(struct cfs_rq *cfs_rq, struct task_struct *p, bool task_sleep) { }
+static inline void util_est_update(struct task_struct *p, int prev_util_est, int next_util_est) { }
+static inline void set_part_period_start(struct rq *rq) { }
+static inline void update_cpu_active_ratio(struct rq *rq, struct task_struct *p, int type) { }
+static inline void part_cpu_active_ratio(unsigned long *util, unsigned long *max, int cpu) { }
+
+
+/*
+ * ontime migration
+ */
+static inline int ontime_can_migrate_task(struct task_struct *p, int dst_cpu) { return 1; }
+static inline void ontime_migration(void) { }
+
+
+/*
+ * load balance
+ */
+static inline void lb_add_cfs_task(struct rq *rq, struct sched_entity *se) { }
+static inline int lb_check_priority(int src_cpu, int dst_cpu)
+{
+	return 0;
+}
+static inline struct list_head *lb_prefer_cfs_tasks(int src_cpu, int dst_cpu)
+{
+	return NULL;
+}
+static inline int lb_need_active_balance(enum cpu_idle_type idle,
 				struct sched_domain *sd, int src_cpu, int dst_cpu)
 {
 	return 0;
 }
-
-static inline int
-exynos_wakeup_balance(struct task_struct *p, int prev_cpu, int sd_flag, int sync)
+static inline bool lb_sibling_overutilized(int dst_cpu, struct sched_domain *sd,
+					struct cpumask *lb_cpus)
 {
-	return -1;
+	return true;
 }
-
-static inline void ontime_migration(void) { }
-static inline int ontime_can_migration(struct task_struct *p, int cpu)
-{
-	return 1;
-}
-static inline void ontime_update_load_avg(u64 delta, int cpu, unsigned long weight, struct sched_avg *sa) { }
-static inline void ontime_new_entity_load(struct task_struct *p, struct sched_entity *se) { }
-static inline void ontime_trace_task_info(struct task_struct *p) { }
-
 static inline bool lbt_overutilized(int cpu, int level)
 {
 	return false;
 }
 static inline void update_lbt_overutil(int cpu, unsigned long capacity) { }
+static inline void lb_update_misfit_status(struct task_struct *p, struct rq *rq, unsigned long task_h_load) { }
 
-static inline void gb_qos_update_request(struct gb_qos_request *req, u32 new_value) { }
-
-static inline void sync_band(struct task_struct *p, bool join) { }
-static inline void newbie_join_band(struct task_struct *newbie) { }
-static inline int alloc_bands(void)
-{
-	return 0;
-}
-static inline void update_band(struct task_struct *p, long old_util) { }
-static inline int band_playing(struct task_struct *p, int cpu)
-{
-	return 0;
-}
+/*
+ * Core sparing
+ */
+static inline void ecs_update(void) { }
+static inline int ecs_is_sparing_cpu(int cpu) { return 0; }
 #endif /* CONFIG_SCHED_EMS */
 
-#ifdef CONFIG_SIMPLIFIED_ENERGY_MODEL
-extern void init_sched_energy_table(struct cpumask *cpus, int table_size,
-				unsigned long *f_table, unsigned int *v_table,
-				int max_f, int min_f);
+/*
+ * EMS Tune
+ */
+struct emstune_mode_request {
+	struct plist_node node;
+	bool active;
+	struct delayed_work work; /* for emstune_update_request_timeout */
+	char *func;
+	unsigned int line;
+};
+
+#if defined(CONFIG_SCHED_EMS) && defined (CONFIG_SCHED_TUNE)
+extern void emstune_cpu_update(int cpu, u64 now);
+extern unsigned long emstune_freq_boost(int cpu, unsigned long util);
+
+#define emstune_add_request(req)	do {				\
+	__emstune_add_request(req, (char *)__func__, __LINE__);	\
+} while(0);
+extern void __emstune_add_request(struct emstune_mode_request *req, char *func, unsigned int line);
+extern void emstune_remove_request(struct emstune_mode_request *req);
+extern void emstune_update_request(struct emstune_mode_request *req, s32 new_value);
+extern void emstune_update_request_timeout(struct emstune_mode_request *req, s32 new_value,
+					unsigned long timeout_us);
+extern void emstune_boost(struct emstune_mode_request *req, int enable);
+extern void emstune_boost_timeout(struct emstune_mode_request *req, unsigned long timeout_us);
+
+extern void emstune_mode_change(int next_mode_idx);
+extern int emstune_get_cur_mode(void);
+
+extern int emstune_register_mode_update_notifier(struct notifier_block *nb);
+extern int emstune_unregister_mode_update_notifier(struct notifier_block *nb);
+
+extern int emstune_util_est_group(int st_idx);
 #else
-static inline void init_sched_energy_table(struct cpumask *cpus, int table_size,
-				unsigned long *f_table, unsigned int *v_table,
-				int max_f, int min_f) { }
+static inline void emstune_cpu_update(int cpu, u64 now) { };
+static inline unsigned long emstune_freq_boost(int cpu, unsigned long util) { return util; };
+
+#define emstune_add_request(req)	do { } while(0);
+static void __emstune_add_request(struct emstune_mode_request *req, char *func, unsigned int line) { }
+static void emstune_remove_request(struct emstune_mode_request *req) { }
+static void emstune_update_request(struct emstune_mode_request *req, s32 new_value) { }
+static void emstune_update_request_timeout(struct emstune_mode_request *req, s32 new_value,
+					unsigned long timeout_us) { }
+static void emstune_boost(struct emstune_mode_request *req, int enable) { }
+static void emstune_boost_timeout(struct emstune_mode_request *req, unsigned long timeout_us) { }
+
+static void emstune_mode_change(int next_mode_idx) { }
+
+static int emstune_register_mode_update_notifier(struct notifier_block *nb) { return 0; }
+static int emstune_unregister_mode_update_notifier(struct notifier_block *nb) { return 0; }
+
+static inline int emstune_util_est_group(int st_idx) { return 0; }
+#endif /* CONFIG_SCHED_EMS && CONFIG_SCHED_TUNE */
+
+/* Exynos Fluid Real Time Scheduler */
+extern unsigned int frt_disable_cpufreq;
+
+#ifdef CONFIG_SCHED_PMU_CONT
+void update_cont_avg(struct rq *rq, struct task_struct *prev, struct task_struct *next);
+#else
+static inline void update_cont_avg(struct rq *rq, struct task_struct *prev, struct task_struct *next) { };
 #endif

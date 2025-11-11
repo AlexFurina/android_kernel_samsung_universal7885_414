@@ -25,7 +25,6 @@
 #endif
 
 #include <exynos-fimc-is-module.h>
-#include "fimc-is-i2c-config.h"
 
 static int acquire_shared_rsc(struct exynos_sensor_pin *pin_ctrls)
 {
@@ -43,10 +42,9 @@ static int release_shared_rsc(struct exynos_sensor_pin *pin_ctrls)
 	return 0;
 }
 
-static int exynos_fimc_is_module_pin_control(struct fimc_is_module_enum *module,
-	struct pinctrl *pinctrl, struct exynos_sensor_pin *pin_ctrls, u32 scenario)
+static int exynos_fimc_is_module_pin_control(struct device *dev,
+	struct pinctrl *pinctrl, struct exynos_sensor_pin *pin_ctrls)
 {
-	struct device *dev = module->dev;
 	char* name = pin_ctrls->name;
 	ulong pin = pin_ctrls->pin;
 	u32 delay = pin_ctrls->delay;
@@ -81,17 +79,24 @@ static int exynos_fimc_is_module_pin_control(struct fimc_is_module_enum *module,
 
 	switch (act) {
 	case PIN_NONE:
-		udelay(delay);
+		usleep_range(delay, delay);
 		break;
 	case PIN_OUTPUT:
 		if (gpio_is_valid(pin)) {
-			if (value)
-				gpio_request_one(pin, GPIOF_OUT_INIT_HIGH, "CAM_GPIO_OUTPUT_HIGH");
-			else
-				gpio_request_one(pin, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
-			udelay(delay);
+			if (value) {
+				ret = gpio_request_one(pin, GPIOF_OUT_INIT_HIGH, "CAM_GPIO_OUTPUT_HIGH");
+				if(ret < 0)
+					pr_err("pinctrl_out_init_high(%s) is fail(%d)\n", name, ret);
+			} else {
+				ret = gpio_request_one(pin, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
+				if(ret < 0)
+					pr_err("pinctrl_out_init_low(%s) is fail(%d)\n", name, ret);
+			}
+			usleep_range(delay, delay);
 			gpio_free(pin);
-		}
+		} else {
+			pr_err("gpio_is_valid fail(%s)-(%ld)\n", name, pin);
+		}		
 		break;
 	case PIN_INPUT:
 		if (gpio_is_valid(pin)) {
@@ -119,7 +124,7 @@ static int exynos_fimc_is_module_pin_control(struct fimc_is_module_enum *module,
 				pr_err("pinctrl_select_state(%s) is fail(%d)\n", name, ret);
 				return ret;
 			}
-			udelay(delay);
+			usleep_range(delay, delay);
 		}
 		break;
 	case PIN_REGULATOR:
@@ -165,16 +170,9 @@ static int exynos_fimc_is_module_pin_control(struct fimc_is_module_enum *module,
 				}
 			}
 
-			udelay(delay);
+			usleep_range(delay, delay);
 			regulator_put(regulator);
 		}
-		break;
-	case PIN_I2C:
-		ret = fimc_is_i2c_pin_control(module, scenario, value);
-		break;
-	case PIN_RETRY:
-		if (module->power_retry)
-			usleep_range(delay, delay);
 		break;
 	default:
 		pr_err("unknown act for pin\n");
@@ -194,25 +192,19 @@ int exynos_fimc_is_module_pins_cfg(struct fimc_is_module_enum *module,
 	struct exynos_sensor_pin (*pin_ctrls)[GPIO_SCENARIO_MAX][GPIO_CTRL_MAX];
 	struct exynos_platform_fimc_is_module *pdata;
 
-	FIMC_BUG(!module);
-	FIMC_BUG(!module->pdata);
-	FIMC_BUG(gpio_scenario >= GPIO_SCENARIO_MAX);
-	FIMC_BUG(scenario > SENSOR_SCENARIO_MAX);
+	BUG_ON(!module);
+	BUG_ON(!module->pdata);
+	BUG_ON(gpio_scenario >= GPIO_SCENARIO_MAX);
+	BUG_ON(scenario > SENSOR_SCENARIO_MAX);
 
 	pdata = module->pdata;
 	pinctrl = pdata->pinctrl;
 	pin_ctrls = pdata->pin_ctrls;
 	idx_max = pdata->pinctrl_index[scenario][gpio_scenario];
 
-	if (idx_max == 0) {
-		err("There is no such a scenario(scen:%d, on:%d)", scenario, gpio_scenario);
-		ret = -EINVAL;
-		goto p_err;
-	}
-
 	/* print configs */
 	for (idx = 0; idx < idx_max; ++idx) {
-		info("[@] pin_ctrl(act(%d), pin(%ld), val(%d), nm(%s)\n",
+		printk(KERN_DEBUG "[@] pin_ctrl(act(%d), pin(%ld), val(%d), nm(%s)\n",
 			pin_ctrls[scenario][gpio_scenario][idx].act,
 			(pin_ctrls[scenario][gpio_scenario][idx].act == PIN_FUNCTION) ? 0 : pin_ctrls[scenario][gpio_scenario][idx].pin,
 			pin_ctrls[scenario][gpio_scenario][idx].value,
@@ -221,8 +213,7 @@ int exynos_fimc_is_module_pins_cfg(struct fimc_is_module_enum *module,
 
 	/* do configs */
 	for (idx = 0; idx < idx_max; ++idx) {
-		ret = exynos_fimc_is_module_pin_control(module, pinctrl,
-			&pin_ctrls[scenario][gpio_scenario][idx], scenario);
+		ret = exynos_fimc_is_module_pin_control(module->dev, pinctrl, &pin_ctrls[scenario][gpio_scenario][idx]);
 		if (ret) {
 			pr_err("[@] exynos_fimc_is_sensor_gpio(%d) is fail(%d)", idx, ret);
 			goto p_err;
@@ -312,10 +303,10 @@ int exynos_fimc_is_module_pins_dbg(struct fimc_is_module_enum *module,
 	struct exynos_sensor_pin (*pin_ctrls)[GPIO_SCENARIO_MAX][GPIO_CTRL_MAX];
 	struct exynos_platform_fimc_is_module *pdata;
 
-	FIMC_BUG(!module);
-	FIMC_BUG(!module->pdata);
-	FIMC_BUG(gpio_scenario > 1);
-	FIMC_BUG(scenario > SENSOR_SCENARIO_MAX);
+	BUG_ON(!module);
+	BUG_ON(!module->pdata);
+	BUG_ON(gpio_scenario > 1);
+	BUG_ON(scenario > SENSOR_SCENARIO_MAX);
 
 	pdata = module->pdata;
 	pinctrl = pdata->pinctrl;

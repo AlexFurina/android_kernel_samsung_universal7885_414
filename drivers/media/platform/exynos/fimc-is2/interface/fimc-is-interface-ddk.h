@@ -34,20 +34,20 @@ struct fimc_is_lib_isp {
 };
 
 enum lib_cb_event_type {
-	LIB_EVENT_CONFIG_LOCK			= 1,
-	LIB_EVENT_FRAME_START			= 2,
-	LIB_EVENT_FRAME_END			= 3,
-	LIB_EVENT_DMA_A_OUT_DONE		= 4,
-	LIB_EVENT_DMA_B_OUT_DONE		= 5,
-	LIB_EVENT_FRAME_START_ISR		= 6,
-	LIB_EVENT_ERROR_CIN_OVERFLOW		= 7,
-	LIB_EVENT_ERROR_CIN_COLUMN		= 8,
-	LIB_EVENT_ERROR_CIN_LINE		= 9,
-	LIB_EVENT_ERROR_CIN_TOTAL_SIZE		= 10,
-	LIB_EVENT_ERROR_COUT_OVERFLOW		= 11,
-	LIB_EVENT_ERROR_COUT_COLUMN		= 12,
-	LIB_EVENT_ERROR_COUT_LINE		= 13,
-	LIB_EVENT_ERROR_COUT_TOTAL_SIZE		= 14,
+	LIB_EVENT_CONFIG_LOCK		= 1,
+	LIB_EVENT_FRAME_START		= 2,
+	LIB_EVENT_FRAME_END		= 3,
+	LIB_EVENT_DMA_A_OUT_DONE	= 4,
+	LIB_EVENT_DMA_B_OUT_DONE	= 5,
+	LIB_EVENT_FRAME_START_ISR	= 6,
+	LIB_EVENT_ERROR_CIN_OVERFLOW	= 7,
+	LIB_EVENT_ERROR_CIN_COLUMN	= 8,
+	LIB_EVENT_ERROR_CIN_LINE	= 9,
+	LIB_EVENT_ERROR_CIN_TOTAL_SIZE	= 10,
+	LIB_EVENT_ERROR_COUT_OVERFLOW	= 11,
+	LIB_EVENT_ERROR_COUT_COLUMN	= 12,
+	LIB_EVENT_ERROR_COUT_LINE	= 13,
+	LIB_EVENT_ERROR_COUT_TOTAL_SIZE	= 14,
 	LIB_EVENT_ERROR_CONFIG_LOCK_DELAY	= 15,
 	LIB_EVENT_ERROR_COMP_OVERFLOW		= 16,
 	LIB_EVENT_END
@@ -185,13 +185,17 @@ struct lib_tune_set {
 	int decrypt_flag;
 };
 
+struct cal_info {
+	u32 data[16];
+};
+
 #define LIB_ISP_ADDR		(DDK_LIB_ADDR + LIB_ISP_OFFSET)
 enum lib_func_type {
 	LIB_FUNC_3AA = 1,
 	LIB_FUNC_ISP,
 	LIB_FUNC_TPU,
-	LIB_FUNC_VRA,
 	LIB_FUNC_DCP,
+	LIB_FUNC_VRA,
 	LIB_FUNC_TYPE_END
 };
 
@@ -260,7 +264,7 @@ int fimc_is_lib_isp_delete_tune_set(struct fimc_is_lib_isp *this,
 int fimc_is_lib_isp_load_cal_data(struct fimc_is_lib_isp *this,
 	u32 index, ulong addr);
 int fimc_is_lib_isp_get_cal_data(struct fimc_is_lib_isp *this,
-	u32 instance_id, struct cal_info *c_info, int type);
+	u32 instance_id, struct cal_info *data, int type);
 int fimc_is_lib_isp_sensor_info_mode_chg(struct fimc_is_lib_isp *this,
 	u32 instance_id, struct camera2_shot *shot);
 int fimc_is_lib_isp_sensor_update_control(struct fimc_is_lib_isp *this,

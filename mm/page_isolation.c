@@ -48,12 +48,14 @@ static int set_migratetype_isolate(struct page *page,
 	notifier_ret = notifier_to_errno(notifier_ret);
 	if (notifier_ret)
 		goto out;
+#if !defined(CONFIG_HPA)
 	/*
 	 * FIXME: Now, memory hotplug doesn't call shrink_slab() by itself.
 	 * We just check MOVABLE pages.
 	 */
 	if (!has_unmovable_pages(zone, page, arg.pages_found,
 				 skip_hwpoisoned_pages))
+#endif
 		ret = 0;
 
 	/*
@@ -288,8 +290,8 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 						skip_hwpoisoned_pages);
 
 	if (pfn < end_pfn) {
-		pr_info_ratelimited("%s: page of pfn %lu is not isolated\n", __func__, pfn);
-		/* __dump_page(pfn_to_page(pfn), "isolation failure"); */
+		pr_info("%s: page of pfn %lu is not isolated\n", __func__, pfn);
+		__dump_page(pfn_to_page(pfn), "isolation failure");
 	}
 
 	spin_unlock_irqrestore(&zone->lock, flags);

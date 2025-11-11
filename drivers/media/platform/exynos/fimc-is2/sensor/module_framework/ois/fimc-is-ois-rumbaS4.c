@@ -37,7 +37,7 @@ int fimc_is_ois_read_cal(struct fimc_is_ois *ois)
 	u8 version[20] = {0, };
 	u8 read_ver[3] = {0, };
 
-	WARN_ON(!ois);
+	BUG_ON(!ois);
 
 	version[0] = 0x21;
 	version[1] = 0x43;
@@ -90,7 +90,7 @@ int fimc_is_ois_read_user_data(struct fimc_is_ois *ois)
 	u8 send_data[2];
 	u8 read_data[73] = {0, };
 
-	WARN_ON(!ois);
+	BUG_ON(!ois);
 
 	/* OIS servo OFF */
 	ret = fimc_is_ois_write(ois->client ,0x0000, 0x00);
@@ -139,7 +139,7 @@ int fimc_is_ois_fw_ver_copy(struct fimc_is_ois *ois, u8 *buf, long size)
 {
 	int ret = 0;
 
-	WARN_ON(!ois);
+	BUG_ON(!ois);
 
 	memcpy(p_ois_fw_ver, (void *)buf + OIS_BIN_HEADER, size);
 	memcpy(&p_ois_fw_ver[3], (void *)buf + OIS_BIN_HEADER - 4, 4);
@@ -153,7 +153,7 @@ int fimc_is_ois_fw_version_read(struct fimc_is_ois *ois)
 	int ret = 0;
 	char version[7] = {0, };
 
-	WARN_ON(!ois);
+	BUG_ON(!ois);
 
 	ret = fimc_is_ois_read(ois->client, 0x00FB, &version[0]);
 	if (ret < 0) {
@@ -212,7 +212,7 @@ int fimc_is_ois_fw_ready(struct fimc_is_ois *ois)
 	u8 ois_status[4] = {0, };
 	u32 ois_status32 = 0;
 
-	WARN_ON(!ois);
+	BUG_ON(!ois);
 
 	ret = fimc_is_ois_read_multi(ois->client, 0x00FC, ois_status, 4);
 	if (ret < 0) {
@@ -276,7 +276,7 @@ int fimc_is_ois_fw_download(struct fimc_is_ois *ois)
 	int ret = 0;
 	u8 send_data[256];
 
-	WARN_ON(!ois);
+	BUG_ON(!ois);
 
 	/* Update a User Program */
 	/* SET FWUP_CTRL REG */
@@ -312,7 +312,7 @@ int fimc_is_ois_firmware_update(struct v4l2_subdev *subdev)
 	int ret = 0;
 	struct fimc_is_ois *ois = NULL;
 
-	WARN_ON(!subdev);
+	BUG_ON(!subdev);
 
 	ois = (struct fimc_is_ois *)v4l2_get_subdevdata(subdev);
 	if (!ois) {
@@ -348,7 +348,7 @@ int fimc_is_ois_shift_compensation(struct v4l2_subdev *subdev, int position)
 	u8 shift_x = 0;
 	u8 shift_y = 0;
 
-	WARN_ON(!subdev);
+	BUG_ON(!subdev);
 
 	ois = (struct fimc_is_ois *)v4l2_get_subdevdata(subdev);
 	if (!ois) {
@@ -388,7 +388,7 @@ int fimc_is_set_ois_mode(struct v4l2_subdev *subdev, int mode)
 	struct fimc_is_ois *ois;
 	struct i2c_client *client = NULL;
 
-	WARN_ON(!subdev);
+	BUG_ON(!subdev);
 
 	ois = (struct fimc_is_ois *)v4l2_get_subdevdata(subdev);
 	if (!ois) {
@@ -434,7 +434,7 @@ int fimc_is_ois_init(struct v4l2_subdev *subdev)
 	u16 ois_shift_y_cal = 0;
 	u8 cal_data[2];
 
-	WARN_ON(!subdev);
+	BUG_ON(!subdev);
 
 	ois = (struct fimc_is_ois *)v4l2_get_subdevdata(subdev);
 	if(!ois) {
@@ -502,7 +502,7 @@ static struct fimc_is_ois_ops ois_ops = {
 #endif
 };
 
-static int sensor_ois_rumbaS4_probe(struct i2c_client *client,
+int ois_rumbaS4_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -517,8 +517,8 @@ static int sensor_ois_rumbaS4_probe(struct i2c_client *client,
 	struct fimc_is_device_ois *ois_device;
 	struct fimc_is_vender_specific *specific;
 
-	WARN_ON(!fimc_is_dev);
-	WARN_ON(!client);
+	BUG_ON(!fimc_is_dev);
+	BUG_ON(!client);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -580,6 +580,7 @@ static int sensor_ois_rumbaS4_probe(struct i2c_client *client,
 	ois->subdev = subdev_ois;
 	ois->device = sensor_id;
 	ois->client = client;
+	core->client1 = client;
 	ois->ois_mode = OPTICAL_STABILIZATION_MODE_OFF;
 
 	v4l2_i2c_subdev_init(subdev_ois, client, &subdev_ops);
@@ -594,39 +595,34 @@ p_err:
 	return ret;
 }
 
-static const struct of_device_id sensor_ois_rumbaS4_match[] = {
+static int ois_rumbaS4_remove(struct i2c_client *client)
+{
+	int ret = 0;
+	return ret;
+}
+
+static const struct of_device_id exynos_fimc_is_ois_rumbaS4_match[] = {
 	{
 		.compatible = "samsung,exynos5-fimc-is-ois-rumbaS4",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, sensor_ois_rumbaS4_match);
+MODULE_DEVICE_TABLE(of, exynos_fimc_is_ois_rumbaS4_match);
 
-static const struct i2c_device_id sensor_ois_rumbaS4_idt[] = {
+static const struct i2c_device_id ois_rumbaS4_idt[] = {
 	{ OIS_NAME, 0 },
 	{},
 };
 
-static struct i2c_driver sensor_ois_rumbaS4_driver = {
-	.probe	= sensor_ois_rumbaS4_probe,
+static struct i2c_driver ois_rumbaS4_driver = {
 	.driver = {
 		.name	= OIS_NAME,
 		.owner	= THIS_MODULE,
-		.of_match_table = sensor_ois_rumbaS4_match
-		.suppress_bind_attrs = true,
+		.of_match_table = exynos_fimc_is_ois_rumbaS4_match
 	},
-	.id_table = sensor_ois_rumbaS4_idt
+	.probe	= ois_rumbaS4_probe,
+	.remove	= ois_rumbaS4_remove,
+	.id_table = ois_rumbaS4_idt
 };
+module_i2c_driver(ois_rumbaS4_driver);
 
-static int __init sensor_ois_rumbaS4_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&sensor_ois_rumbaS4_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_ois_rumbaS4_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(sensor_ois_rumbaS4_init);

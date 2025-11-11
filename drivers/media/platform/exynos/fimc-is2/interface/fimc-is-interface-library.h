@@ -23,7 +23,7 @@
 #define SET_CPU_AFFINITY	/* enable @ Exynos3475 */
 
 #if !defined(DISABLE_LIB)
-/* #define LIB_MEM_TRACK */
+/*#define LIB_MEM_TRACK*/
 #endif
 
 #if defined(CONFIG_STACKTRACE) && defined(LIB_MEM_TRACK)
@@ -67,6 +67,15 @@ enum task_index {
 };
 #define TASK_VRA		(TASK_INDEX_MAX)
 
+/* Task priority */
+#define TASK_OTF_PRIORITY		(FIMC_IS_MAX_PRIO - 2)
+#define TASK_AF_PRIORITY		(FIMC_IS_MAX_PRIO - 3)
+#define TASK_ISP_DMA_PRIORITY		(FIMC_IS_MAX_PRIO - 4)
+#define TASK_3AA_DMA_PRIORITY		(FIMC_IS_MAX_PRIO - 5)
+#define TASK_AA_PRIORITY		(FIMC_IS_MAX_PRIO - 6)
+#define TASK_RTA_PRIORITY		(FIMC_IS_MAX_PRIO - 7)
+#define TASK_VRA_PRIORITY		(FIMC_IS_MAX_PRIO - 4)
+
 /* Task affinity */
 #define TASK_OTF_AFFINITY		(3)
 #define TASK_AF_AFFINITY		(1)
@@ -76,16 +85,11 @@ enum task_index {
 /* #define TASK_RTA_AFFINITY		(1) */ /* There is no need to set of cpu affinity for RTA task */
 #define TASK_VRA_AFFINITY		(2)
 
+#define CAMERA_BINARY_RTA_DATA_OFFSET   LIB_RTA_CODE_SIZE
+#define CAMERA_BINARY_DDK_DATA_OFFSET   0x400000
+#define CAMERA_BINARY_DDK_CODE_OFFSET   0x0C0000
 #define CAMERA_BINARY_VRA_DATA_OFFSET   0x080000
 #define CAMERA_BINARY_VRA_DATA_SIZE     0x040000
-#ifdef USE_ONE_BINARY
-#define CAMERA_BINARY_DDK_CODE_OFFSET   VRA_LIB_SIZE
-#define CAMERA_BINARY_DDK_DATA_OFFSET   (VRA_LIB_SIZE + LIB_ISP_CODE_SIZE)
-#else
-#define CAMERA_BINARY_DDK_CODE_OFFSET   0x000000
-#define CAMERA_BINARY_DDK_DATA_OFFSET   LIB_ISP_CODE_SIZE
-#endif
-#define CAMERA_BINARY_RTA_DATA_OFFSET   LIB_RTA_CODE_SIZE
 
 enum BinLoadType{
     BINARY_LOAD_ALL,
@@ -130,8 +134,7 @@ enum memory_track_type {
 
 	/* memory block */
 	MT_TYPE_MB_HEAP	= 0x10,
-	MT_TYPE_MB_DMA_TAAISP,
-	MT_TYPE_MB_DMA_TNR,
+	MT_TYPE_MB_DMA,
 
 	MT_TYPE_MB_VRA	= 0x20,
 
@@ -141,7 +144,7 @@ enum memory_track_type {
 
 #ifdef LIB_MEM_TRACK
 #define MT_STATUS_ALLOC	0x1
-#define MT_STATUS_FREE	0x2
+#define MT_STATUS_FREE 	0x2
 
 #define MEM_TRACK_COUNT	5000
 #define MEM_TRACK_ADDRS_COUNT 16
@@ -173,13 +176,14 @@ struct lib_mem_tracks {
 #endif
 
 #define MEM_BLOCK_NAME_LEN	16
+
 struct lib_mem_block {
 	spinlock_t		lock;
 	struct list_head	list;
 	u32			used;	/* size was allocated totally */
 	u32			end;	/* last allocation position */
 
-	size_t			align;
+	u32			align;
 	ulong			kva_base;
 	dma_addr_t		dva_base;
 
@@ -205,8 +209,6 @@ struct general_intr_handler {
 
 enum general_intr_id {
 	ID_GENERAL_INTR_PREPROC_PDAF = 0,
-	ID_GENERAL_INTR_PDP0_STAT,
-	ID_GENERAL_INTR_PDP1_STAT,
 	ID_GENERAL_INTR_MAX
 };
 
@@ -221,13 +223,11 @@ struct fimc_is_lib_support {
 	struct fimc_is_lib_task			task_taaisp[TASK_INDEX_MAX];
 
 	bool					binary_load_flg;
-	int					binary_load_fatal;
 	int					binary_code_load_flg;
 
 	/* memory blocks */
 	struct lib_mem_block			mb_heap_rta;
-	struct lib_mem_block			mb_dma_taaisp;
-	struct lib_mem_block			mb_dma_tnr;
+	struct lib_mem_block			mb_dma;
 	struct lib_mem_block			mb_vra;
 	/* non-memory block */
 	spinlock_t				slock_nmb;
@@ -249,14 +249,15 @@ struct fimc_is_lib_support {
 #ifdef ENABLE_DBG_EVENT
 	char					debugmsg[SIZE_LIB_LOG_BUG];
 #endif
+
 	/* for library load */
 	struct platform_device			*pdev;
 #ifdef LIB_MEM_TRACK
-	spinlock_t				slock_mem_track;
+    spinlock_t				slock_mem_track;
 	struct list_head			list_of_tracks;
 	struct lib_mem_tracks			*cur_tracks;
 #endif
-	struct general_intr_handler		intr_handler[ID_GENERAL_INTR_MAX];
+	struct general_intr_handler		intr_handler_preproc;
 	char		fw_name[50];		/* DDK */
 	char		rta_fw_name[50];	/* RTA */
 };
@@ -323,6 +324,7 @@ int fimc_is_spin_unlock_irqrestore(void *slock_lib, ulong flag);
 void *fimc_is_alloc_vra(u32 size);
 void fimc_is_free_vra(void *buf);
 int fimc_is_dva_vra(ulong kva, u32 *dva);
+
 void fimc_is_inv_vra(ulong kva, u32 size);
 void fimc_is_clean_vra(ulong kva, u32 size);
 
@@ -333,4 +335,5 @@ void fimc_is_load_ctrl_unlock(void);
 void fimc_is_load_ctrl_lock(void);
 void fimc_is_load_ctrl_init(void);
 int fimc_is_set_fw_names(char *fw_name, char *rta_fw_name);
+
 #endif

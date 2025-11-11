@@ -358,11 +358,8 @@ static int __vertex_queue_bundle_unprepare(struct vertex_queue *queue,
 	unsigned int c_cnt, count, b_cnt;
 
 	vertex_enter();
-	if (!test_bit(VS4L_CL_FLAG_PREPARE, &bundle->flags)) {
-		ret = -EINVAL;
-		vertex_err("bundle status is not prepare\n");
+	if (!test_bit(VS4L_CL_FLAG_PREPARE, &bundle->flags))
 		goto p_err;
-	}
 
 	con = bundle->clist.containers;
 	for (c_cnt = 0; c_cnt < bundle->clist.count; ++c_cnt) {

@@ -73,7 +73,6 @@ static const struct v4l2_subdev_core_ops core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_routing = sensor_module_s_routing,
 	.s_stream = sensor_module_s_stream,
 	.s_mbus_fmt = sensor_module_s_format,
 };
@@ -92,7 +91,7 @@ static int sensor_module_imx241_power_setpin(struct platform_device *pdev,
 	int gpio_stby = 0;
 	int gpio_none = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -157,7 +156,7 @@ static int sensor_module_imx241_power_setpin(struct platform_device *pdev,
 	return 0;
 }
 
-static int __init sensor_module_imx241_probe(struct platform_device *pdev)
+int sensor_module_imx241_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -168,7 +167,7 @@ static int __init sensor_module_imx241_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -298,6 +297,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_imx241_remove(struct platform_device *pdev)
+{
+        int ret = 0;
+
+        info("%s\n", __func__);
+
+        return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_imx241_match[] = {
 	{
 		.compatible = "samsung,sensor-module-imx241",
@@ -307,6 +315,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_imx241_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_imx241_match);
 
 static struct platform_driver sensor_module_imx241_driver = {
+	.probe  = sensor_module_imx241_probe,
+	.remove = sensor_module_imx241_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-IMX241",
 		.owner  = THIS_MODULE,
@@ -314,16 +324,4 @@ static struct platform_driver sensor_module_imx241_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_imx241_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_module_imx241_driver,
-				sensor_module_imx241_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_imx241_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_imx241_init);
+module_platform_driver(sensor_module_imx241_driver);

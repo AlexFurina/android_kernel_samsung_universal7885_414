@@ -194,7 +194,7 @@ int csi_hw_s_config(u32 __iomem *base_reg,
 	int ret = 0;
 	u32 val;
 
-	FIMC_BUG(!config);
+	BUG_ON(!config);
 
 	switch (channel) {
 	case CSI_VIRTUAL_CH_0:

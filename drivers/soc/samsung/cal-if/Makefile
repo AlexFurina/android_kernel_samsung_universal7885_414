@@ -6,10 +6,10 @@
 
 obj-y					+= cal-if.o
 obj-$(CONFIG_PMUCAL)			+= pmucal_system.o pmucal_local.o pmucal_cpu.o pmucal_rae.o
-obj-$(CONFIG_FLEXPMU)			+= pmucal_powermode.o
+#obj-$(CONFIG_FLEXPMU)			+= pmucal_powermode.o
 obj-$(CONFIG_CP_PMUCAL)		+= pmucal_cp.o
 obj-$(CONFIG_GNSS_PMUCAL)		+= pmucal_gnss.o
-obj-$(CONFIG_SHUB_PMUCAL)		+= pmucal_shub.o
+#obj-$(CONFIG_SHUB_PMUCAL)		+= pmucal_shub.o
 obj-$(CONFIG_CMUCAL)			+= cmucal.o ra.o vclk.o pll_spec.o
 obj-$(CONFIG_CMUCAL_DEBUG)		+= cmucal-debug.o
 obj-$(CONFIG_ACPM_DVFS)			+= acpm_dvfs.o fvmap.o
@@ -23,3 +23,4 @@ endif
 obj-$(CONFIG_SOC_EXYNOS9810_EVT1)            += exynos9810/cal_data.o
 obj-$(CONFIG_SOC_EXYNOS9810_EVT0)            += exynos9810_evt0/cal_data.o
 obj-$(CONFIG_SOC_EXYNOS9610)			+= exynos9610/cal_data.o
+obj-$(CONFIG_SOC_EXYNOS7885)            += exynos7885/cal_data.o

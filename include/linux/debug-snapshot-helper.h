@@ -16,7 +16,6 @@
 #ifndef DEBUG_SNAPSHOT_HELPER_H
 #define DEBUG_SNAPSHOT_HELPER_H
 
-#ifdef CONFIG_DEBUG_SNAPSHOT
 struct dbg_snapshot_helper_ops {
 	void (*soc_early_panic)(void *);
 
@@ -47,13 +46,7 @@ struct dbg_snapshot_helper_ops {
 };
 
 extern void dbg_snapshot_register_soc_ops(struct dbg_snapshot_helper_ops *ops);
-extern void dbg_snapshot_scratch_reg(unsigned int val);
 extern bool dbg_snapshot_is_scratch(void);
-#else
-#define dbg_snapshot_register_soc_ops(a)	do { } while(0)
-#define dbg_snapshot_scratch_reg(a)		do { } while(0)
-#define dbg_snapshot_is_scratch()		do { } while(0)
-#endif
 
 #ifdef CONFIG_ARM64
 struct dbg_snapshot_mmu_reg {

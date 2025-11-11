@@ -40,13 +40,13 @@
 
 static struct fimc_is_sensor_cfg config_module_5e3[] = {
 	/* 2560x1920@30fps */
-	FIMC_IS_SENSOR_CFG(2576, 1932, 30, 19, 0, CSI_DATA_LANES_2),
+	FIMC_IS_SENSOR_CFG(2576, 1932, 30, 18, 0, CSI_DATA_LANES_2),
 	/* 1280x960@30fps */
-	FIMC_IS_SENSOR_CFG(1280, 960, 30, 19, 1, CSI_DATA_LANES_2),
+	FIMC_IS_SENSOR_CFG(1280, 960, 30, 18, 1, CSI_DATA_LANES_2),
 	/* 1280x960@15fps */
-	FIMC_IS_SENSOR_CFG(1280, 960, 15, 19, 2, CSI_DATA_LANES_2),
+	FIMC_IS_SENSOR_CFG(1280, 960, 15, 18, 2, CSI_DATA_LANES_2),
 	/* 640x480@116fps */
-	FIMC_IS_SENSOR_CFG(640, 480, 116, 19, 3, CSI_DATA_LANES_2),
+	FIMC_IS_SENSOR_CFG(640, 480, 116, 18, 3, CSI_DATA_LANES_2),
 };
 
 static struct fimc_is_vci vci_module_5e3[] = {
@@ -73,7 +73,6 @@ static const struct v4l2_subdev_core_ops core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_routing = sensor_module_s_routing,
 	.s_stream = sensor_module_s_stream,
 	.s_parm = sensor_module_s_param
 };
@@ -89,7 +88,7 @@ static const struct v4l2_subdev_ops subdev_ops = {
 };
 
 #ifdef CONFIG_SOC_EXYNOS7570
-static int sensor_module_5e3_power_setpin(struct platform_device *pdev,
+static int sensor_module_5e3_power_setpin(struct device *pdev,
 		struct exynos_platform_fimc_is_module *pdata)
 {
 	struct device *dev;
@@ -97,7 +96,7 @@ static int sensor_module_5e3_power_setpin(struct platform_device *pdev,
 	int gpio_reset = 0;
 	int gpio_none = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -121,7 +120,7 @@ static int sensor_module_5e3_power_setpin(struct platform_device *pdev,
 
 	/* Normal On */
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "AVDD24_CAM_2P8", PIN_REGULATOR, 1, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "AVDD24_CAM_2P8", PIN_REGULATOR, 1,1000);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDD23_CAM_CORE_1P2", PIN_REGULATOR, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "VDD18_CAM_SENSOR_IO", PIN_REGULATOR, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 1000);
@@ -140,7 +139,7 @@ static int sensor_module_5e3_power_setpin(struct platform_device *pdev,
 
 	/* READ_ROM - POWER ON */
 	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_none, "AVDD24_CAM_2P8", PIN_REGULATOR, 1, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_none, "AVDD24_CAM_2P8", PIN_REGULATOR, 1, 1000);
 	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_none, "VDD23_CAM_CORE_1P2", PIN_REGULATOR, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_none, "VDD18_CAM_SENSOR_IO", PIN_REGULATOR, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 1000);
@@ -162,22 +161,20 @@ static int sensor_module_5e3_power_setpin(struct platform_device *pdev,
 	return 0;
 }
 #else
-static int sensor_module_5e3_power_setpin(struct platform_device *pdev,
+static int sensor_module_5e3_power_setpin(struct device *dev,
 		struct exynos_platform_fimc_is_module *pdata)
 {
-	struct device *dev;
 	struct device_node *dnode;
 	int gpio_reset = 0;
 	int gpio_none = 0;
-#ifdef CONFIG_SOC_EXYNOS7870
+#if defined( CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS7885)
 	int gpio_sensor_a2p8_en = 0;
 	int gpio_1p2_en = 0;
 	int gpio_1p8_en = 0;
 #endif
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!dev);
 
-	dev = &pdev->dev;
 	dnode = dev->of_node;
 
 	dev_info(dev, "%s E v4\n", __func__);
@@ -218,28 +215,76 @@ static int sensor_module_5e3_power_setpin(struct platform_device *pdev,
 		gpio_free(gpio_1p8_en);
 	}
 #endif
+#ifdef CONFIG_SOC_EXYNOS7885
+		gpio_sensor_a2p8_en = of_get_named_gpio(dnode, "gpio_vtcam_2p8_en", 0);
+		if (!gpio_is_valid(gpio_sensor_a2p8_en)) {
+			dev_err(dev, "failed to get a2p8 PIN_POWER_EN\n");
+			return -EINVAL;
+		} else {
+			gpio_request_one(gpio_sensor_a2p8_en, GPIOF_OUT_INIT_LOW, "VTCAM_SENSOR_A2P8_EN");
+			gpio_free(gpio_sensor_a2p8_en);
+		}
+
+		gpio_1p2_en = of_get_named_gpio(dnode, "gpio_vtcam_1p2_en", 0);
+		if (!gpio_is_valid(gpio_1p2_en)) {
+			dev_err(dev, "failed to get 1p2 PIN_POWER_EN\n");
+			return -EINVAL;
+		} else {
+			gpio_request_one(gpio_1p2_en, GPIOF_OUT_INIT_LOW, "VTCAM_1P2_EN");
+			gpio_free(gpio_1p2_en);
+		}
+
+		gpio_1p8_en = of_get_named_gpio(dnode, "gpio_cam_io_en", 0);
+		if (!gpio_is_valid(gpio_1p8_en)) {
+			dev_err(dev, "failed to get io 1p8 PIN_POWER_EN\n");
+			return -EINVAL;
+		} else {
+			gpio_request_one(gpio_1p8_en, GPIOF_OUT_INIT_LOW, "IO_LDO_1P8_EN");
+			gpio_free(gpio_1p8_en);
+		}
+#endif
+
 
 	SET_PIN_INIT(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON);
 	SET_PIN_INIT(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF);
+	SET_PIN_INIT(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON);
+	SET_PIN_INIT(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_OFF);
 
 	/* Normal On */
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
-#ifdef CONFIG_SOC_EXYNOS7870
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_sensor_a2p8_en, "sensor_a2p8_en", PIN_OUTPUT, 1, 0);
+#if defined( CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS7885)
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_sensor_a2p8_en, "sensor_a2p8_en", PIN_OUTPUT, 1, 1000);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_1p2_en, "1p2_en", PIN_OUTPUT, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_1p8_en, "1p8_en", PIN_OUTPUT, 1, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_1p8_en, "1p8_en", PIN_OUTPUT, 1, 1000);
 #endif
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 0);
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 1, 250);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 1000);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 2, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, gpio_none, "delay", PIN_NONE, 0, 500);
 
 	/* Normal Off */
-	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_OUTPUT, 0, 0);
-#ifdef CONFIG_SOC_EXYNOS7870
+#if defined( CONFIG_SOC_EXYNOS7870) || defined(CONFIG_SOC_EXYNOS7885)
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_sensor_a2p8_en, "sensor_a2p8_en", PIN_INPUT, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_1p2_en, "1p2_en", PIN_INPUT, 0, 0);
 	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, gpio_1p8_en, "1p8_en", PIN_INPUT, 0, 0);
 #endif
+
+	/* Rom Power On */
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_reset, "sen_rst low", PIN_OUTPUT, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_sensor_a2p8_en, "sensor_a2p8_en", PIN_OUTPUT, 1, 1000);
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_1p2_en, "1p2_en", PIN_OUTPUT, 1, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_1p8_en, "1p8_en", PIN_OUTPUT, 1, 1000);
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_reset, "sen_rst high", PIN_OUTPUT, 1, 1000);
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_none, "pin", PIN_FUNCTION, 2, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_ON, gpio_none, "delay", PIN_NONE, 0, 500);
+
+	/* Rom Power Off */
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_OFF, gpio_none, "pin", PIN_FUNCTION, 1, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_OFF, gpio_reset, "sen_rst", PIN_OUTPUT, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_OFF, gpio_sensor_a2p8_en, "sensor_a2p8_en", PIN_INPUT, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_OFF, gpio_1p2_en, "1p2_en", PIN_INPUT, 0, 0);
+	SET_PIN(pdata, SENSOR_SCENARIO_READ_ROM, GPIO_SCENARIO_OFF, gpio_1p8_en, "1p8_en", PIN_INPUT, 0, 0);
 
 	dev_info(dev, "%s X v4\n", __func__);
 
@@ -247,7 +292,7 @@ static int sensor_module_5e3_power_setpin(struct platform_device *pdev,
 }
 #endif
 
-static int __init sensor_module_5e3_probe(struct platform_device *pdev)
+int sensor_module_5e3_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -258,8 +303,7 @@ static int __init sensor_module_5e3_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
-
+	BUG_ON(!fimc_is_dev);
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
 		probe_info("core device is not yet probed");
@@ -268,7 +312,7 @@ static int __init sensor_module_5e3_probe(struct platform_device *pdev)
 
 	dev = &pdev->dev;
 
-	fimc_is_sensor_module_parse_dt(pdev, sensor_module_5e3_power_setpin);
+	fimc_is_module_parse_dt(dev, sensor_module_5e3_power_setpin);
 
 	pdata = dev_get_platdata(dev);
 	device = &core->sensor[pdata->id];
@@ -386,6 +430,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_5e3_remove(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	info("%s\n", __func__);
+
+	return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_5e3_match[] = {
 	{
 		.compatible = "samsung,sensor-module-5e3",
@@ -395,6 +448,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_5e3_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_5e3_match);
 
 static struct platform_driver sensor_module_5e3_driver = {
+	.probe  = sensor_module_5e3_probe,
+	.remove = sensor_module_5e3_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-5E3",
 		.owner  = THIS_MODULE,
@@ -402,16 +457,5 @@ static struct platform_driver sensor_module_5e3_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_5e3_init(void)
-{
-	int ret;
+module_platform_driver(sensor_module_5e3_driver);
 
-	ret = platform_driver_probe(&sensor_module_5e3_driver,
-				sensor_module_5e3_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_5e3_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_5e3_init);

@@ -81,7 +81,7 @@ static int sensor_imx240_init(struct v4l2_subdev *subdev, u32 val)
 	int ret = 0;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 
@@ -109,7 +109,7 @@ static int sensor_imx240_power_setpin(struct platform_device *pdev,
 	int gpio_mclk = 0;
 	int gpio_none = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -334,7 +334,7 @@ int sensor_imx240_probe(struct platform_device *pdev)
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {

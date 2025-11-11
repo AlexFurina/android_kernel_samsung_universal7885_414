@@ -34,7 +34,7 @@ static int sensor_dw9714_write_position(struct i2c_client *client, u32 val)
 	int ret = 0;
 	u8 val_high = 0, val_low = 0;
 
-	FIMC_BUG(!client);
+	BUG_ON(!client);
 
 	if (!client->adapter) {
 		err("Could not find adapter!\n");
@@ -66,7 +66,7 @@ static int sensor_dw9714_valid_check(struct i2c_client * client)
 {
 	int i;
 
-	FIMC_BUG(!client);
+	BUG_ON(!client);
 
 	if (sysfs_actuator.init_step > 0) {
 		for (i = 0; i < sysfs_actuator.init_step; i++) {
@@ -146,7 +146,7 @@ int sensor_dw9714_actuator_init(struct v4l2_subdev *subdev, u32 val)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	dbg_actuator("%s\n", __func__);
 
@@ -208,11 +208,11 @@ int sensor_dw9714_actuator_get_status(struct v4l2_subdev *subdev, u32 *info)
 
 	dbg_actuator("%s\n", __func__);
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!info);
+	BUG_ON(!subdev);
+	BUG_ON(!info);
 
 	actuator = (struct fimc_is_actuator *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!actuator);
+	BUG_ON(!actuator);
 
 	client = actuator->client;
 	if (unlikely(!client)) {
@@ -250,11 +250,11 @@ int sensor_dw9714_actuator_set_position(struct v4l2_subdev *subdev, u32 *info)
 	do_gettimeofday(&st);
 #endif
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!info);
+	BUG_ON(!subdev);
+	BUG_ON(!info);
 
 	actuator = (struct fimc_is_actuator *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!actuator);
+	BUG_ON(!actuator);
 
 	client = actuator->client;
 	if (unlikely(!client)) {
@@ -350,7 +350,7 @@ static const struct v4l2_subdev_ops subdev_ops = {
 	.core = &core_ops,
 };
 
-static int sensor_dw9714_actuator_probe(struct i2c_client *client,
+int sensor_dw9714_actuator_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -364,8 +364,8 @@ static int sensor_dw9714_actuator_probe(struct i2c_client *client,
 	struct device *dev;
 	struct device_node *dnode;
 
-	FIMC_BUG(!fimc_is_dev);
-	FIMC_BUG(!client);
+	BUG_ON(!fimc_is_dev);
+	BUG_ON(!client);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -399,7 +399,7 @@ static int sensor_dw9714_actuator_probe(struct i2c_client *client,
 
 	sensor_peri = find_peri_by_act_id(device, ACTUATOR_NAME_DWXXXX);
 	if (!sensor_peri) {
-		probe_info("sensor peri is net yet probed");
+		probe_info("sensor peri is not yet probed");
 		return -EPROBE_DEFER;
 	}
 
@@ -435,50 +435,39 @@ static int sensor_dw9714_actuator_probe(struct i2c_client *client,
 	set_bit(FIMC_IS_SENSOR_ACTUATOR_AVAILABLE, &sensor_peri->peri_state);
 
 	snprintf(subdev_actuator->name, V4L2_SUBDEV_NAME_SIZE, "actuator-subdev.%d", actuator->id);
-
+p_err:
 	probe_info("%s done\n", __func__);
 	return ret;
+}
 
-p_err:
-	if (subdev_actuator)
-		kzfree(subdev_actuator);
+static int sensor_dw9714_actuator_remove(struct i2c_client *client)
+{
+	int ret = 0;
 
 	return ret;
 }
 
-static const struct of_device_id sensor_actuator_dw9714_match[] = {
+static const struct of_device_id exynos_fimc_is_dw9714_match[] = {
 	{
 		.compatible = "samsung,exynos5-fimc-is-actuator-dw9714",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, sensor_actuator_dw9714_match);
+MODULE_DEVICE_TABLE(of, exynos_fimc_is_dw9714_match);
 
-static const struct i2c_device_id sensor_actuator_dw9714_idt[] = {
+static const struct i2c_device_id actuator_dw9714_idt[] = {
 	{ ACTUATOR_NAME, 0 },
 	{},
 };
 
-static struct i2c_driver sensor_actuator_dw9714_driver = {
-	.probe  = sensor_dw9714_actuator_probe,
+static struct i2c_driver actuator_dw9714_driver = {
 	.driver = {
 		.name	= ACTUATOR_NAME,
 		.owner	= THIS_MODULE,
-		.of_match_table = sensor_actuator_dw9714_match,
-		.suppress_bind_attrs = true,
+		.of_match_table = exynos_fimc_is_dw9714_match
 	},
-	.id_table = sensor_actuator_dw9714_idt,
+	.probe	= sensor_dw9714_actuator_probe,
+	.remove	= sensor_dw9714_actuator_remove,
+	.id_table = actuator_dw9714_idt
 };
-
-static int __init sensor_actuator_dw9714_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&sensor_actuator_dw9714_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_actuator_dw9714_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(sensor_actuator_dw9714_init);
+module_i2c_driver(actuator_dw9714_driver);

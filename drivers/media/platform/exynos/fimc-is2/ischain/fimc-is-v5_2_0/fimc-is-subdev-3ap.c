@@ -45,8 +45,8 @@ static int fimc_is_ischain_3ap_start(struct fimc_is_device_ischain *device,
 	struct fimc_is_module_enum *module;
 	u32 hw_format, hw_bitwidth;
 
-	FIMC_BUG(!queue);
-	FIMC_BUG(!queue->framecfg.format);
+	BUG_ON(!queue);
+	BUG_ON(!queue->framecfg.format);
 
 	hw_format = queue->framecfg.format->hw_format;
 	hw_bitwidth = queue->framecfg.format->hw_bitwidth; /* memory width per pixel */
@@ -89,7 +89,7 @@ static int fimc_is_ischain_3ap_start(struct fimc_is_device_ischain *device,
 	dma_output->width = otcrop->w;
 	dma_output->height = otcrop->h;
 	dma_output->dma_crop_offset_x = otcrop->x;
-	dma_output->dma_crop_offset_y = otcrop->y;
+	dma_output->dma_crop_offset_x = otcrop->y;
 	dma_output->dma_crop_width = otcrop->w;
 	dma_output->dma_crop_height = otcrop->h;
 	*lindex |= LOWBIT_OF(subdev->param_dma_ot);
@@ -140,7 +140,7 @@ static int fimc_is_ischain_3ap_stop(struct fimc_is_device_ischain *device,
 	dma_output->width = otcrop->w;
 	dma_output->height = otcrop->h;
 	dma_output->dma_crop_offset_x = otcrop->x;
-	dma_output->dma_crop_offset_y = otcrop->y;
+	dma_output->dma_crop_offset_x = otcrop->y;
 	dma_output->dma_crop_width = otcrop->w;
 	dma_output->dma_crop_height = otcrop->h;
 	*lindex |= LOWBIT_OF(subdev->param_dma_ot);
@@ -170,13 +170,13 @@ static int fimc_is_ischain_3ap_tag(struct fimc_is_subdev *subdev,
 
 	device = (struct fimc_is_device_ischain *)device_data;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->is_region);
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!GET_SUBDEV_QUEUE(subdev));
-	FIMC_BUG(!ldr_frame);
-	FIMC_BUG(!ldr_frame->shot);
-	FIMC_BUG(!node);
+	BUG_ON(!device);
+	BUG_ON(!device->is_region);
+	BUG_ON(!subdev);
+	BUG_ON(!GET_SUBDEV_QUEUE(subdev));
+	BUG_ON(!ldr_frame);
+	BUG_ON(!ldr_frame->shot);
+	BUG_ON(!node);
 
 	mdbgs_ischain(4, "3AAP TAG(request %d)\n", device, node->request);
 

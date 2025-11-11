@@ -14,30 +14,42 @@
 
 #include "fimc-is-config.h"
 
+#if defined(CONFIG_EXYNOS_ASB)
+#define FIMC_IS_FW_PATH                        "/system/vendor/firmware/"
+#define FIMC_IS_FW_DUMP_PATH                   "/data/"
+#define FIMC_IS_SETFILE_SDCARD_PATH            "/data/"
+#define FIMC_IS_FW_SDCARD                      "/data/fimc_is_fw2.bin"
+#define FIMC_IS_FW                             "fimc_is_fw2.bin"
+#define FIMC_IS_ISP_LIB_SDCARD_PATH            "./data/"
+
+#else
 #ifdef VENDER_PATH
 #define FIMC_IS_FW_PATH 			"/system/vendor/firmware/"
-#define FIMC_IS_FW_DUMP_PATH			"/data/camera/"
-#define FIMC_IS_SETFILE_SDCARD_PATH		"/data/media/0/"
-#define FIMC_IS_FW_SDCARD			"/data/media/0/fimc_is_fw.bin"
+#define FIMC_IS_FW_DUMP_PATH			"/data/vendor/camera/"
+#define FIMC_IS_SETFILE_SDCARD_PATH		"/data/vendor/camera/"
+#ifdef CONFIG_USE_DIRECT_IS_CONTROL
+#define FIMC_IS_FW_SDCARD			"/data/vendor/camera/fimc_is_fw.bin"
+#define FIMC_IS_FW				"fimc_is_lib.bin"
+#else
+#define FIMC_IS_FW_SDCARD			"/data/vendor/camera/fimc_is_fw.bin"
 #define FIMC_IS_FW				"fimc_is_fw.bin"
-#define FIMC_IS_LIB_PATH			"/system/vendor/firmware/"
+#endif /* CONFIG_USE_DIRECT_IS_CONTROL */
 #ifdef CONFIG_SAMSUNG_PRODUCT_SHIP
 #define FIMC_IS_ISP_LIB_SDCARD_PATH		NULL
 #else
-#define FIMC_IS_ISP_LIB_SDCARD_PATH		"/data/media/0/"
+#define FIMC_IS_ISP_LIB_SDCARD_PATH		"/data/vendor/camera/"
 #endif
-#define FIMC_IS_REAR_CAL_SDCARD_PATH		"/data/media/0/"
-#define FIMC_IS_FRONT_CAL_SDCARD_PATH		"/data/media/0/"
-#else
+#define FIMC_IS_CAL_SDCARD_PATH		"/data/vendor/camera/"
+#else /* VENDER_PATH */
 #define FIMC_IS_FW_PATH 			"/system/vendor/firmware/"
 #define FIMC_IS_FW_DUMP_PATH			"/data/"
 #define FIMC_IS_SETFILE_SDCARD_PATH		"/data/"
 #define FIMC_IS_FW_SDCARD			"/data/fimc_is_fw2.bin"
 #define FIMC_IS_FW				"fimc_is_fw2.bin"
 #define FIMC_IS_ISP_LIB_SDCARD_PATH		"/data/"
-#define FIMC_IS_REAR_CAL_SDCARD_PATH		"/data/"
-#define FIMC_IS_FRONT_CAL_SDCARD_PATH		"/data/"
+#define FIMC_IS_CAL_SDCARD_PATH		"/data/"
 #endif
+#endif /* defined(CONFIG_EXYNOS_ASB) */
 
 #ifdef USE_ONE_BINARY
 #define FIMC_IS_ISP_LIB				"fimc_is_lib.bin"
@@ -50,8 +62,6 @@
 
 #define FD_SW_BIN_NAME				"fimc_is_fd.bin"
 #define FD_SW_SDCARD				"/data/fimc_is_fd.bin"
-
-#define FIMC_IS_LED_CAL_DATA_PATH		"/mnt/vendor/persist/camera/ledcal/rear"
 
 #ifdef ENABLE_IS_CORE
 #define FW_MEM_SIZE			0x02000000
@@ -95,9 +105,8 @@
 
 /* reserved memory for FIMC-IS */
 #define SETFILE_SIZE		(0x0032C000)
-#define CAL_DATA_SIZE		(0x00010000)
-#define LED_CAL_DATA_SIZE	(0x00000400)
-#define TOTAL_CAL_DATA_SIZE	(CAL_DATA_SIZE + LED_CAL_DATA_SIZE)
+#define REAR_CALDATA_SIZE	(0x00010000)
+#define FRONT_CALDATA_SIZE	(0x00010000)
 #define DEBUG_REGION_SIZE	(0x0007D000)
 #define EVENT_REGION_SIZE	(0x0007D000)
 #define FSHARED_REGION_SIZE	(0x00010000)
@@ -135,34 +144,48 @@
 #define FROM_PDAF_BASE		(0x5000)
 #endif
 
-#define FIMC_IS_FW_BASE_MASK			((1 << 26) - 1)
-#define FIMC_IS_VERSION_SIZE			42
-#define FIMC_IS_VERSION_BIN_SIZE		44
 #ifdef USE_BINARY_PADDING_DATA_ADDED
-#define FIMC_IS_SIGNATURE_SIZE			528
-#define DDK_VERSION_OFFSET			(FIMC_IS_VERSION_BIN_SIZE + FIMC_IS_SIGNATURE_SIZE)
-#define RTA_VERSION_OFFSET			(FIMC_IS_VERSION_BIN_SIZE)
+#define IS_SIGNATURE_LEN	528
 #else
-#define DDK_VERSION_OFFSET			(FIMC_IS_VERSION_BIN_SIZE)
-#define RTA_VERSION_OFFSET			(FIMC_IS_VERSION_BIN_SIZE)
+#define IS_SIGNATURE_LEN	0
 #endif
-#define FIMC_IS_SETFILE_VER_OFFSET		0x40
-#define FIMC_IS_SETFILE_VER_SIZE		52
 
-#define FIMC_IS_REAR_CAL			"rear_cal_data.bin"
-#define FIMC_IS_FRONT_CAL			"front_cal_data.bin"
-#define FIMC_IS_CAL_SDCARD			"/data/cal_data.bin"
-#define FIMC_IS_CAL_RETRY_CNT			(2)
-#define FIMC_IS_FW_RETRY_CNT			(2)
-#define FIMC_IS_CAL_VER_SIZE			(12)
+#define LIBRARY_VER_LEN		44
+#define LIBRARY_VER_OFS		(LIBRARY_VER_LEN + IS_SIGNATURE_LEN)
+#define SETFILE_VER_LEN		52
+#define SETFILE_VER_OFS		64
 
-enum fimc_is_bin_type {
-	FIMC_IS_BIN_FW = 0,
-	FIMC_IS_BIN_SETFILE,
-	FIMC_IS_BIN_DDK_LIBRARY,
-	FIMC_IS_BIN_RTA_LIBRARY,
-	FIMC_IS_BIN_COMPANION,
+#define FIMC_IS_REAR_CAL		"rear_cal_data.bin"
+#define FIMC_IS_FRONT_CAL		"front_cal_data.bin"
+#define FIMC_IS_CAL_SDCARD		"/data/cal_data.bin"
+#define FIMC_IS_CAL_RETRY_CNT		(2)
+#define FIMC_IS_FW_RETRY_CNT		(2)
+#define FIMC_IS_CAL_VER_SIZE		(12)
+
+/*
+ * binary types for IS
+ *
+ * library based on type(DDK, RTA)
+ * setfile based on sensor positon
+ */
+enum is_bin_type {
+	IS_BIN_LIBRARY,
+	IS_BIN_SETFILE,
 };
+
+struct is_bin_ver_info {
+	enum is_bin_type type;
+	unsigned int maxhint;
+	unsigned int offset;
+	unsigned int length;
+	void *s;
+
+	char *(*get_buf)(const struct is_bin_ver_info *info, unsigned int hint);
+	unsigned int (*get_name_idx)(unsigned int hint);
+};
+
+#define IS_BIN_LIB_HINT_DDK	0
+#define IS_BIN_LIB_HINT_RTA	1
 
 struct fimc_is_binary {
 	void *data;
@@ -192,5 +215,9 @@ int request_binary(struct fimc_is_binary *bin, const char *path,
 				const char *name, struct device *device);
 void release_binary(struct fimc_is_binary *bin);
 int was_loaded_by(struct fimc_is_binary *bin);
+
+/* FIXME: void carve_binary_version(enum is_bin_type type, int hint, struct fimc_is_binary *bin); */
+int carve_binary_version(enum is_bin_type type, unsigned int hint, void *data, size_t size);
+char *get_binary_version(enum is_bin_type type, unsigned int hint);
 
 #endif

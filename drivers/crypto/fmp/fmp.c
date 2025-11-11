@@ -18,8 +18,8 @@
 #include <linux/smc.h>
 #include <asm/cacheflush.h>
 #include <linux/crypto.h>
-#include <crypto/fmp.h>
 #include <linux/scatterlist.h>
+#include <crypto/fmp.h>
 
 #include "fmp_test.h"
 #include "fmp_fips_main.h"
@@ -42,8 +42,8 @@ static inline void dump_ci(struct fmp_crypto_info *c)
 {
 	if (c) {
 		pr_info
-		    ("dump_ci: crypto:%p algo:%d enc:%d key_size:%d key:%p\n",
-		     c, c->algo_mode, c->enc_mode, c->key_size, c->key);
+		    ("%s: algo:%d enc:%d key_size:%d\n",
+		     __func__, c->algo_mode, c->enc_mode,c->key_size);
 		if (c->enc_mode == EXYNOS_FMP_FILE_ENC)
 			print_hex_dump(KERN_CONT, "key:",
 				       DUMP_PREFIX_OFFSET, 16, 1, c->key,
@@ -53,7 +53,7 @@ static inline void dump_ci(struct fmp_crypto_info *c)
 
 static inline void dump_table(struct fmp_table_setting *table)
 {
-	print_hex_dump(KERN_CONT, "dump_table:", DUMP_PREFIX_OFFSET, 16, 1,
+	print_hex_dump(KERN_CONT, "dump:", DUMP_PREFIX_OFFSET, 16, 1,
 		       table, sizeof(struct fmp_table_setting), false);
 }
 
@@ -101,8 +101,8 @@ static inline int check_aes_xts_key(char *key,
 int fmplib_set_algo_mode(struct fmp_table_setting *table,
 			 struct fmp_crypto_info *crypto, bool cmdq_enabled)
 {
-	int ret = 0;
-	enum fmp_crypto_algo_mode algo_mode = crypto->algo_mode;
+	int ret;
+	enum fmp_crypto_algo_mode algo_mode = crypto->algo_mode & EXYNOS_FMP_ALGO_MODE_MASK;
 
 	if (algo_mode == EXYNOS_FMP_ALGO_MODE_AES_XTS) {
 		ret = check_aes_xts_size(table, cmdq_enabled);
@@ -131,13 +131,13 @@ int fmplib_set_algo_mode(struct fmp_table_setting *table,
 		       crypto->enc_mode);
 		return -EINVAL;
 	}
-	return ret;
+	return 0;
 }
 
 static int fmplib_set_file_key(struct fmp_table_setting *table,
 			struct fmp_crypto_info *crypto)
 {
-	enum fmp_crypto_algo_mode algo_mode = crypto->algo_mode;
+	enum fmp_crypto_algo_mode algo_mode = crypto->algo_mode & EXYNOS_FMP_ALGO_MODE_MASK;
 	enum fmp_crypto_key_size key_size = crypto->fmp_key_size;
 	char *key = crypto->key;
 	int idx, max;
@@ -145,8 +145,8 @@ static int fmplib_set_file_key(struct fmp_table_setting *table,
 	if (!key || (crypto->enc_mode != EXYNOS_FMP_FILE_ENC) ||
 		((key_size != EXYNOS_FMP_KEY_SIZE_16) &&
 		 (key_size != EXYNOS_FMP_KEY_SIZE_32))) {
-		pr_err("%s: Invalid crypto:%p key:%p key_size:%d enc_mode:%d\n",
-		       __func__, crypto, key, key_size, crypto->enc_mode);
+		pr_err("%s: Invalid key_size:%d enc_mode:%d\n",
+		       __func__, key_size, crypto->enc_mode);
 		return -EINVAL;
 	}
 
@@ -274,32 +274,16 @@ static int fmplib_set_iv(struct fmp_table_setting *table,
 	return 0;
 }
 
-static inline bool check_valid_address(void *va)
-{
-	if(!va || (va && !virt_addr_valid(va)))
-		return 1;
-	else
-		return 0;
-}
-
 int exynos_fmp_crypt(struct fmp_crypto_info *ci, void *priv)
 {
-	struct exynos_fmp *fmp;
+	struct exynos_fmp *fmp = ci->ctx;
 	struct fmp_request *r = priv;
 	int ret = 0;
 	u8 iv[FMP_IV_SIZE_16];
-	bool test_mode = 0;
+	enum fmp_crypto_algo_mode algo_mode = ci->algo_mode & EXYNOS_FMP_ALGO_MODE_MASK;
 
-	if (!r || check_valid_address(ci)) {
-		pr_err("%s: invalid req:%p(v:%d), ci:%p(v:%d)\n",
-			__func__, r, virt_addr_valid(r), ci, virt_addr_valid(ci));
-		return -EINVAL;
-	}
-
-	fmp = ci->ctx;
-	if (!fmp || !r->table) {
-		pr_err("%s: invalid fmp:%p(v:%d), r->table:%p(v:%d)\n",
-			__func__, fmp, virt_addr_valid(fmp), r->table, virt_addr_valid(r->table));
+	if (!r || !fmp) {
+		pr_err("%s: invalid req or fmp\n", __func__);
 		return -EINVAL;
 	}
 
@@ -320,25 +304,24 @@ int exynos_fmp_crypt(struct fmp_crypto_info *ci, void *priv)
 
 	/* check test mode */
 	if (ci->algo_mode & EXYNOS_FMP_ALGO_MODE_TEST) {
-		ci->algo_mode &= EXYNOS_FMP_ALGO_MODE_MASK;
-		if (!ci->algo_mode)
+		if (!algo_mode)
 			return 0;
 
 		if (!fmp->test_data) {
 			pr_err("%s: no test_data for test mode\n", __func__);
 			goto out;
 		}
-		test_mode = 1;
 		/* use test manager's iv instead of host driver's iv */
 		r->iv = fmp->test_data->iv;
 		r->ivsize = sizeof(fmp->test_data->iv);
 	}
 
 	/* check crypto info & input param */
-	if (!ci->algo_mode || !is_supported_ivsize(r->ivsize) ||
+	if (!algo_mode || !is_supported_ivsize(r->ivsize) ||
 			!r->table || !r->iv) {
-		pr_err("%s: invalid mode:%d iv:%p ivsize:%d table:%p\n",
-			__func__, ci->algo_mode, r->iv, r->ivsize, r->table);
+		dev_err(fmp->dev,
+			"%s: invalid mode:%d ivsize:%d\n",
+			__func__, algo_mode, r->ivsize);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -346,7 +329,7 @@ int exynos_fmp_crypt(struct fmp_crypto_info *ci, void *priv)
 	/* set algo & enc mode into table */
 	ret = fmplib_set_algo_mode(r->table, ci, r->cmdq_enabled);
 	if (ret) {
-		pr_err("%s: Fail to set FMP encryption mode\n",
+		dev_err(fmp->dev, "%s: Fail to set FMP encryption mode\n",
 			__func__);
 		ret = -EINVAL;
 		goto out;
@@ -357,7 +340,7 @@ int exynos_fmp_crypt(struct fmp_crypto_info *ci, void *priv)
 	case EXYNOS_FMP_FILE_ENC:
 		ret = fmplib_set_file_key(r->table, ci);
 		if (ret) {
-			pr_err("%s: Fail to set FMP key\n",
+			dev_err(fmp->dev, "%s: Fail to set FMP key\n",
 				__func__);
 			ret = -EINVAL;
 			goto out;
@@ -365,17 +348,23 @@ int exynos_fmp_crypt(struct fmp_crypto_info *ci, void *priv)
 		break;
 	case EXYNOS_FMP_DISK_ENC:
 		if (is_stored_fmp_disk_key(fmp)) {
-			exynos_smc(SMC_CMD_FMP_DISK_KEY_SET, 0, 0, 0);
+			ret = exynos_smc(SMC_CMD_FMP_DISK_KEY_SET, 0, 0, 0);
+			if (ret) {
+				dev_err(fmp->dev,
+					"%s: Fail to set disk key\n", __func__);
+				goto out;
+			}
 			fmp->status_disk_key = KEY_SET;
 		} else if (!is_set_fmp_disk_key(fmp)) {
-			pr_err("%s: Cannot configure FMP because disk key is clear\n",
+			dev_err(fmp->dev,
+				"%s: Fail because disk key is clear\n",
 				__func__);
 			ret = -EINVAL;
 			goto out;
 		}
 		break;
 	default:
-		pr_err("%s: Invalid fmp enc mode %d\n", __func__,
+		dev_err(fmp->dev, "%s: Invalid fmp enc mode %d\n", __func__,
 			ci->enc_mode);
 		ret = -EINVAL;
 		goto out;
@@ -384,7 +373,7 @@ int exynos_fmp_crypt(struct fmp_crypto_info *ci, void *priv)
 	/* set key size into table */
 	ret = fmplib_set_key_size(r->table, ci, r->cmdq_enabled);
 	if (ret) {
-		pr_err("%s: Fail to set FMP key size\n", __func__);
+		dev_err(fmp->dev, "%s: Fail to set FMP key size\n", __func__);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -394,7 +383,7 @@ int exynos_fmp_crypt(struct fmp_crypto_info *ci, void *priv)
 	memcpy(iv, r->iv, r->ivsize);
 	ret = fmplib_set_iv(r->table, ci, iv);
 	if (ret) {
-		pr_err("%s: Fail to set FMP IV\n", __func__);
+		dev_err(fmp->dev, "%s: Fail to set FMP IV\n", __func__);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -416,25 +405,22 @@ int exynos_fmp_clear(struct fmp_crypto_info *ci, void *priv)
 {
 	struct fmp_request *r = priv;
 #ifdef CONFIG_EXYNOS_FMP_FIPS
-	struct exynos_fmp *fmp;
+	struct exynos_fmp *fmp = ci->ctx;
 	struct exynos_fmp_fips_test_vops *test_vops = fmp->test_vops;
 	int ret;
 #endif
 
-	if (!r || check_valid_address(ci)) {
-		pr_err("%s: invalid req:%p(v:%d), ci:%p(v:%d)\n",
-			__func__, r, virt_addr_valid(r), ci, virt_addr_valid(ci));
+	if (!r) {
+		pr_err("%s: Invalid input\n", __func__);
+		return -EINVAL;
+	}
+
+	if (!r->table) {
+		pr_err("%s: Invalid input table\n", __func__);
 		return -EINVAL;
 	}
 
 #ifdef CONFIG_EXYNOS_FMP_FIPS
-	fmp = ci->ctx;
-	if (!fmp || !r->table) {
-		pr_err("%s: invalid fmp:%p(v:%d), r->table:%p(v:%d)\n",
-			__func__, fmp, virt_addr_valid(fmp), r->table, virt_addr_valid(r->table));
-		return -EINVAL;
-	}
-
 	if (test_vops) {
 		ret = test_vops->zeroization(r->table, "before");
 		if (ret)
@@ -464,6 +450,7 @@ int exynos_fmp_setkey(struct fmp_crypto_info *ci, u8 *in_key, u32 keylen,
 	struct exynos_fmp *fmp = ci->ctx;
 	int ret = 0;
 	int keylen_org = keylen;
+	enum fmp_crypto_algo_mode algo_mode = ci->algo_mode & EXYNOS_FMP_ALGO_MODE_MASK;
 
 	if (!fmp || !in_key) {
 		pr_err("%s: invalid input param\n", __func__);
@@ -471,7 +458,7 @@ int exynos_fmp_setkey(struct fmp_crypto_info *ci, u8 *in_key, u32 keylen,
 	}
 
 	/* set key_size & fmp_key_size */
-	if (ci->algo_mode == EXYNOS_FMP_ALGO_MODE_AES_XTS)
+	if (algo_mode == EXYNOS_FMP_ALGO_MODE_AES_XTS)
 		keylen = keylen >> 1;
 	switch (keylen) {
 	case FMP_KEY_SIZE_16:
@@ -527,7 +514,6 @@ out:
 	return ret;
 }
 
-#ifndef CONFIG_CRYPTO_MANAGER_DISABLE_TESTS
 int exynos_fmp_test_crypt(struct fmp_crypto_info *ci,
 			const uint8_t *iv, uint32_t ivlen, uint8_t *src,
 			uint8_t *dst, uint32_t len, bool enc, void *priv)
@@ -536,12 +522,11 @@ int exynos_fmp_test_crypt(struct fmp_crypto_info *ci,
 	int ret = 0;
 
 	if (!fmp || !iv || !src || !dst) {
-		pr_err("%s: invalid input: fmp:%p, iv:%p, s:%p, d:%p\n",
-			__func__, fmp, iv, src, dst);
+		pr_err("%s: invalid input(fmp, iv, src, dst)\n", __func__);
 		return -EINVAL;
 	}
 
-	/* init fips test to get test block */
+	/* init fmp test to get test block */
 	fmp->test_data = fmp_test_init(fmp);
 	if (!fmp->test_data) {
 		dev_err(fmp->dev, "%s: fail to initialize fmp test.",
@@ -571,23 +556,45 @@ err:
 		fmp_test_exit(fmp->test_data);
 	return ret;
 }
-#endif
+
+int exynos_fmp_smu_abort(int id)
+{
+	int ret = 0;
+
+	if (id == SMU_ID_MAX)
+		return 0;
+
+	ret = exynos_smc(SMC_CMD_SMU, SMU_ABORT, id, 0);
+	if (ret)
+		pr_err("%s: Fail smc call. ret(%d)\n", __func__, ret);
+
+	return ret;
+}
 
 #define CFG_DESCTYPE_3 0x3
-int exynos_fmp_sec_config(int id)
+int exynos_fmp_sec_cfg(int fmp_id, int smu_id, bool init)
 {
-	int ret;
+	int ret = 0;
 
-	if (id) {
-		pr_err("%s: fails to set set config for %d. only host0\n",
-			__func__, id);
-		return 0;
+	if (fmp_id != SMU_ID_MAX) {
+		ret = exynos_smc(SMC_CMD_FMP_SECURITY, 0,
+				fmp_id, CFG_DESCTYPE_3);
+		if (ret)
+			pr_err("%s: Fail smc call for FMP_SECURITY. ret(%d)\n",
+					__func__, ret);
 	}
 
-	ret = exynos_smc(SMC_CMD_FMP_SECURITY, 0, id, CFG_DESCTYPE_3);
-	if (ret)
-		pr_err("%s: Fail smc call for FMP_SECURITY. ret(%d)\n",
-				__func__, ret);
+	if (smu_id != SMU_ID_MAX) {
+		if (init)
+			ret = exynos_smc(SMC_CMD_SMU, SMU_INIT, smu_id, 0);
+		else
+			ret = exynos_smc(SMC_CMD_FMP_SMU_RESUME, 0, smu_id, 0);
+		if (ret)
+			pr_err("%s: Fail smc call cmd:%d. ret(%d)\n",
+					__func__, init, ret);
+	}
+	pr_info("%s: fmp:%d, smu:%d, init:%d\n", __func__, fmp_id, smu_id, init);
+
 	return ret;
 }
 
@@ -638,12 +645,14 @@ void *exynos_fmp_init(struct platform_device *pdev)
 	return fmp;
 
 err_dev:
-	kzfree(fmp);
+	devm_kfree(&pdev->dev, fmp);
 	return NULL;
 }
 
-void exynos_fmp_exit(struct exynos_fmp *fmp)
+void exynos_fmp_exit(struct platform_device *pdev)
 {
+	struct exynos_fmp *fmp = dev_get_drvdata(&pdev->dev);
+
 	exynos_fmp_fips_exit(fmp);
-	kzfree(fmp);
+	devm_kfree(&pdev->dev, fmp);
 }

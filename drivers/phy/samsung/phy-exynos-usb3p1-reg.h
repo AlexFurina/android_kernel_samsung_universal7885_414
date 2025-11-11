@@ -1,10 +1,19 @@
 /*
- * phy-exynos-usb3p1-reg.h
+ * Copyright (c) 2017 Samsung Electronics Co., Ltd.
+ *              http://www.samsung.com
  *
- *  Created on: Oct 27, 2016
- *      Author: sung-hyun na
- *		jee-woong oh
- *		dae-man ko
+ * Author: Sung-Hyun Na <sunghyun.na@samsung.com>
+ *
+ * Chip Abstraction Layer for USB PHY
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #ifndef DRIVER_USB_USBPHY_CAL_PHY_EXYNOS_USB3P1_REG_H_
@@ -57,21 +66,13 @@
 #define CLKRST_USBAUDIO_CLK_SEL			(0x1 << 8)
 #define CLKRST_LINK_PCLK_SEL			(0x1 << 7)
 #define CLKRST_PHYCLOCKSEL			(0x1 << 6)
-#define CLKRST_PHY30_SW_RST			(0x1 << 3)
-#define CLKRST_PHY30_RST_SEL			(0x1 << 2)
-#define CLKRST_PHY20_SW_RST			(0x1 << 13)
-#define CLKRST_PHY20_RST_SEL			(0x1 << 12)
+#define CLKRST_REFCLK_SEL			(0x1 << 4)
 #define CLKRST_PHY_SW_RST			(0x1 << 3)
 #define CLKRST_PHY_RST_SEL			(0x1 << 2)
-#define CLKRST_REFCLK_SEL			(0x1 << 4)
 #define CLKRST_PORT_RST				(0x1 << 1)
 #define CLKRST_LINK_SW_RST			(0x1 << 0)
 
 #define EXYNOS_USBCON_PWR		(0x24)
-
-#define PWR_PIPE3_POWERDONW			(0xf << 4)
-#define PWR_FORCE_POWERDOWN_EN			(0x1 << 3)
-#define RSVD1					(0x7 << 0)
 #define PWR_FORCE_POWERDONW			(0x1 << 2)
 #define PWR_TEST_POWERDOWN_SSP			(0x1 << 1)
 #define PWR_TEST_POWERDOWN_HSP			(0x1 << 0)
@@ -106,8 +107,6 @@
 #define SSP_PARACON0_PCS_TX_DEEMPH_3P5DB(_x)	((_x & 0x3f) << 0)
 
 #define EXYNOS_USBCON_SSP_PARACON1	(0x38)
-#define SSP_PARACON1_TX_VBOOST_LVL_SSTX_MASK	(0x7 << 28)
-#define SSP_PARACON1_TX_VBOOST_LVL_SSTX(_x)		((_x & 0x7) << 28)
 #define SSP_PARACON1_TX_VBOOST_LVL_MASK		(0x7 << 24)
 #define SSP_PARACON1_TX_VBOOST_LVL(_x)		((_x & 0x7) << 24)
 #define SSP_PARACON1_LOS_LEVEL_MASK		(0x1f << 16)
@@ -118,37 +117,26 @@
 #define SSP_PARACON1_PCS_RX_LOS_MASK_VAL(_x)	((_x & 0x3ff) << 0)
 
 #define EXYNOS_USBCON_SSP_TEST		(0x3C)
-#define SSP_TEST_TX_EYE_HEIGHT_CNTL_EN_MASK		(0x1 << 28)
-#define SSP_TEST_TX_EYE_HEIGHT_CNTL_EN(_x)		((_x & 0x1) << 28)
-#define SSP_TEST_PIPE_TX_DEEMPH_UPDATE_DELAY_MASK	(0xf << 24)
-#define SSP_TEST_PIPE_TX_DEEMPH_UPDATE_DELAY(_x)	((_x & 0xf) << 24)
-#define SSP_TEST_PCS_TX_SWING_FULL_SSTX_MASK	(0x7f << 16)
-#define SSP_TEST_PCS_TX_SWING_FULL_SSTX(_x)		((_x & 0x7f) << 16)
+#define SSP_TEST_ATERESET			(0x1 << 4)
 #define SSP_TEST_RTUNE_ACK			(0x1 << 3)
 #define SSP_TEST_RTUNE_REQ			(0x1 << 2)
 #define SSP_TEST_LANE0_TX2RX_LOOPBK		(0x1 << 1)
 #define SSP_TEST_LOOPBACKENB			(0x1 << 0)
 
 #define EXYNOS_USBCON_SSP_CRCTL0	(0x40)
-#define SSP_CCTRL0_CR_DATA_IN_MASK		(0xffffU << 16)
-#define SSP_CCTRL0_CR_DATA_IN(_x)		((_x & 0xffffU) << 16)
+#define SSP_CCTRL0_CR_DATA_IN_MASK		(0xffff << 16)
+#define SSP_CCTRL0_CR_DATA_IN(_x)		((_x & 0xffff) << 16)
 #define SSP_CRCTRL0_CR_WRITE			(0x1 << 3)
 #define SSP_CRCTRL0_CR_READ			(0x1 << 2)
 #define SSP_CRCTRL0_CR_CAP_DATA			(0x1 << 1)
 #define SSP_CRCTRL0_CR_CAP_ADDR			(0x1 << 0)
 
 #define EXYNOS_USBCON_SSP_CRCTL1	(0x44)
-#define SSP_CRCTL1_CR_DATA_OUT_MASK		(0xffffU << 16)
-#define SSP_CRCTL1_CR_DATA_OUT(_x)		((_x & 0xffffU) << 16)
+#define SSP_CRCTL1_CR_DATA_OUT_MASK		(0xffff << 16)
+#define SSP_CRCTL1_CR_DATA_OUT(_x)		((_x & 0xffff) << 16)
 #define SSP_CRCTL1_CR_ACK			(0x1 << 0)
 
 #define EXYNOS_USBCON_COMBO_PMA_CTRL	(0x48)
-/* S5E9820 added */
-#define PMA_REF_SOC_PLL_SSC                    (0x1 << 16)
-#define PMA_ROPLL_REF_REQ_MASK                 (0x3 << 12)
-#define PMA_ROPLL_REF_REQ_SET(_x)                      ((_x & 0x3) << 12)
-#define PMA_ROPLL_REF_REQ_GET(_x)                      ((_x & (0x3 << 12)) >> 12)
-/* S5E9820 added */
 #define PMA_PLL_REF_REQ_MASK			(0x3 << 10)
 #define PMA_PLL_REF_REQ_SET(_x)			((_x & 0x3) << 10)
 #define PMA_PLL_REF_REQ_GET(_x)			((_x & (0x3 << 10)) >> 10)
@@ -164,8 +152,7 @@
 
 #define EXYNOS_USBCON_UTMI		(0x50)
 #define UTMI_OPMODE_CTRL_EN			(0x1 << 8)
-#define UTMI_FORCE_OPMODE_MASK			(0x3 << 6)
-#define UTMI_FORCE_OPMODE_SET(_x)		((_x & 0x3) << 6)
+#define UTMI_FORCE_OPMODE(_x)			((_x & 0x3) << 6)
 #define UTMI_FORCE_VBUSVALID			(0x1 << 5)
 #define UTMI_FORCE_BVALID			(0x1 << 4)
 #define UTMI_DP_PULLDOWN			(0x1 << 3)
@@ -183,14 +170,12 @@
 #define HSP_HS_SQUELCH				(0x1 << 20)
 #define HSP_FSVMINUS				(0x1 << 17)
 #define HSP_FSVPLUS				(0x1 << 16)
-#define HSP_FSVPLUS_GET(_x)		((_x & (0x1 << 16)) >> 16)
 #define HSP_VBUSVLDEXTSEL			(0x1 << 13)
 #define HSP_VBUSVLDEXT				(0x1 << 12)
 #define HSP_EN_UTMISUSPEND			(0x1 << 9)
 #define HSP_COMMONONN				(0x1 << 8)
 #define HSP_VATESTENB				(0x1 << 6)
 #define HSP_CHGDET				(0x1 << 5)
-#define HSP_CHGDET_GET(_x)		((_x & (0x1 << 5)) >> 5)
 #define HSP_VDATSRCENB				(0x1 << 4)
 #define HSP_VDATDETENB				(0x1 << 3)
 #define HSP_CHRGSEL				(0x1 << 2)
@@ -198,9 +183,9 @@
 #define HSP_DCDENB				(0x1 << 0)
 
 #define EXYNOS_USBCON_HSP_TUNE		(0x58)
-#define HSP_TUNE_TXVREF_MASK			((unsigned) 0xf << 28)
-#define HSP_TUNE_TXVREF_SET(_x)			((unsigned) (_x & 0xf) << 28)
-#define HSP_TUNE_TXVREF_GET(_x)			((_x & (0xfU << 28)) >> 28)
+#define HSP_TUNE_TXVREF_MASK			(0xf << 28)
+#define HSP_TUNE_TXVREF_SET(_x)			((_x & 0xf) << 28)
+#define HSP_TUNE_TXVREF_GET(_x)			((_x & (0xf << 28)) >> 28)
 #define HSP_TUNE_TXRISE_MASK			(0x3 << 24)
 #define HSP_TUNE_TXRISE_SET(_x)			((_x & 0x3) << 24)
 #define HSP_TUNE_TXRISE_GET(_x)			((_x & (0x3 << 24)) >> 24)
@@ -208,7 +193,6 @@
 #define HSP_TUNE_TXRES_SET(_x)			((_x & 0x3) << 21)
 #define HSP_TUNE_TXRES_GET(_x)			((_x & (0x3 << 21)) >> 21)
 #define HSP_TUNE_TXPREEMPA_PLUS			(0x1 << 20)
-#define HSP_TUNE_TXPREEMPA_PLUS_GET(_x)	((_x & (0x1 << 20)) >> 20)
 #define HSP_TUNE_TXPREEMPA_MASK			(0x3 << 18)
 #define HSP_TUNE_TXPREEMPA_SET(_x)		((_x & 0x3) << 18)
 #define HSP_TUNE_TXPREEMPA_GET(_x)		((_x & (0x3 << 18)) >> 18)

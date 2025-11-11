@@ -39,7 +39,7 @@ DEFINE_EVENT(cpu, cpu_idle,
 	TP_ARGS(state, cpu_id)
 );
 
-TRACE_EVENT(sugov_slack_func,
+TRACE_EVENT(exynos_slack_func,
 
 	TP_PROTO(int cpu),
 
@@ -56,7 +56,7 @@ TRACE_EVENT(sugov_slack_func,
 	TP_printk("cpu=%d SLACK EXPIRED", __entry->cpu)
 );
 
-TRACE_EVENT(sugov_slack,
+TRACE_EVENT(exynos_slack,
 
 	TP_PROTO(int cpu, unsigned long util,
 		unsigned long min, unsigned long action, int ret),
@@ -841,75 +841,6 @@ TRACE_EVENT(emc_update_cpu_pwr,
 	TP_printk("pre_cpu_mask=%x, cpu=%u, on=%s", __entry->pre_cpu_mask,
 					__entry->cpu, __entry->on? "ON" : "OFF")
 );
-
-TRACE_EVENT(cpus_up_enter,
-
-	TP_PROTO(int cpu),
-
-	TP_ARGS(cpu),
-
-	TP_STRUCT__entry(
-		__field(int, cpu)
-	),
-
-	TP_fast_assign(
-		__entry->cpu = cpu;
-	),
-
-	TP_printk("enter cpus_up cpu%d", __entry->cpu)
-);
-
-TRACE_EVENT(cpus_up_exit,
-
-	TP_PROTO(int cpu),
-
-	TP_ARGS(cpu),
-
-	TP_STRUCT__entry(
-		__field(int, cpu)
-	),
-
-	TP_fast_assign(
-		__entry->cpu = cpu;
-	),
-
-	TP_printk("exit cpus_up cpu%d", __entry->cpu)
-);
-
-TRACE_EVENT(cpus_down_enter,
-
-	TP_PROTO(int cpu),
-
-	TP_ARGS(cpu),
-
-	TP_STRUCT__entry(
-		__field(int, cpu)
-	),
-
-	TP_fast_assign(
-		__entry->cpu = cpu;
-	),
-
-	TP_printk("enter cpus_down cpu%d", __entry->cpu)
-);
-
-TRACE_EVENT(cpus_down_exit,
-
-	TP_PROTO(int cpu),
-
-	TP_ARGS(cpu),
-
-	TP_STRUCT__entry(
-		__field(int, cpu)
-	),
-
-	TP_fast_assign(
-		__entry->cpu = cpu;
-	),
-
-	TP_printk("exit cpus_down cpu%d", __entry->cpu)
-);
-
 #endif /* _TRACE_POWER_H */
 
 /* This part must be outside protection */

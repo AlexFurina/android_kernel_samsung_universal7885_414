@@ -8,9 +8,8 @@ obj-$(CONFIG_MC_SCALER_V2_10) += fimc-is-hw-api-mcscaler-v210.o
 obj-$(CONFIG_MC_SCALER_V2_0) += fimc-is-hw-api-mcscaler-v2_0.o
 obj-$(CONFIG_MC_SCALER_V3_0) += fimc-is-hw-api-mcscaler-v3_0.o
 obj-$(CONFIG_MC_SCALER_V3_20) += fimc-is-hw-api-mcscaler-v320.o
-obj-$(CONFIG_MC_SCALER_V4_0) += fimc-is-hw-api-mcscaler-v4_0.o
-obj-$(CONFIG_MC_SCALER_V4_10) += fimc-is-hw-api-mcscaler-v410.o
-obj-$(CONFIG_MC_SCALER_V5_0) += fimc-is-hw-api-mcscaler-v5_0.o
+obj-$(CONFIG_MC_SCALER_V4_20) += fimc-is-hw-api-mcscaler-v420.o
+obj-$(CONFIG_SRDZ_V1_0) += fimc-is-hw-api-srdz-v1_0.o
 
 obj-$(CONFIG_USE_HW_API_COMMON) += fimc-is-hw-api-common.o
 

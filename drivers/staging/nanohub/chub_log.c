@@ -23,7 +23,7 @@
 #include "chub_ipc.h"
 
 #ifdef CONFIG_CONTEXTHUB_DEBUG
-#define SIZE_OF_BUFFER (SZ_128K + SZ_128K)
+#define SIZE_OF_BUFFER (SZ_512K + SZ_128K)
 #else
 #define SIZE_OF_BUFFER (SZ_128K)
 #endif
@@ -114,10 +114,11 @@ void log_flush(struct log_buffer_info *info)
 	unsigned int index_writer = buffer->index_writer;
 
 	/* check logbuf index dueto sram corruption */
-	if ((buffer->index_reader >= buffer->size)
-		|| (buffer->index_writer >= buffer->size)) {
-		dev_err(info->dev, "%s(%d): offset is corrupted. index_writer=%u, index_reader=%u, size=%u\n",
-			__func__, info->id, buffer->index_writer, buffer->index_reader, buffer->size);
+	if ((buffer->index_reader >= ipc_get_offset(IPC_REG_LOG))
+		|| (buffer->index_writer >= ipc_get_offset(IPC_REG_LOG))) {
+		dev_err(info->dev, "%s(%d): offset is corrupted. index_writer=%u, index_reader=%u, size=%u-%u\n",
+			__func__, info->id, buffer->index_writer, buffer->index_reader, buffer->size,
+			ipc_get_offset(IPC_REG_LOG));
 
 		return;
 	}
@@ -152,7 +153,7 @@ void log_flush(struct log_buffer_info *info)
 static void log_flush_all_work_func(struct work_struct *work);
 static DECLARE_DEFERRABLE_WORK(log_flush_all_work, log_flush_all_work_func);
 
-void log_flush_all(void)
+static void log_flush_all(void)
 {
 	struct log_buffer_info *info;
 
@@ -368,10 +369,11 @@ static void log_dump(struct log_buffer_info *info, int err)
 	u32 wrap_index = buffer->index_writer;
 
 	/* check logbuf index dueto sram corruption */
-	if ((buffer->index_reader >= buffer->size)
-		|| (buffer->index_writer >= buffer->size)) {
-		dev_err(info->dev, "%s(%d): offset is corrupted. index_writer=%u, index_reader=%u, size=%u\n",
-			__func__, info->id, buffer->index_writer, buffer->index_reader, buffer->size);
+	if ((buffer->index_reader >= ipc_get_offset(IPC_REG_LOG))
+		|| (buffer->index_writer >= ipc_get_offset(IPC_REG_LOG))) {
+		dev_err(info->dev, "%s(%d): offset is corrupted. index_writer=%u, index_reader=%u, size=%u-%u\n",
+			__func__, info->id, buffer->index_writer, buffer->index_reader, buffer->size,
+			ipc_get_offset(IPC_REG_LOG));
 		return;
 	}
 
@@ -456,19 +458,22 @@ static ssize_t chub_log_flush_save(struct device *dev,
 
 	err = kstrtol(&buf[0], 10, &event);
 	if (!err) {
-		if (!event) {
-			log_flush_all();
-		} else {
-			/* update log_flush time */
-			auto_log_flush_ms = event;
-			pr_err("%s: set flush ms:%d\n", __func__, auto_log_flush_ms);
-			schedule_delayed_work(&log_flush_all_work, msecs_to_jiffies(auto_log_flush_ms));
+		if (!auto_log_flush_ms) {
+			if (!err) {
+				log_flush_all();
+			} else {
+				pr_err("%s: fails to flush log\n", __func__);
+			}
 		}
+		/* update log_flush time */
+		auto_log_flush_ms = event * 1000;
+
 		return count;
 	} else {
-		pr_err("%s: fails event:%d, err:%d\n", __func__, event, err);
 		return 0;
 	}
+
+	return count;
 }
 
 static ssize_t chub_dump_log_save(struct device *dev,
@@ -503,7 +508,6 @@ struct log_buffer_info *log_register_buffer(struct device *dev, int id,
 	info->id = id;
 	info->file_created = false;
 	info->kernel_buffer.buffer = vzalloc(SIZE_OF_BUFFER);
-	info->kernel_buffer.buffer_size = SIZE_OF_BUFFER;
 	info->kernel_buffer.index = 0;
 	info->kernel_buffer.index_reader = 0;
 	info->kernel_buffer.index_writer = 0;

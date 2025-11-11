@@ -55,6 +55,12 @@ void mbox_update_value(enum mcu_ipc_region id, u32 mbx_num,
 u32 mbox_extract_value(enum mcu_ipc_region id, u32 mbx_num, u32 mask, u32 pos);
 void mbox_sw_reset(enum mcu_ipc_region id);
 void mcu_ipc_clear_all_interrupt(enum mcu_ipc_region id);
-int mcu_ipc_set_affinity(enum mcu_ipc_region id, int affinity);
 
+#ifdef CONFIG_SOC_EXYNOS7885
+extern int exynos_pmu_shared_reg_enable(void);
+extern void exynos_pmu_shared_reg_disable(void);
+#else
+static inline int exynos_pmu_shared_reg_enable(void) {return 0;}
+static inline void exynos_pmu_shared_reg_disable(void) {return 0;}
+#endif
 #endif

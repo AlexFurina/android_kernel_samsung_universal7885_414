@@ -18,10 +18,12 @@
  * =================================================================================================
  */
 #define FIMC_IS_SENSOR_COUNT	6
-#define FIMC_IS_STREAM_COUNT	8
+#define FIMC_IS_STREAM_COUNT	4
 #define FIMC_IS_STR_LEN		10
 
 #define FIMC_IS_MAX_PRIO	(MAX_RT_PRIO)
+#define INTENT_RETRY_CNT	1
+
 /*
  * =================================================================================================
  * CONFIG - FEATURE ENABLE
@@ -31,6 +33,7 @@
 /* #define FW_SUSPEND_RESUME */
 #define ENABLE_CLOCK_GATE
 #define HAS_FW_CLOCK_GATE
+/* #define ENABLE_CACHE */
 #define ENABLE_FULL_BYPASS
 #define ENABLE_ONE_SLOT
 
@@ -100,6 +103,7 @@ extern int debug_stream;
 extern int debug_video;
 extern int debug_hw;
 extern int debug_device;
+extern int debug_psv;
 extern int debug_irq;
 extern int debug_sensor;
 
@@ -111,26 +115,26 @@ extern int debug_sensor;
 /* #define SENSOR_PANIC_ENABLE */
 #define OVERFLOW_PANIC_ENABLE_ISCHAIN
 #define OVERFLOW_PANIC_ENABLE_CSIS
-#define ENABLE_KERNEL_LOG_DUMP
 /* #define FIXED_FPS_DEBUG */
 /* #define FIXED_TDNR_NOISE_INDEX */
 
-/* 30fps */
-#define FIXED_MAX_FPS_VALUE (30)
-#define FIXED_MIN_FPS_VALUE (1)
+/* 5fps */
+#define FIXED_FPS_VALUE (30 / 6)
 #define FIXED_EXPOSURE_VALUE (200000) /* 33.333 * 6 */
 #define FIXED_AGAIN_VALUE (150 * 6)
 #define FIXED_DGAIN_VALUE (150 * 6)
 #define FIXED_TDNR_NOISE_INDEX_VALUE (0)
 /* #define DBG_CSIISR */
+#define DBG_CSI_ALL_VC_TASKLET
+/* #define DBG_IMAGE_KMAPPING */
 /* #define DBG_DRAW_DIGIT */
 /* #define DBG_IMAGE_DUMP */
 /* #define DBG_META_DUMP */
 #define DBG_HAL_DEAD_PANIC_DELAY (500) /* ms */
 #define DBG_DMA_DUMP_PATH	"/data"
 #define DBG_DMA_DUMP_INTEVAL	33	/* unit : frame */
-#define DBG_DMA_DUMP_VID_COND(vid)	((vid == FIMC_IS_VIDEO_SS0VC0_NUM) || \
-					(vid == FIMC_IS_VIDEO_SS1VC0_NUM) || \
+#define DBG_DMA_DUMP_VID_COND(vid)	((vid == FIMC_IS_VIDEO_SS0_NUM) || \
+					(vid == FIMC_IS_VIDEO_SS1_NUM) || \
 					(vid == FIMC_IS_VIDEO_M0P_NUM))
 /* #define DEBUG_HW_SFR */
 /* #define DBG_DUMPREG */
@@ -157,21 +161,14 @@ extern int debug_sensor;
 #endif
 
 #define GET_SSX_ID(video) (video->id - FIMC_IS_VIDEO_SS0_NUM)
-#define GET_PAFXS_ID(video) ((video->id < FIMC_IS_VIDEO_PAF1S_NUM) ? 0 : 1)
 #define GET_3XS_ID(video) ((video->id < FIMC_IS_VIDEO_31S_NUM) ? 0 : 1)
 #define GET_3XC_ID(video) ((video->id < FIMC_IS_VIDEO_31S_NUM) ? 0 : 1)
 #define GET_3XP_ID(video) ((video->id < FIMC_IS_VIDEO_31S_NUM) ? 0 : 1)
-#define GET_3XF_ID(video) ((video->id < FIMC_IS_VIDEO_31S_NUM) ? 0 : 1)
-#define GET_3XG_ID(video) ((video->id < FIMC_IS_VIDEO_31S_NUM) ? 0 : 1)
 #define GET_IXS_ID(video) ((video->id < FIMC_IS_VIDEO_I1S_NUM) ? 0 : 1)
 #define GET_IXC_ID(video) ((video->id < FIMC_IS_VIDEO_I1S_NUM) ? 0 : 1)
 #define GET_IXP_ID(video) ((video->id < FIMC_IS_VIDEO_I1S_NUM) ? 0 : 1)
-#define GET_MEXC_ID(video) (video->id - FIMC_IS_VIDEO_ME0C_NUM)
 #define GET_DXS_ID(video) ((video->id < FIMC_IS_VIDEO_D1S_NUM) ? 0 : 1)
 #define GET_DXC_ID(video) ((video->id < FIMC_IS_VIDEO_D1S_NUM) ? 0 : 1)
-#define GET_DCPXS_ID(video) ((video->id < FIMC_IS_VIDEO_DCP1S_NUM) ? 0 : 1)
-#define GET_DCPXC_ID(video) ((video->id < FIMC_IS_VIDEO_DCP1S_NUM) ? 0 \
-				: ((video->id < FIMC_IS_VIDEO_DCP2C_NUM) ? 1 : 2))
 #define GET_MXS_ID(video) (video->id - FIMC_IS_VIDEO_M0S_NUM)
 #define GET_MXP_ID(video) (video->id - FIMC_IS_VIDEO_M0P_NUM)
 
@@ -315,12 +312,10 @@ extern int debug_sensor;
 #define dbg_preproc(fmt, args...) \
 	dbg_common((debug_sensor >= 5) && (debug_sensor < 6), "[PRE]", fmt, ##args)
 
-#define dbg_aperture(fmt, args...) \
-	dbg_common((debug_sensor >= 6) && (debug_sensor < 7), "[APERTURE]", fmt, ##args)
+#define dbg_iris(fmt, args...) \
+	dbg_common((debug_sensor >= 6) && (debug_sensor < 7), "[IRIS]", fmt, ##args)
 
-#define dbg_ois(fmt, args...) \
-	dbg_common((debug_sensor >= 7) && (debug_sensor < 8), "[OIS]", fmt, ##args)
-
+#
 /*
  * =================================================================================================
  * LOG - DEBUG_VIDEO
@@ -344,12 +339,6 @@ extern int debug_sensor;
 #define mdbgv_3xp(fmt, this, args...) \
 	mdbg_common(debug_video, "[%d][3%dP:V]", fmt, ((struct fimc_is_device_ischain *)this->device)->instance, GET_3XP_ID(this->video), ##args)
 
-#define mdbgv_3xf(fmt, this, args...) \
-	mdbg_common(debug_video, "[%d][3%dF:V]", fmt, ((struct fimc_is_device_ischain *)this->device)->instance, GET_3XF_ID(this->video), ##args)
-
-#define mdbgv_3xg(fmt, this, args...) \
-	mdbg_common(debug_video, "[%d][3%dG:V]", fmt, ((struct fimc_is_device_ischain *)this->device)->instance, GET_3XG_ID(this->video), ##args)
-
 #define mdbgv_isp(fmt, this, args...) \
 	mdbg_common(debug_video, "[%d][I%dS:V]", fmt, ((struct fimc_is_device_ischain *)this->device)->instance, GET_IXS_ID(this->video), ##args)
 
@@ -358,9 +347,6 @@ extern int debug_sensor;
 
 #define mdbgv_ixp(fmt, this, args...) \
 	mdbg_common(debug_video, "[%d][I%dP:V]", fmt, ((struct fimc_is_device_ischain *)this->device)->instance, GET_IXP_ID(this->video), ##args)
-
-#define mdbgv_mexc(fmt, this, args...) \
-	mdbg_common(debug_video, "[%d][ME%dC:V]", fmt, ((struct fimc_is_device_ischain *)this->device)->instance, GET_IXP_ID(this->video), ##args)
 
 #define mdbgv_scp(fmt, this, args...) \
 	mdbg_common(debug_video, "[%d][SCP:V]", fmt, ((struct fimc_is_device_ischain *)this->device)->instance, ##args)
@@ -373,16 +359,6 @@ extern int debug_sensor;
 
 #define mdbgv_dxc(fmt, this, args...) \
 	mdbg_common(debug_video, "[%d][D%dC:V]", fmt, ((struct fimc_is_device_ischain *)this->device)->instance, GET_DXC_ID(this->video), ##args)
-
-#define mdbgv_dcpxs(fmt, this, args...) \
-	mdbg_common(debug_video, "[%d][DCP%dS:V]", fmt, \
-				((struct fimc_is_device_ischain *)this->device)->instance, \
-				GET_DCPXS_ID(this->video), ##args)
-
-#define mdbgv_dcpxc(fmt, this, args...) \
-	mdbg_common(debug_video, "[%d][DCP%dC:V]", fmt, \
-				((struct fimc_is_device_ischain *)this->device)->instance, \
-				GET_DCPXC_ID(this->video), ##args)
 
 #define mdbgv_mcs(fmt, this, args...) \
 	mdbg_common(debug_video, "[%d][M%dS:V]", fmt, ((struct fimc_is_device_ischain *)this->device)->instance, GET_MXS_ID(this->video), ##args)
@@ -404,11 +380,6 @@ extern int debug_sensor;
 
 #define mdbgv_ssxvc3(fmt, this, args...) \
 	mdbg_common(debug_video, "[%d][SSXVC3:V]", fmt, ((struct fimc_is_device_sensor *)this->device)->instance, ##args)
-
-#define mdbgv_paf(fmt, this, args...) \
-	mdbg_common(debug_video, "[%d][PAF%dS:V]", fmt, \
-				((struct fimc_is_device_ischain *)this->device)->instance, \
-				GET_PAFXS_ID(this->video), ##args)
 
 /*
  * =================================================================================================
@@ -537,8 +508,8 @@ extern int debug_sensor;
 #define dbg_tasklet(fmt, args...)	\
 	dbg_common(debug_irq, "[FBNS]", fmt, ##args)
 
-#define dbg_isr(fmt, object, args...)		\
-	dbg_common(debug_irq, "[%s]", fmt, object->name, ##args)
+#define dbg_csiisr(fmt, args...)	\
+	dbg_common(debug_irq, "[CSI]", fmt, ##args)
 
 #if defined(CONFIG_USE_DIRECT_IS_CONTROL)
 #define dbg_hw(level, fmt, args...) \
@@ -590,8 +561,6 @@ extern int debug_sensor;
 	warn_common("[LIB][WARN]%d:", fmt "\n", __LINE__, ##args)
 #define err_lib(fmt, args...) \
 	err_common("[LIB][ERR]%s:%d:", fmt "\n", __func__, __LINE__, ##args)
-#define mserr_lib(fmt, instance, object, args...) \
-	err_common("[%d][LIB:%s][ERR]%s:%d:", fmt "\n", instance, object->name, __func__, __LINE__, ##args)
 
 #define dbg_itfc(fmt, args...) \
 	dbg_common(debug_hw, "[ITFC]", fmt, ##args)
@@ -599,6 +568,34 @@ extern int debug_sensor;
 	info_common("[ITFC]", fmt, ##args)
 #define err_itfc(fmt, args...) \
 	err_common("[ITFC][ERR]%s:%d:", fmt "\n", __func__, __LINE__, ##args)
+#endif
+
+#if defined(CONFIG_VENDER_PSV)
+#define dbg_psv(fmt, args...) \
+	dbg_common(debug_psv, "[PSV] ", fmt, ##args)
+#define dbg_vec(fmt, args...) \
+	dbg_common(debug_psv, "[VEC] ", fmt, ##args)
+#define dbg_sfr(fmt, args...) \
+	dbg_common(debug_psv, "[SFR] ", fmt, ##args)
+
+#define info_psv(fmt, args...) \
+	info("[PSV] " fmt, ##args)
+#define info_vec(fmt, args...) \
+	info("[VEC] " fmt, ##args)
+#define info_sfr(fmt, args...) \
+	info("[SFR] " fmt, ##args)
+#define warn_psv(fmt, args...) \
+	warn_common("[PSV][WRN]%d: ", fmt "\n", __LINE__, ##args)
+#define err_psv(fmt, args...) \
+	err_common("PSV][ERR]%d: ", fmt "\n", __LINE__, ##args)
+#define warn_vec(fmt, args...) \
+	warn_common("[VEC][WRN]%d: ", fmt "\n", __LINE__, ##args)
+#define err_vec(fmt, args...) \
+	err_common("[VEC][ERR]%d: ", fmt "\n", __LINE__, ##args)
+#define warn_sfr(fmt, args...) \
+	warn_common("[SFR][WAN]%d: ", fmt "\n", __LINE__, ##args)
+#define err_sfr(fmt, args...) \
+	err_common("[SFR][ERR]%d: ", fmt "\n", __LINE__, ##args)
 #endif
 
 #ifdef USE_FIMC_BUG

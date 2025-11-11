@@ -54,6 +54,9 @@
 #include <asm/ptrace.h>
 #include <asm/irq_regs.h>
 
+#include <linux/notifier.h>
+#include <linux/sec_debug.h>
+
 /* Whether we react on sysrq keys or just ignore them */
 static int __read_mostly sysrq_enabled = CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE;
 static bool __read_mostly sysrq_always_enabled;
@@ -144,6 +147,9 @@ static void sysrq_handle_crash(int key)
 	rcu_read_unlock();
 	panic_on_oops = 1;	/* force panic */
 	wmb();
+
+	sec_debug_set_sysrq_crash(current);
+
 	*killer = 1;
 }
 static struct sysrq_key_op sysrq_crash_op = {
@@ -180,6 +186,8 @@ static struct sysrq_key_op sysrq_sync_op = {
 static void sysrq_handle_show_timers(int key)
 {
 	sysrq_timer_list_show();
+	show_mem(0, NULL);
+	dump_tasks(NULL, NULL);
 }
 
 static struct sysrq_key_op sysrq_show_timers_op = {
@@ -325,7 +333,10 @@ static struct sysrq_key_op sysrq_ftrace_dump_op = {
 
 static void sysrq_handle_showmem(int key)
 {
+	static DEFINE_RATELIMIT_STATE(showmem_rs, DEFAULT_RATELIMIT_INTERVAL, 1);
 	show_mem(0, NULL);
+	if (__ratelimit(&showmem_rs))
+		dump_tasks(NULL, NULL);
 }
 static struct sysrq_key_op sysrq_showmem_op = {
 	.handler	= sysrq_handle_showmem,
@@ -546,7 +557,6 @@ void __handle_sysrq(int key, bool check_mask)
 	 */
 	orig_log_level = console_loglevel;
 	console_loglevel = CONSOLE_LOGLEVEL_DEFAULT;
-	pr_info("SysRq : ");
 
         op_p = __sysrq_get_key_op(key);
         if (op_p) {
@@ -555,14 +565,15 @@ void __handle_sysrq(int key, bool check_mask)
 		 * should not) and is the invoked operation enabled?
 		 */
 		if (!check_mask || sysrq_on_mask(op_p->enable_mask)) {
-			pr_cont("%s\n", op_p->action_msg);
+			pr_info("%s\n", op_p->action_msg);
 			console_loglevel = orig_log_level;
 			op_p->handler(key);
 		} else {
-			pr_cont("This sysrq operation is disabled.\n");
+			pr_info("This sysrq operation is disabled.\n");
+			console_loglevel = orig_log_level;
 		}
 	} else {
-		pr_cont("HELP : ");
+		pr_info("HELP : ");
 		/* Only print the help msg once per handler */
 		for (i = 0; i < ARRAY_SIZE(sysrq_key_table); i++) {
 			if (sysrq_key_table[i]) {

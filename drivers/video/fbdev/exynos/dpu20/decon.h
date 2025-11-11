@@ -70,7 +70,6 @@ extern int dpu_bts_log_level;
 extern int win_update_log_level;
 extern int dpu_mres_log_level;
 extern int decon_systrace_enable;
-extern int esd_bypass_cnt;
 extern struct decon_bts_ops decon_bts_control;
 
 #define DECON_MODULE_NAME	"exynos-decon"
@@ -86,7 +85,6 @@ extern struct decon_bts_ops decon_bts_control;
 #define FD_TRY_CNT		3
 #define VALID_FD_VAL		3
 #define DECON_TRACE_BUF_SIZE	40
-#define MAX_BYPASS_CNT		20
 
 #define DECON_WIN_UPDATE_IDX	MAX_DECON_WIN
 
@@ -179,11 +177,11 @@ void dpu_debug_printk(const char *function_name, const char *format, ...);
 	} while (0)
 
 /* DECON systrace related */
-void decon_tracing_mark_write(struct decon_device *decon, char id, char *str1, int value);
+void tracing_mark_write(struct decon_device *decon, char id, char *str1, int value);
 #define decon_systrace(decon, id, str1, value)					\
 	do {									\
 		if (decon_systrace_enable)					\
-			decon_tracing_mark_write(decon, id, str1, value);		\
+			tracing_mark_write(decon, id, str1, value);		\
 	} while (0)
 
 enum decon_hold_scheme {
@@ -293,10 +291,12 @@ enum dpp_csc_eq {
 	CSC_BT_709 = 1,
 	CSC_BT_2020 = 2,
 	CSC_DCI_P3 = 3,
+	CSC_STANDARD_UNSPECIFIED = 63,
 	/* eq_mode : 3bits [8:6] */
 	CSC_RANGE_SHIFT = 6,
 	CSC_RANGE_LIMITED = 0x0,
 	CSC_RANGE_FULL = 0x1,
+	CSC_RANGE_UNSPECIFIED = 7,
 };
 
 enum dpp_comp_src {
@@ -309,82 +309,6 @@ enum dpp_hdr_standard {
 	DPP_HDR_OFF = 0,
 	DPP_HDR_ST2084,
 	DPP_HDR_HLG,
-};
-
-/* HAL color mode */
-enum HAL_color_mode {
-	HAL_COLOR_MODE_NATIVE = 0,
-	HAL_COLOR_MODE_STANDARD_BT601_625 = 1,
-	HAL_COLOR_MODE_STANDARD_BT601_625_UNADJUSTED = 2,
-	HAL_COLOR_MODE_STANDARD_BT601_525 = 3,
-	HAL_COLOR_MODE_STANDARD_BT601_525_UNADJUSTED = 4,
-	HAL_COLOR_MODE_STANDARD_BT709 = 5,
-	HAL_COLOR_MODE_DCI_P3 = 6,
-	HAL_COLOR_MODE_SRGB = 7,
-	HAL_COLOR_MODE_ADOBE_RGB = 8,
-	HAL_COLOR_MODE_DISPLAY_P3 = 9,
-};
-
-/* HAL intent info */
-enum HAL_intent_info{
-	HAL_RENDER_INTENT_COLORIMETRIC = 0,
-	HAL_RENDER_INTENT_ENHANCE = 1,
-	HAL_RENDER_INTENT_TONE_MAP_COLORIMETRIC = 2,
-	HAL_RENDER_INTENT_TONE_MAP_ENHANCE = 3,
-};
-
-/* HAL color transform*/
-enum HAL_color_transform{
-	HAL_COLOR_TRANSFORM_IDENTITY = 0,
-	HAL_COLOR_TRANSFORM_ARBITRARY_MATRIX = 1,
-	HAL_COLOR_TRANSFORM_VALUE_INVERSE = 2,
-	HAL_COLOR_TRANSFORM_GRAYSCALE = 3,
-	HAL_COLOR_TRANSFORM_CORRECT_PROTANOPIA = 4,
-	HAL_COLOR_TRANSFORM_CORRECT_DEUTERANOPIA = 5,
-	HAL_COLOR_TRANSFORM_CORRECT_TRITANOPIA = 6,
-};
-
-struct decon_color_mode_info {
-	int index;
-	u32 color_mode;
-};
-
-/* decon supported color mode */
-enum decon_supported_color_mode {
-	DECON_COLOR_MODE_NATIVE = 0,
-	DECON_COLOR_MODE_SRGB,
-	DECON_COLOR_MODE_DCI_P3,
-	DECON_COLOR_MODE_NUM_MAX,
-};
-
-/* intents num and information in each color mode*/
-struct decon_render_intents_num_info {
-        u32 color_mode;
-        u32 render_intent_num;
-};
-
-struct decon_render_intent_info {
-        u32 color_mode;
-        u32 index;
-        u32 render_intent;
-};
-
-/* decon supported intent info */
-enum decon_supported_intent_info {
-	DECON_INTENT_COLORIMETRIC = 0,
-	DECON_INTENT_ENHANCE,
-	DECON_INTENT_NUM_MAX,
-};
-
-#define DECON_MATRIX_ELEMENT_NUM 16
-struct decon_color_transform_info {
-        u32 hint;
-        int matrix[DECON_MATRIX_ELEMENT_NUM];
-};
-
-struct decon_color_mode_with_render_intent_info {
-       u32 color_mode;
-       u32 render_intent;
 };
 
 struct decon_clocks {
@@ -517,11 +441,6 @@ struct decon_win_config_data {
 	int	retire_fence;
 	int	fd_odma;
 	struct decon_win_config config[MAX_DECON_WIN + 1];
-};
-
-enum lcd_status {
-	LCD_OFF	= 0,
-	LCD_ON	= 1,
 };
 
 enum hwc_ver {
@@ -966,7 +885,6 @@ struct decon_device {
 
 	struct mutex lock;
 	struct mutex pm_lock;
-	struct mutex rcv_lock; /* recovery lock */
 	spinlock_t slock;
 #if defined(CONFIG_EXYNOS_READ_ESD_SOLUTION)
 	struct decon_esd esd;
@@ -1035,8 +953,6 @@ struct decon_device {
 	atomic_t bypass;
 	struct decon_reg_data last_regs;
 #endif
-	/* display LCD on/off notifier */
-	struct atomic_notifier_head lcd_status_notifier_list;
 };
 
 static inline struct decon_device *get_decon_drvdata(u32 id)
@@ -1319,6 +1235,8 @@ static inline bool decon_is_bypass(struct decon_device *decon)
 }
 #endif
 
+int decon_update_pwr_state(struct decon_device *decon, u32 mode);
+
 enum disp_pwr_mode {
 	DISP_PWR_OFF = 0,
 	DISP_PWR_DOZE,
@@ -1327,12 +1245,10 @@ enum disp_pwr_mode {
 	DISP_PWR_MAX,
 };
 
-int decon_update_pwr_state(struct decon_device *decon, enum disp_pwr_mode mode);
-
-typedef int (*set_pwr_state_t)(struct decon_device *);
+typedef int (*set_pwr_state_t)(void *);
 
 struct disp_pwr_state {
-	enum decon_state state;
+	u32 state;
 	set_pwr_state_t set_pwr_state;
 };
 
@@ -1422,11 +1338,6 @@ int dpu_pm_domain_check_status(struct exynos_pm_domain *pm_domain);
 int decon_set_out_sd_state(struct decon_device *decon, enum decon_state state);
 int decon_update_last_regs(struct decon_device *decon,
 		struct decon_reg_data *regs);
-int decon_handle_recovery(struct decon_device *decon);
-
-int register_lcd_status_notifier(struct notifier_block *nb);
-int unregister_lcd_status_notifier(struct notifier_block *nb);
-void lcd_status_notifier(u32 lcd_status);
 
 /* IOCTL commands */
 #define S3CFB_SET_VSYNC_INT		_IOW('F', 206, __u32)
@@ -1458,16 +1369,4 @@ void lcd_status_notifier(u32 lcd_status);
 
 /* DPU aclk */
 #define EXYNOS_DPU_GET_ACLK		_IOR('F', 500, u32)
-
-/* COLOR Mode */
-#define EXYNOS_GET_COLOR_MODE_NUM	_IOW('F', 600, __u32)
-#define EXYNOS_GET_COLOR_MODE		_IOW('F', 601, struct decon_color_mode_info)
-#define EXYNOS_SET_COLOR_MODE		_IOW('F', 602, __u32)
-
-#define EXYNOS_GET_RENDER_INTENTS_NUM	_IOW('F', 610, struct decon_render_intents_num_info)
-#define EXYNOS_GET_RENDER_INTENT	_IOW('F', 611, struct decon_render_intent_info)
-
-#define EXYNOS_SET_COLOR_TRANSFORM	_IOW('F', 612, struct decon_color_transform_info)
-#define EXYNOS_SET_COLOR_MODE_WITH_RENDER_INTENT	_IOW('F', 613, struct decon_color_mode_with_render_intent_info)
-
 #endif /* ___SAMSUNG_DECON_H__ */

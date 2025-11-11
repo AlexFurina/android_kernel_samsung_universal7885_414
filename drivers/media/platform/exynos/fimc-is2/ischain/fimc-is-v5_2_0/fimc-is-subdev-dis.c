@@ -52,6 +52,14 @@ static void fimc_is_ischain_dis_ctrl(struct fimc_is_device_ischain *device,
 		control->buffer_address = 0;
 #endif
 	}
+
+	/* to avoid duplicated index setting */
+	if (!((*lindex) | LOWBIT_OF(PARAM_TPU_CONTROL)) &&
+			!((*hindex) | HIGHBIT_OF(PARAM_TPU_CONTROL))) {
+		*lindex |= LOWBIT_OF(PARAM_TPU_CONTROL);
+		*hindex |= HIGHBIT_OF(PARAM_TPU_CONTROL);
+		(*indexes)++;
+	}
 }
 
 static int fimc_is_ischain_dis_cfg(struct fimc_is_subdev *leader,
@@ -76,12 +84,12 @@ static int fimc_is_ischain_dis_cfg(struct fimc_is_subdev *leader,
 
 	device = (struct fimc_is_device_ischain *)device_data;
 
-	FIMC_BUG(!leader);
-	FIMC_BUG(!device);
-	FIMC_BUG(!incrop);
-	FIMC_BUG(!lindex);
-	FIMC_BUG(!hindex);
-	FIMC_BUG(!indexes);
+	BUG_ON(!leader);
+	BUG_ON(!device);
+	BUG_ON(!incrop);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
 	otf_input = NULL;
 	otf_output = NULL;
@@ -164,10 +172,10 @@ static int fimc_is_ischain_dis_tag(struct fimc_is_subdev *subdev,
 
 	device = (struct fimc_is_device_ischain *)device_data;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->is_region);
-	FIMC_BUG(!frame);
+	BUG_ON(!subdev);
+	BUG_ON(!device);
+	BUG_ON(!device->is_region);
+	BUG_ON(!frame);
 
 	mdbgs_ischain(4, "DIS TAG\n", device);
 

@@ -95,6 +95,8 @@ static void __mfc_deinit_dec_ctx(struct mfc_ctx *ctx)
 {
 	struct mfc_dec *dec = ctx->dec_priv;
 
+	mfc_cleanup_assigned_iovmm(ctx);
+
 	mfc_delete_queue(&ctx->src_buf_queue);
 	mfc_delete_queue(&ctx->dst_buf_queue);
 	mfc_delete_queue(&ctx->src_buf_nal_queue);
@@ -150,7 +152,6 @@ static int __mfc_init_dec_ctx(struct mfc_ctx *ctx)
 #ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 	INIT_LIST_HEAD(&ctx->qos_list);
 #endif
-	INIT_LIST_HEAD(&ctx->bitrate_list);
 	INIT_LIST_HEAD(&ctx->ts_list);
 
 	dec->display_delay = -1;
@@ -165,11 +166,12 @@ static int __mfc_init_dec_ctx(struct mfc_ctx *ctx)
 	dec->is_dpb_full = 0;
 	mfc_cleanup_assigned_fd(ctx);
 	mfc_clear_assigned_dpb(ctx);
+	mutex_init(&dec->dpb_mutex);
 
 	/* sh_handle: released dpb info */
 	dec->sh_handle_dpb.fd = -1;
-	dec->ref_info = kzalloc(
-		(sizeof(struct dec_dpb_ref_info) * MFC_MAX_DPBS), GFP_KERNEL);
+	dec->sh_handle_dpb.data_size = sizeof(struct dec_dpb_ref_info) * MFC_MAX_DPBS;
+	dec->ref_info = kzalloc(dec->sh_handle_dpb.data_size, GFP_KERNEL);
 	if (!dec->ref_info) {
 		mfc_err_dev("failed to allocate decoder information data\n");
 		ret = -ENOMEM;
@@ -180,8 +182,8 @@ static int __mfc_init_dec_ctx(struct mfc_ctx *ctx)
 
 	/* sh_handle: HDR10+ HEVC SEI meta */
 	dec->sh_handle_hdr.fd = -1;
-	dec->hdr10_plus_info = kzalloc(
-			(sizeof(struct hdr10_plus_meta) * MFC_MAX_DPBS), GFP_KERNEL);
+	dec->sh_handle_hdr.data_size = sizeof(struct hdr10_plus_meta) * MFC_MAX_DPBS;
+	dec->hdr10_plus_info = kzalloc(dec->sh_handle_hdr.data_size, GFP_KERNEL);
 	if (!dec->hdr10_plus_info) {
 		mfc_err_dev("[HDR+] failed to allocate HDR10+ information data\n");
 		ret = -ENOMEM;
@@ -293,6 +295,9 @@ static int __mfc_init_enc_ctx(struct mfc_ctx *ctx)
 	enc->sh_handle_svc.fd = -1;
 	enc->sh_handle_roi.fd = -1;
 	enc->sh_handle_hdr.fd = -1;
+	enc->sh_handle_svc.data_size = sizeof(struct temporal_layer_info);
+	enc->sh_handle_roi.data_size = sizeof(struct mfc_enc_roi_info);
+	enc->sh_handle_hdr.data_size = sizeof(struct hdr10_plus_meta) * MFC_MAX_BUFFERS;
 
 	/* Init videobuf2 queue for OUTPUT */
 	ctx->vq_src.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
@@ -333,9 +338,14 @@ static int __mfc_init_instance(struct mfc_dev *dev, struct mfc_ctx *ctx)
 {
 	int ret = 0;
 
+	/* set watchdog timer */
 	dev->watchdog_timer.expires = jiffies +
 		msecs_to_jiffies(WATCHDOG_TICK_INTERVAL);
 	add_timer(&dev->watchdog_timer);
+
+	/* set MFC idle timer */
+	atomic_set(&dev->hw_run_cnt, 0);
+	mfc_change_idle_mode(dev, MFC_IDLE_MODE_NONE);
 
 	/* Load the FW */
 	if (!dev->fw.status) {
@@ -440,6 +450,7 @@ err_hw_lock:
 err_fw_load:
 err_fw_alloc:
 	del_timer_sync(&dev->watchdog_timer);
+	del_timer_sync(&dev->mfc_idle_timer);
 
 	mfc_err_dev("failed to init first instance\n");
 	return ret;
@@ -741,6 +752,7 @@ static int mfc_release(struct file *file)
 			mfc_perf_boost_disable(dev);
 
 		del_timer_sync(&dev->watchdog_timer);
+		del_timer_sync(&dev->mfc_idle_timer);
 
 		flush_workqueue(dev->butler_wq);
 
@@ -957,22 +969,6 @@ int mfc_sysmmu_fault_handler(struct iommu_domain *iodmn, struct device *device,
 	return 0;
 }
 
-static void __mfc_create_bitrate_table(struct mfc_dev *dev)
-{
-	struct mfc_platdata *pdata = dev->pdata;
-	int i, interval;
-
-	interval = pdata->max_Kbps[0] / pdata->num_mfc_freq;
-	dev->bps_ratio = pdata->max_Kbps[0] / dev->pdata->max_Kbps[1];
-	for (i = 0; i < pdata->num_mfc_freq; i++) {
-		dev->bitrate_table[i].bps_interval = interval * (i + 1);
-		dev->bitrate_table[i].mfc_freq = pdata->mfc_freqs[i];
-		mfc_info_dev("[QoS] bitrate table[%d] %dKHz: ~ %dKbps\n",
-				i, dev->bitrate_table[i].mfc_freq,
-				dev->bitrate_table[i].bps_interval);
-	}
-}
-
 static void __mfc_parse_dt(struct device_node *np, struct mfc_dev *mfc)
 {
 	struct mfc_platdata	*pdata = mfc->pdata;
@@ -1092,12 +1088,6 @@ static void __mfc_parse_dt(struct device_node *np, struct mfc_dev *mfc)
 	of_property_read_u32(np, "qos_weight_num_of_tile", &pdata->qos_weight.weight_num_of_tile);
 	of_property_read_u32(np, "qos_weight_super64_bframe", &pdata->qos_weight.weight_super64_bframe);
 #endif
-	/* Bitrate control for QoS */
-	of_property_read_u32(np, "num_mfc_freq", &pdata->num_mfc_freq);
-	if (pdata->num_mfc_freq)
-		of_property_read_u32_array(np, "mfc_freqs", pdata->mfc_freqs, pdata->num_mfc_freq);
-	of_property_read_u32_array(np, "max_Kbps", pdata->max_Kbps, MAX_NUM_MFC_BPS);
-	__mfc_create_bitrate_table(mfc);
 }
 
 static void *__mfc_get_drv_data(struct platform_device *pdev);
@@ -1148,7 +1138,6 @@ static int __mfc_register_resource(struct platform_device *pdev, struct mfc_dev 
 	struct device_node *iommu;
 	struct device_node *hwfc;
 	struct device_node *mmcache;
-	struct device_node *cmu = NULL;
 	struct resource *res;
 	int ret;
 
@@ -1211,36 +1200,6 @@ static int __mfc_register_resource(struct platform_device *pdev, struct mfc_dev 
 		} else {
 			dev->has_mmcache = 1;
 		}
-
-		cmu = of_get_child_by_name(np, "cmu");
-		if (cmu) {
-			dev->cmu_busc_base = of_iomap(cmu, 0);
-			if (dev->cmu_busc_base == NULL) {
-				dev_err(&pdev->dev, "failed to iomap busc address region\n");
-				goto err_ioremap_cmu_busc;
-			}
-			dev->cmu_mif0_base = of_iomap(cmu, 1);
-			if (dev->cmu_mif0_base == NULL) {
-				dev_err(&pdev->dev, "failed to iomap mif0 address region\n");
-				goto err_ioremap_cmu_mif0;
-			}
-			dev->cmu_mif1_base = of_iomap(cmu, 2);
-			if (dev->cmu_mif1_base == NULL) {
-				dev_err(&pdev->dev, "failed to iomap mif1 address region\n");
-				goto err_ioremap_cmu_mif1;
-			}
-			dev->cmu_mif2_base = of_iomap(cmu, 3);
-			if (dev->cmu_mif2_base == NULL) {
-				dev_err(&pdev->dev, "failed to iomap mif2 address region\n");
-				goto err_ioremap_cmu_mif2;
-			}
-			dev->cmu_mif3_base = of_iomap(cmu, 4);
-			if (dev->cmu_mif3_base == NULL) {
-				dev_err(&pdev->dev, "failed to iomap mif3 address region\n");
-				goto err_ioremap_cmu_mif3;
-			}
-			dev->has_cmu = 1;
-		}
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
@@ -1259,21 +1218,6 @@ static int __mfc_register_resource(struct platform_device *pdev, struct mfc_dev 
 	return 0;
 
 err_res_irq:
-	if (cmu)
-		iounmap(dev->cmu_mif3_base);
-err_ioremap_cmu_mif3:
-	if (cmu)
-		iounmap(dev->cmu_mif2_base);
-err_ioremap_cmu_mif2:
-	if (cmu)
-		iounmap(dev->cmu_mif1_base);
-err_ioremap_cmu_mif1:
-	if (cmu)
-		iounmap(dev->cmu_mif0_base);
-err_ioremap_cmu_mif0:
-	if (cmu)
-		iounmap(dev->cmu_busc_base);
-err_ioremap_cmu_busc:
 	if (dev->has_mmcache)
 		iounmap(dev->mmcache.base);
 err_ioremap_mmcache:
@@ -1296,7 +1240,6 @@ static int __mfc_itmon_notifier(struct notifier_block *nb, unsigned long action,
 	struct mfc_dev *dev;
 	struct itmon_notifier *itmon_info = nb_data;
 	int is_mfc_itmon = 0, is_master = 0;
-	int is_mmcache_itmon = 0;
 
 	dev = container_of(nb, struct mfc_dev, itmon_nb);
 
@@ -1315,20 +1258,13 @@ static int __mfc_itmon_notifier(struct notifier_block *nb, unsigned long action,
 			strncmp("MFC", itmon_info->dest, sizeof("MFC") - 1) == 0) {
 		is_mfc_itmon = 1;
 		is_master = 0;
-	} else if (itmon_info->port &&
-			strncmp("M-CACHE", itmon_info->port, sizeof("M-CACHE") - 1) == 0) {
-		is_mmcache_itmon = 1;
-		is_master = 1;
 	}
 
-	if (is_mfc_itmon || is_mmcache_itmon) {
-		pr_err("mfc_itmon_notifier: %s +\n", is_mfc_itmon ? "MFC" : "MMCACHE");
-		pr_err("%s is %s\n", is_mfc_itmon ? "MFC" : "MMCACHE",
-				is_master ? "master" : "dest");
+	if (is_mfc_itmon) {
+		pr_err("mfc_itmon_notifier: MFC +\n");
+		pr_err("MFC is %s\n", is_master ? "master" : "dest");
 		if (!dev->itmon_notified) {
-			pr_err("dump MFC %s information\n", is_mmcache_itmon ? "MMCACHE" : "");
-			if (is_mmcache_itmon)
-				mfc_mmcache_dump_info(dev);
+			pr_err("dump MFC information\n");
 			if (is_master || (!is_master && itmon_info->onoff))
 				call_dop(dev, dump_info, dev);
 			else
@@ -1336,7 +1272,7 @@ static int __mfc_itmon_notifier(struct notifier_block *nb, unsigned long action,
 		} else {
 			pr_err("MFC notifier has already been called. skip MFC information\n");
 		}
-		pr_err("mfc_itmon_notifier: %s -\n", is_mfc_itmon ? "MFC" : "MMCACHE");
+		pr_err("mfc_itmon_notifier: MFC -\n");
 		dev->itmon_notified = 1;
 	}
 	return NOTIFY_DONE;
@@ -1475,9 +1411,20 @@ static int mfc_probe(struct platform_device *pdev)
 	dev->watchdog_timer.data = (unsigned long)dev;
 	dev->watchdog_timer.function = mfc_watchdog_tick;
 
+	/* MFC timer for HW idle checking */
+	dev->mfc_idle_wq = create_singlethread_workqueue("mfc/idle");
+	if (!dev->mfc_idle_wq) {
+		dev_err(&pdev->dev, "failed to create workqueue for MFC QoS idle\n");
+		goto err_wq_idle;
+	}
+	INIT_WORK(&dev->mfc_idle_work, mfc_qos_idle_worker);
+	init_timer(&dev->mfc_idle_timer);
+	dev->mfc_idle_timer.data = (unsigned long)dev;
+	dev->mfc_idle_timer.function = mfc_idle_checker;
+	mutex_init(&dev->idle_qos_mutex);
+
 #ifdef CONFIG_MFC_USE_BUS_DEVFREQ
 	INIT_LIST_HEAD(&dev->qos_queue);
-	spin_lock_init(&dev->qos_lock);
 #endif
 
 	/* default FW alloc is added */
@@ -1541,6 +1488,8 @@ err_alloc_debug:
 err_iovmm_active:
 	destroy_workqueue(dev->butler_wq);
 err_butler_wq:
+	destroy_workqueue(dev->mfc_idle_wq);
+err_wq_idle:
 	destroy_workqueue(dev->watchdog_wq);
 err_wq_watchdog:
 	video_unregister_device(dev->vfd_enc_otf_drm);
@@ -1584,6 +1533,9 @@ static int mfc_remove(struct platform_device *pdev)
 	del_timer_sync(&dev->watchdog_timer);
 	flush_workqueue(dev->watchdog_wq);
 	destroy_workqueue(dev->watchdog_wq);
+	del_timer_sync(&dev->mfc_idle_timer);
+	flush_workqueue(dev->mfc_idle_wq);
+	destroy_workqueue(dev->mfc_idle_wq);
 	flush_workqueue(dev->butler_wq);
 	destroy_workqueue(dev->butler_wq);
 	video_unregister_device(dev->vfd_enc);

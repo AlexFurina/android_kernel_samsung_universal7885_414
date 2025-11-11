@@ -20,7 +20,6 @@
 #define PHYUTMI_TXBITSTUFFENH			(0x1 << 8)
 #define PHYUTMI_TXBITSTUFFEN			(0x1 << 7)
 #define PHYUTMI_OTGDISABLE			(0x1 << 6)
-#define PHYUTMI_OTGDISABLE			(0x1 << 6)
 #define PHYUTMI_IDPULLUP			(0x1 << 5)
 #define PHYUTMI_DRVVBUS				(0x1 << 4)
 #define PHYUTMI_DPPULLDOWN			(0x1 << 3)
@@ -39,6 +38,7 @@
 #define PHYCLKRST_REF_CLKDIV2			(0x1 << 18)
 #define PHYCLKRST_MPLL_MULTIPLIER_MASK		(0x7f << 11)
 #define PHYCLKRST_MPLL_MULTIPLIER(_x)		((_x) << 11)
+#define PHYCLKRST_FSV_OUT_EN(_x)		((_x) << 10) 	//for KATMAI
 #define PHYCLKRST_FSEL_MASK			(0x3f << 5)
 #define PHYCLKRST_FSEL(_x)			((_x) << 5)
 #define PHYCLKRST_RETENABLEN			(0x1 << 4)
@@ -48,7 +48,7 @@
 #define PHYCLKRST_COMMONONN			(0x1 << 0)
 
 #define EXYNOS_USBCON_PHYPIPE		(0x0c)
-#define PHYPIPE_PHY_CLOCK_SEL				(0x1 << 4)
+#define PHYPIPE_PHY_CLOCK_SEL		(0x1 << 4)
 
 #define EXYNOS_USBCON_PHYREG0		(0x14)
 #define PHYREG0_SSC_REFCLKSEL_MASK		(0x1ff << 23)
@@ -105,16 +105,21 @@
 #define PHYPARAM0_COMPDISTUNE(_x)		((_x) << 0)
 
 #define EXYNOS_USBCON_PHYPARAM1	(0x20)
+#define PHYPARAM1_PHY_RESET_SEL				(0x01 << 31)
 #define PHYPARAM1_TX0_TERM_OFFSET_MASK		(0x1f << 26)
 #define PHYPARAM1_TX0_TERM_OFFSET(_x)		((_x) << 26)
 #define PHYPARAM1_PCS_TXSWING_FULL_MASK		(0x7f << 12)
 #define PHYPARAM1_PCS_TXSWING_FULL(_x)		((_x) << 12)
+#define PHYPARAM1_PCS_TXDEEMPH_6DB_MASK		(0x3f << 6)
+#define PHYPARAM1_PCS_TXDEEMPH_6DB(_x)		((_x) << 6)
 #define PHYPARAM1_PCS_TXDEEMPH_3P5DB_MASK	(0x3f << 0)
 #define PHYPARAM1_PCS_TXDEEMPH_3P5DB(_x)	((_x) << 0)
 
 #define EXYNOS_USBCON_PHYTEST		(0x28)
 #define PHYTEST_POWERDOWN_SSP			(0x1 << 3)
+#define PHYTEST_POWERDOWN_SSP_EXT(_x)	((_x & (0x1 << 3)) >> 3)
 #define PHYTEST_POWERDOWN_HSP			(0x1 << 2)
+#define PHYTEST_POWERDOWN_HSP_EXT(_x)	((_x & (0x1 << 2)) >> 2)
 
 #define EXYNOS_USBCON_PHYPOWERDOWN		(0x28)
 #define PHYPOWERDOWN_VATESTENB			(0x1 << 6)
@@ -122,12 +127,14 @@
 #define PHYPOWERDOWN_TEST_BURNIN		((_x) << 4)
 
 #define EXYNOS_USBCON_PHYBATCHG		(0x30)
+#define PHYBATCHG_FSLS_SPEED_R		(0x1 << 14)			// FSLS_SPEED Read (Katmai)
 #define PHYBATCHG_CHGDET			(0x1 << 10)
 #define PHYBATCHG_RIDC				(0x1 << 9)
 #define PHYBATCHG_RIDB				(0x1 << 8)
 #define PHYBATCHG_RIDA				(0x1 << 7)
 #define PHYBATCHG_RIDGND			(0x1 << 6)
-#define PHYBATCHG_RIDFLOAT			(0x1 << 5)
+#define PHYBATCHG_RIDFLOAT			(0x1 << 5)			//in case of read, RIDFLOAT
+#define PHYBATCHG_FSLS_SPEED_W		(0x1 << 5)			//in case of write, FSLS_SPEED (Katmai)
 #define PHYBATCHG_VDATSRCENB			(0x1 << 4)
 #define PHYBATCHG_VDATDETENB			(0x1 << 3)
 #define PHYBATCHG_CHRGSEL			(0x1 << 2)
@@ -160,28 +167,29 @@
 #define LINKPORT_HOST_NUM_U3_PORT(_x)		((_x) << 13)
 #define LINKPORT_HOST_NUM_U2_PORT_MASK		(0xf << 9)
 #define LINKPORT_HOST_NUM_U2_PORT(_x)	((_x) << 9)
-#define LINKPORT_HOST_U3_PORT_DISABLE		(1 << 8)
-#define LINKPORT_HOST_U2_PORT_DISABLE		(1 << 7)
+#define LINKPORT_HOST_U3_PORT_DISABLE		(0x1 << 8)
+#define LINKPORT_HOST_U2_PORT_DISABLE		(0x1 << 7)
 #define LINKPORT_PORT_POWER_CONTROL		(0x1 << 6)
-#define LINKPORT_HOST_PORT_OVCR_U3		(1 << 5)
-#define LINKPORT_HOST_PORT_OVCR_U2		(1 << 4)
-#define LINKPORT_HOST_PORT_OVCR_U3_SEL		(1 << 3)
-#define LINKPORT_HOST_PORT_OVCR_U2_SEL		(1 << 2)
+#define LINKPORT_HOST_PORT_OVCR_U3		(0x1 << 5)
+#define LINKPORT_HOST_PORT_OVCR_U2		(0x1 << 4)
+#define LINKPORT_HOST_PORT_OVCR_U3_SEL		(0x1 << 3)
+#define LINKPORT_HOST_PORT_OVCR_U2_SEL		(0x1 << 2)
 #define LINKPORT_PERM_ATTACH_U3			(0x << 1)
 #define LINKPORT_PERM_ATTACH_U2			(0x1 << 0)
 
 #define EXYNOS_USBCON_PHYPARAM2		(0x50)
-#define PHYPARAM2_TX_VBOOST_LVL_MASK		(0x7 << 4)
-#define PHYPARAM2_TX_VBOOST_LVL(_x)		((_x) << 4)
+#define PHYPARAM2_TX_VBOOST_LVL_MASK		(0x7 << 3)
+#define PHYPARAM2_TX_VBOOST_LVL(_x)		((_x) << 3)
 #define PHYPARAM2_LOS_BIAS_MASK			(0x7 << 0)
 #define PHYPARAM2_LOS_BIAS(_x)			((_x) << 0)
 
 #define EXYNOS_USBCON_HSPHYCTRL		(0x54)
 #define HSPHYCTRL_PHYSWRSTALL			(0x1 << 31)
 #define HSPHYCTRL_SIDDQ				(0x1 << 6)
+#define HSPHYCTRL_SIDDQ_K1			(0x1 << 1)		//KATMAI_EVT0
 #define HSPHYCTRL_PHYSWRST			(0x1 << 0)
 
-#define EXYNOS_USBCON_HSPHYTESTIF	(0x5c)
+#define EXYNOS_USBCON_HSPHYTESTIF	(0x58)
 #define HSPHYTESTIF_LINESTATE_MASK		(0x3 << 20)
 #define HSPHYTESTIF_DATAOUT_MASK		(0xf << 16)
 #define HSPHYTESTIF_CLKEN			(0x1 << 13)
@@ -190,6 +198,14 @@
 #define HSPHYTESTIF_ADDR(_x)			((_x) << 8)
 #define HSPHYTESTIF_DATAIN_MASK			(0xff << 0)
 #define HSPHYTESTIF_DATAIN(_x)			((_x) << 0)
+
+//addr changed in Katmai
+#define EXYNOS_USBCON_HSPHYPLLTUNE_K1	(0x5c)
+#define HSPHYPLLTUNE_PLL_B_TUNE_K1			(0x1 << 6)
+#define HSPHYPLLTUNE_PLL_I_TUNE_K1(_x)		((_x) << 4)
+#define HSPHYPLLTUNE_PLL_I_TUNE_K1_MASK		(0x3 << 4)	
+#define HSPHYPLLTUNE_PLL_P_TUNE_K1(_x)		((_x) << 0)
+#define HSPHYPLLTUNE_PLL_P_TUNE_K1_MASK		(0xf << 0)
 
 #define EXYNOS_USBCON_PHYSELECTION	(0x6c)
 #define PHYSEL_U3RST				(0x1 << 5)
@@ -274,5 +290,13 @@ void samsung_exynos_cal_usb3phy_enable_dp_pullup(
 		struct exynos_usbphy_info *usbphy_info);
 void samsung_exynos_cal_usb3phy_disable_dp_pullup(
 		struct exynos_usbphy_info *usbphy_info);
+void samsung_exynos_cal_usb3phy_dp_altmode_set_phy_enable(
+		struct exynos_usbphy_info *usbphy_info, int dp_phy_port);
+void samsung_exynos_cal_usb3phy_dp_altmode_clear_phy_enable(
+		struct exynos_usbphy_info *usbphy_info, int dp_phy_port);
+void samsung_exynos_cal_usb3phy_dp_altmode_set_ss_disable(
+		struct exynos_usbphy_info *usbphy_info, int dp_phy_port);
+void samsung_exynos_cal_usb3phy_dp_altmode_clear_ss_disable(
+		struct exynos_usbphy_info *usbphy_info, int dp_phy_port);
 
 #endif

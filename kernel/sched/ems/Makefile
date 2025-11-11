@@ -1,5 +1,5 @@
-obj-y += core.o pcf.o global_boost.o lbt.o ontime.o energy.o init_util.o band.o
-obj-y += service.o
-
-obj-$(CONFIG_SCHED_TUNE) += st_addon.o
-obj-$(CONFIG_FREQVAR_TUNE) += freqvar_tune.o
+obj-y += core.o energy.o multi_load.o ontime.o load_balance.o
+obj-y += sparing.o
+obj-$(CONFIG_CPU_FREQ_GOV_ENERGYSTEP) += energy_step.o
+obj-$(CONFIG_SCHED_EMS_TUNE) += tune.o
+obj-$(CONFIG_SCHED_PMU_CONT) += pmu_cont.o

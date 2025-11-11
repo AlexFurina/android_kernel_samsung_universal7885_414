@@ -1,1 +1,2 @@
 obj-$(CONFIG_EXYNOS_DPU20)	+= dpu20/
+obj-$(CONFIG_EXYNOS_DECON_7885)	+= dpu_7885/

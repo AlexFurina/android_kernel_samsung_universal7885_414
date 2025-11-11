@@ -18,7 +18,7 @@
 #define AP_IPC
 #endif
 
-#define IPC_VERSION (190128)
+#define IPC_VERSION (181024)
 
 #if defined(CHUB_IPC)
 #if defined(SEOS)
@@ -62,8 +62,13 @@
 #endif
 #endif
 
-#define CHECK_HW_TRIGGER
-#define SENSOR_NAME_SIZE (32)
+#ifdef LOWLEVEL_DEBUG
+#define DEBUG_PRINT(lv, fmt, ...)	\
+	((DEBUG_LEVEL == (0)) ? (CSP_PRINTF_INFO(fmt, ##__VA_ARGS__)) : \
+	((DEBUG_LEVEL == (lv)) ? (CSP_PRINTF_INFO(fmt, ##__VA_ARGS__)) : (NULL)))
+#else
+#define DEBUG_PRINT(level, fmt, ...)
+#endif
 
 /* contexthub bootargs */
 #define BL_OFFSET		(0x0)
@@ -72,15 +77,15 @@
 #define CHUB_PERSISTBUF_SIZE (96)
 
 #define OS_UPDT_MAGIC	"Nanohub OS"
-#define CHUB_IPC_MAGIC "IPC magic"
 
 #define BOOTMODE_COLD       (0x7733)
 #define BOOTMODE_PWRGATING  (0x1188)
 
-#define AP_WAKE             (0x1)
-#define AP_SLEEP            (0x2)
+#define KERNEL_LOG_ON		(0x1)
+#define KERNEL_LOG_OFF		(0x0)
 
-#define READY_TO_GO 99
+#define MAILBOX_REQUEST_KLOG_ON (0x1)
+#define MAILBOX_REQUEST_KLOG_OFF (0x2)
 
 struct chub_bootargs {
 	char magic[16];
@@ -99,7 +104,7 @@ struct chub_bootargs {
 	u32 dump_end;
 	u32 chubclk;
 	u16 bootmode;
-	u16 runtimelog;
+	u16 kernel_log;
 #if defined(LOCAL_POWERGATE)
 	u32 psp;
 	u32 msp;
@@ -114,7 +119,8 @@ struct chub_bootargs {
  * logbuf / logbuf_ctrl
  */
 #define IPC_BUF_NUM (IRQ_EVT_CH_MAX)
-#define IPC_EVT_NUM (50)
+#define IPC_EVT_NUM (30)
+#define IPC_LOGBUF_NUM (256)
 
 enum sr_num {
 	SR_0 = 0,
@@ -134,10 +140,11 @@ enum sr_num {
 #define SR_BOOT_MODE SR_0
 
 enum irq_chub {
-	IRQ_NUM_EVT_START,
-	IRQ_NUM_EVT_END = 14,
-	IRQ_NUM_CHUB_LOG = IRQ_NUM_EVT_END,
-	IRQ_NUM_CHUB_ALIVE,
+	IRQ_C2A_START,
+	IRQ_C2A_END = 2,
+	IRQ_EVT_START,
+	IRQ_EVT_END = 15,
+	IRQ_CHUB_ALIVE = 15,
 	IRQ_INVAL = 0xff,
 };
 
@@ -156,10 +163,9 @@ enum irq_evt_chub {
 	IRQ_EVT_C2A_ASSERT,
 	IRQ_EVT_C2A_INT,
 	IRQ_EVT_C2A_INTCLR,
-	IRQ_EVT_CHUB_EVT_MAX = IRQ_NUM_EVT_END, /* 14 */
-	IRQ_EVT_C2A_LOG = IRQ_NUM_CHUB_LOG, /* 14 */
-	IRQ_EVT_CHUB_ALIVE = IRQ_NUM_CHUB_ALIVE, /* 15 */
-	IRQ_EVT_CHUB_MAX = 16, /* max irq number on mailbox */
+	IRQ_EVT_CHUB_EVT_MAX = 15,
+	IRQ_EVT_CHUB_ALIVE = IRQ_EVT_CHUB_EVT_MAX,
+	IRQ_EVT_CHUB_MAX = 16,	/* max irq number on mailbox */
 	IRQ_EVT_INVAL = 0xff,
 };
 
@@ -205,7 +211,6 @@ enum ipc_region {
 	IPC_REG_IPC_EVT_C2A_CTRL,
 	IPC_REG_IPC_A2C,
 	IPC_REG_IPC_C2A,
-	IPC_REG_IPC_SENSORINFO,
 	IPC_REG_SHARED,
 	IPC_REG_RAM,
 	IPC_REG_LOG,
@@ -288,7 +293,6 @@ enum channel_status {
 #define HOSTINTF_SENSOR_DATA_MAX    240
 #endif
 
-#define IRQ_MAX (16)
 /* event structure */
 struct ipc_evt_ctrl {
 	u32 eq;
@@ -296,7 +300,6 @@ struct ipc_evt_ctrl {
 	u32 full;
 	u32 empty;
 	u32 irq;
-	bool pending[IRQ_MAX];
 };
 
 struct ipc_evt_buf {
@@ -318,57 +321,13 @@ struct ipc_log_content {
 	u8 buffer[sizeof(u64) + HOSTINTF_SENSOR_DATA_MAX - sizeof(u32)];
 };
 
-#define LOGBUF_TOTAL_SIZE (LOGBUF_SIZE * LOGBUF_NUM)
-#define LOGBUF_SIZE (84)
-#define LOGBUF_NUM (80)
-#define LOGBUF_DATA_SIZE (LOGBUF_SIZE - sizeof(u64) - sizeof(u16)) /* u8 error, u8 newline, u16 size, void *next(CM4) */
-#define LOGBUF_FLUSH_THRESHOLD (LOGBUF_NUM / 2)
-
-struct logbuf_content{
-	char buf[LOGBUF_DATA_SIZE];
-	u8 error;
-	u8 newline;
-	u32 size;
-	u32 nextaddr;
-};
-
-struct logbuf_raw {
-	u32 eq; /* write owner chub (index_writer) */
-	u32 dq; /* read onwer ap (index_reader) */
-	u32 size;
-	u32 full;
-	char buf[0];
-};
-
-enum ipc_fw_loglevel {
-	CHUB_RT_LOG_OFF,
-	CHUB_RT_LOG_DUMP,
-	CHUB_RT_LOG_DUMP_PRT,
-};
-
-struct runtimelog_buf {
-	char *buffer;
-	unsigned int buffer_size;
-	unsigned int write_index;
-	enum ipc_fw_loglevel loglevel;
-};
-
 struct ipc_logbuf {
-	struct logbuf_content log[LOGBUF_NUM];
 	u32 eq;	/* write owner chub (index_writer) */
 	u32 dq;	/* read onwer ap (index_reader) */
 	u32 size;
-	u8 full;
-	u8 flush_req;
-	u8 flush_active;
-	u8 loglevel;
-	/* for debug */
-	int dbg_full_cnt;
-	int errcnt;
-	int reqcnt;
-	u32 fw_num;
-	/* rawlevel logout */
-	struct logbuf_raw logbuf;
+	u32 token;
+	u32 full;
+	char buf[0];
 };
 
 #ifndef IPC_DATA_SIZE
@@ -389,88 +348,30 @@ struct ipc_buf {
 	struct ipc_channel_buf ch[IPC_CH_BUF_NUM];
 };
 
-/* sensor list and id sync with chre sensorhal */
-enum vendor_sensor_list_id {
-	sensor_list_no_active,
-	sensor_list_rpr051_prox,
-	sensor_list_rpr051_ligth,
-	sensor_list_bmi160_accel,
-	sensor_list_bmi160_accel_ucal,
-	sensor_list_bmi160_gyro,
-	sensor_list_bmi160_gyro_ucal,
-	sensor_list_stlis3mdl_mag,
-	sensor_list_stlis3mdl_mag_ucal,
-	sensor_list_bmp280_press,
-	sensor_list_max,
-};
-
-enum sensor_type {
-    SENSOR_TYPE_META_DATA = 0,
-    SENSOR_TYPE_ACCELEROMETER = 1,
-    SENSOR_TYPE_MAGNETIC_FIELD = 2,
-    SENSOR_TYPE_ORIENTATION = 3,
-    SENSOR_TYPE_GYROSCOPE = 4,
-    SENSOR_TYPE_LIGHT = 5,
-    SENSOR_TYPE_PRESSURE = 6,
-    SENSOR_TYPE_TEMPERATURE = 7,
-    SENSOR_TYPE_PROXIMITY = 8,
-    SENSOR_TYPE_GRAVITY = 9,
-    SENSOR_TYPE_LINEAR_ACCELERATION = 10,
-    SENSOR_TYPE_ROTATION_VECTOR = 11,
-    SENSOR_TYPE_RELATIVE_HUMIDITY = 12,
-    SENSOR_TYPE_AMBIENT_TEMPERATURE = 13,
-    SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED = 14,
-    SENSOR_TYPE_GAME_ROTATION_VECTOR = 15,
-    SENSOR_TYPE_GYROSCOPE_UNCALIBRATED = 16,
-    SENSOR_TYPE_SIGNIFICANT_MOTION = 17,
-    SENSOR_TYPE_STEP_DETECTOR = 18,
-    SENSOR_TYPE_STEP_COUNTER = 19,
-    SENSOR_TYPE_GEOMAGNETIC_ROTATION_VECTOR = 20,
-    SENSOR_TYPE_HEART_RATE = 21,
-    SENSOR_TYPE_TILT_DETECTOR = 22,
-    SENSOR_TYPE_WAKE_GESTURE = 23,
-    SENSOR_TYPE_GLANCE_GESTURE = 24,
-    SENSOR_TYPE_PICK_UP_GESTURE = 25,
-    SENSOR_TYPE_WRIST_TILT_GESTURE = 26,
-    SENSOR_TYPE_DEVICE_ORIENTATION = 27,
-    SENSOR_TYPE_POSE_6DOF = 28,
-    SENSOR_TYPE_STATIONARY_DETECT = 29,
-    SENSOR_TYPE_MOTION_DETECT = 30,
-    SENSOR_TYPE_HEART_BEAT = 31,
-    SENSOR_TYPE_DYNAMIC_SENSOR_META = 32,
-    SENSOR_TYPE_ADDITIONAL_INFO = 33,
-    SENSOR_TYPE_LOW_LATENCY_OFFBODY_DETECT = 34,
-    SENSOR_TYPE_ACCELEROMETER_UNCALIBRATED = 35,
-    SENSOR_TYPE_MAX,
-};
-#ifdef CHUB_IPC
-struct sensor_info {
-	bool active;
-	int type;
-	enum vendor_sensor_list_id id;
-};
-#endif
-
-struct sensor_map {
-	char magic[16];
-	int index;
-	u8 active_sensor_list[SENSOR_TYPE_MAX];
-};
-
 struct ipc_debug {
 	u32 event;
 	u32 val[IPC_DATA_MAX];
 };
 
 struct ipc_map_area {
-	char persist[CHUB_PERSISTBUF_SIZE];
-	char magic[16];
-	u16 wake;
 	struct ipc_buf data[IPC_DATA_MAX];
 	struct ipc_evt evt[IPC_EVT_MAX];
 	struct ipc_debug dbg;
-	struct sensor_map sensormap;
 	struct ipc_logbuf logbuf;
+};
+
+struct mailbox_sfr {
+            unsigned int MCUCTL;
+            unsigned int INTGR0;
+            unsigned int INTCR0;
+            unsigned int INTMR0;
+            unsigned int INTSR0;
+            unsigned int INTMSR0;
+            unsigned int INTGR1;
+            unsigned int INTCR1;
+            unsigned int INTMR1;
+            unsigned int INTSR1;
+            unsigned int INTMSR1;
 };
 
 /*  mailbox Registers */
@@ -525,13 +426,6 @@ struct ipc_map_area {
 #define IPC_HW_SET_MCUCTL(base, val) \
 	__raw_write32((val), (base) + REG_MAILBOX_MCUCTL)
 
-bool ipc_have_sensor_info(struct sensor_map *sensor_map);
-#ifdef CHUB_IPC
-void ipc_set_sensor_id(enum sensor_type type, enum vendor_sensor_list_id id);
-enum vendor_sensor_list_id ipc_get_sensor_id(enum sensor_type type);
-#endif
-void *ipc_get_sensor_base(void);
-
 /* channel ctrl functions */
 void ipc_print_channel(void);
 int ipc_check_valid(void);
@@ -540,29 +434,19 @@ void ipc_set_base(void *addr);
 void *ipc_get_base(enum ipc_region area);
 u32 ipc_get_offset(enum ipc_region area);
 void *ipc_get_addr(enum ipc_region area, int buf_num);
+int ipc_check_reset_valid(void);
 void ipc_init(void);
 int ipc_hw_read_int_start_index(enum ipc_owner owner);
 /* logbuf functions */
-enum ipc_fw_loglevel ipc_logbuf_loglevel(enum ipc_fw_loglevel loglevel, int set);
-void *ipc_logbuf_inbase(bool force);
-void ipc_logbuf_flush_on(bool on);
-bool ipc_logbuf_filled(void);
-int ipc_logbuf_outprint(struct runtimelog_buf *rt_buf, u32 loop);
-void ipc_logbuf_req_flush(struct logbuf_content *log);
-void ipc_logbuf_set_req_num(struct logbuf_content *log);
-struct logbuf_content *ipc_logbuf_get_curlogbuf(struct logbuf_content *log);
+void *ipc_get_logbuf(void);
+unsigned int ipc_logbuf_get_token(void);
 /* evt functions */
 struct ipc_evt_buf *ipc_get_evt(enum ipc_evt_list evt);
 int ipc_add_evt(enum ipc_evt_list evt, enum irq_evt_chub irq);
-int ipc_add_evt_in_critical(enum ipc_evt_list evtq, enum irq_evt_chub evt);
 void ipc_print_evt(enum ipc_evt_list evt);
-int ipc_get_evt_cnt(enum ipc_evt_list evtq);
-int ipc_get_data_cnt(enum ipc_data_list evtq);
 /* mailbox hw access */
 void ipc_set_owner(enum ipc_owner owner, void *base, enum ipc_direction dir);
-enum ipc_direction ipc_get_owner(enum ipc_owner owner);
 unsigned int ipc_hw_read_gen_int_status_reg(enum ipc_owner owner, int irq);
-unsigned int ipc_hw_read_gen_int_status_reg_all(enum ipc_owner owner);
 void ipc_hw_write_shared_reg(enum ipc_owner owner, unsigned int val, int num);
 unsigned int ipc_hw_read_shared_reg(enum ipc_owner owner, int num);
 unsigned int ipc_hw_read_int_status_reg(enum ipc_owner owner);
@@ -571,9 +455,12 @@ void ipc_hw_clear_int_pend_reg(enum ipc_owner owner, int irq);
 void ipc_hw_clear_all_int_pend_reg(enum ipc_owner owner);
 void ipc_hw_gen_interrupt(enum ipc_owner owner, int irq);
 void ipc_hw_set_mcuctrl(enum ipc_owner owner, unsigned int val);
+void ipc_hw_mask_all(enum ipc_owner owner, bool mask);
+void ipc_dump_mailbox_sfr(struct mailbox_sfr *mailbox);
 void ipc_hw_mask_irq(enum ipc_owner owner, int irq);
 void ipc_hw_unmask_irq(enum ipc_owner owner, int irq);
 void ipc_logbuf_put_with_char(char ch);
+int ipc_logbuf_need_flush(void);
 void ipc_write_debug_event(enum ipc_owner owner, enum ipc_debug_event action);
 u32 ipc_read_debug_event(enum ipc_owner owner);
 void ipc_write_debug_val(enum ipc_data_list dir, u32 val);
@@ -585,16 +472,17 @@ u64 ipc_read_val(enum ipc_owner owner);
 void ipc_write_val(enum ipc_owner owner, u64 result);
 void ipc_set_chub_clk(u32 clk);
 u32 ipc_get_chub_clk(void);
-void ipc_set_chub_bootmode(u16 bootmode, u16 rtlog);
-u16 ipc_get_chub_rtlogmode(void);
+void ipc_set_chub_bootmode(u16 bootmode);
 u16 ipc_get_chub_bootmode(void);
-void ipc_set_ap_wake(u16 wake);
-u16 ipc_get_ap_wake(void);
+void ipc_set_chub_kernel_log(u16 kernel_log);
+u16 ipc_get_chub_kernel_log(void);
 void ipc_dump(void);
 #if defined(LOCAL_POWERGATE)
 u32 *ipc_get_chub_psp(void);
 u32 *ipc_get_chub_msp(void);
 #endif
+
 void *ipc_read_data(enum ipc_data_list dir, u32 *len);
 int ipc_write_data(enum ipc_data_list dir, void *tx, u16 length);
+
 #endif

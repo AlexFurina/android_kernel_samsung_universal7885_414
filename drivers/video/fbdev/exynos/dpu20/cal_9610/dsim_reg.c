@@ -204,7 +204,6 @@ const u32 dphy_timing[][10] = {
 	{1310, 12, 22, 8, 9, 12, 9, 13, 9, 8},
 	{1300, 12, 21, 8, 9, 12, 8, 13, 9, 7},
 	{1290, 12, 21, 8, 9, 12, 8, 13, 9, 7},
-	{1284, 12, 21, 8, 9, 12, 8, 12, 9, 7},
 	{1280, 12, 21, 8, 9, 12, 8, 12, 9, 7},
 	{1270, 12, 21, 8, 9, 12, 8, 12, 9, 7},
 	{1260, 12, 20, 8, 8, 12, 8, 12, 9, 7},
@@ -1277,39 +1276,33 @@ static int dsim_reg_wait_exit_ulps_state(u32 id)
 static int dsim_reg_get_dphy_timing(u32 hs_clk, u32 esc_clk,
 		struct dphy_timing_value *t)
 {
-	u32 index = 0;
-	u32 timing_counts = sizeof(dphy_timing) / sizeof(dphy_timing[0]);
+	int val;
 
-	for(index = 0;index < timing_counts;index++){
-		if(hs_clk==dphy_timing[index][0])
-			break;
-	}
-	dsim_info("index = %d,timing_counts=%d.\n",index,timing_counts);
+	val  = (dphy_timing[0][0] - hs_clk) / 10;
 
-	if(index >= timing_counts){
+	if (val > ((sizeof(dphy_timing) / sizeof(dphy_timing[0])) - 1)) {
 		dsim_err("%u Mhz hs clock can't find proper dphy timing values\n",
 				hs_clk);
 		return -EINVAL;
 	}
 
-
 	t->bps = hs_clk;
-	t->clk_prepare = dphy_timing[index][1];
-	t->clk_zero = dphy_timing[index][2];
-	t->clk_post = dphy_timing[index][3];
-	t->clk_trail = dphy_timing[index][4];
-	t->hs_prepare = dphy_timing[index][5];
-	t->hs_zero = dphy_timing[index][6];
-	t->hs_trail = dphy_timing[index][7];
-	t->lpx = dphy_timing[index][8];
-	t->hs_exit = dphy_timing[index][9];
+	t->clk_prepare = dphy_timing[val][1];
+	t->clk_zero = dphy_timing[val][2];
+	t->clk_post = dphy_timing[val][3];
+	t->clk_trail = dphy_timing[val][4];
+	t->hs_prepare = dphy_timing[val][5];
+	t->hs_zero = dphy_timing[val][6];
+	t->hs_trail = dphy_timing[val][7];
+	t->lpx = dphy_timing[val][8];
+	t->hs_exit = dphy_timing[val][9];
 
-	dsim_info("%s: bps(%u) clk_prepare(%u) clk_zero(%u) clk_post(%u)\n",
+	dsim_dbg("%s: bps(%u) clk_prepare(%u) clk_zero(%u) clk_post(%u)\n",
 			__func__, t->bps, t->clk_prepare, t->clk_zero,
 			t->clk_post);
-	dsim_info("clk_trail(%u) hs_prepare(%u) hs_zero(%u) hs_trail(%u)\n",
+	dsim_dbg("clk_trail(%u) hs_prepare(%u) hs_zero(%u) hs_trail(%u)\n",
 			t->clk_trail, t->hs_prepare, t->hs_zero, t->hs_trail);
-	dsim_info("lpx(%u) hs_exit(%u)\n", t->lpx, t->hs_exit);
+	dsim_dbg("lpx(%u) hs_exit(%u)\n", t->lpx, t->hs_exit);
 
 	if ((esc_clk > 20) || (esc_clk < 7)) {
 		dsim_err("%u Mhz cann't be used as escape clock\n", esc_clk);
@@ -1378,7 +1371,7 @@ static void dsim_reg_set_config(u32 id, struct decon_lcd *lcd_info,
 	}
 
 	dsim_reg_set_num_of_lane(id, lcd_info->data_lane - 1);
-	dsim_reg_enable_eotp(id, 0);
+	dsim_reg_enable_eotp(id, 1);
 	dsim_reg_enable_per_frame_read(id, 0);
 	dsim_reg_set_pixel_format(id, DSIM_PIXEL_FORMAT_RGB24);
 	dsim_reg_set_vc_id(id, 0);
@@ -1559,7 +1552,7 @@ static u32 dsim_reg_is_noncont_clk_enabled(u32 id)
 	return ret;
 }
 
-int dsim_reg_set_hs_clock(u32 id, u32 en)
+static int dsim_reg_set_hs_clock(u32 id, u32 en)
 {
 	int reg = 0;
 	int is_noncont = dsim_reg_is_noncont_clk_enabled(id);
@@ -1575,7 +1568,7 @@ int dsim_reg_set_hs_clock(u32 id, u32 en)
 	return reg;
 }
 
-void dsim_reg_set_int(u32 id, u32 en)
+static void dsim_reg_set_int(u32 id, u32 en)
 {
 	u32 val = en ? 0 : ~0;
 	u32 mask;
@@ -1738,13 +1731,14 @@ void dsim_reg_init(u32 id, struct decon_lcd *lcd_info, struct dsim_clks *clks,
 		bool panel_ctrl)
 {
 	struct dsim_device *dsim = get_dsim_drvdata(id);
-
+#if 0
 	if (dsim->state == DSIM_STATE_INIT) {
 		if (dsim_reg_is_pll_stable(dsim->id)) {
 			dsim_info("dsim%d PLL is stabled in bootloader, so skip DSIM link/DPHY init.\n", dsim->id);
 			return;
 		}
 	}
+#endif
 
 	/* choose OSC_CLK */
 	dsim_reg_set_link_clock(id, 0);
@@ -1769,10 +1763,6 @@ void dsim_reg_init(u32 id, struct decon_lcd *lcd_info, struct dsim_clks *clks,
 
 	dsim_reg_set_config(id, lcd_info, clks);
 
-#if defined(CONFIG_EXYNOS_PANEL_INIT_LPDT)
-	dsim_reg_set_cmd_transfer_mode(dsim->id, 1);
-#endif
-
 	if (panel_ctrl)
 		dsim_reset_panel(dsim);
 }
@@ -1781,6 +1771,7 @@ void dsim_reg_init(u32 id, struct decon_lcd *lcd_info, struct dsim_clks *clks,
 void dsim_reg_start(u32 id)
 {
 	dsim_reg_set_hs_clock(id, 1);
+	dsim_reg_set_int(id, 1);
 }
 
 /* Unset clocks and lanes and stop_state */
@@ -1800,7 +1791,7 @@ int dsim_reg_stop(u32 id, u32 lanes)
 	dsim_reg_set_link_clock(id, 0);
 	dsim_reg_set_lanes(id, lanes, 0);
 	dsim_reg_set_esc_clk_on_lane(id, 0, lanes);
-	//dsim_reg_enable_word_clock(id, 0);
+	dsim_reg_enable_word_clock(id, 0);
 	dsim_reg_set_clocks(id, NULL, NULL, 0);
 	dsim_reg_sw_reset(id);
 
@@ -1823,10 +1814,7 @@ int dsim_reg_exit_ulps_and_start(u32 id, u32 ddi_type, u32 lanes)
 
 	/* try to exit ULPS mode. The sequence is depends on DDI type */
 	ret = dsim_reg_set_ulps_by_ddi(id, ddi_type, lanes, 0);
-#if !defined(CONFIG_EXYNOS_PANEL_INIT_LPDT)
 	dsim_reg_start(id);
-#endif
-	dsim_reg_set_int(id, 1);
 	return ret;
 }
 

@@ -41,6 +41,11 @@
 #include <linux/log2.h>
 #include <linux/configfs.h>
 
+#ifdef CONFIG_USB_NOTIFY_LAYER
+#include <linux/usb_notify.h>
+#include <linux/gpio.h>
+#endif
+
 /*
  * USB function drivers should return USB_GADGET_DELAYED_STATUS if they
  * wish to delay the data/status stages of the control transfer till they
@@ -196,7 +201,11 @@ struct usb_function {
 	struct usb_descriptor_header	**ssp_descriptors;
 
 	struct usb_configuration	*config;
-
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	int (*set_intf_num)(struct usb_function *f,
+			int intf_num, int index_num);
+	int (*set_config_desc)(int conf_num);
+#endif
 	struct usb_os_desc_table	*os_desc_table;
 	unsigned			os_desc_n;
 
@@ -253,6 +262,9 @@ int usb_function_deactivate(struct usb_function *);
 int usb_function_activate(struct usb_function *);
 
 int usb_interface_id(struct usb_configuration *, struct usb_function *);
+
+int config_ep_by_speed_and_alt(struct usb_gadget *g, struct usb_function *f,
+				struct usb_ep *_ep, u8 alt);
 
 int config_ep_by_speed(struct usb_gadget *g, struct usb_function *f,
 			struct usb_ep *_ep);
@@ -509,6 +521,14 @@ struct usb_composite_dev {
 	 * data/status stages till delayed_status is zero.
 	 */
 	int				delayed_status;
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	/* used by enable_store function of android.c
+	 * to avoid signalling switch changes
+	 */
+	bool				mute_switch;
+	bool				force_disconnect;
+	bool				cleanup_flag;
+#endif
 
 	/* protects deactivations and delayed_status counts*/
 	spinlock_t			lock;
@@ -516,14 +536,6 @@ struct usb_composite_dev {
 	/* public: */
 	unsigned int			setup_pending:1;
 	unsigned int			os_desc_pending:1;
-
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
-	/* used by enable_store function of android.c
-	 * to avoid signalling switch changes
-	 */
-	bool				mute_switch;
-	bool				force_disconnect;
-#endif
 };
 
 extern int usb_string_id(struct usb_composite_dev *c);
@@ -537,7 +549,7 @@ extern int usb_string_ids_n(struct usb_composite_dev *c, unsigned n);
 extern void composite_disconnect(struct usb_gadget *gadget);
 extern int composite_setup(struct usb_gadget *gadget,
 		const struct usb_ctrlrequest *ctrl);
-extern void __nocfi composite_suspend(struct usb_gadget *gadget);
+extern void composite_suspend(struct usb_gadget *gadget);
 extern void composite_resume(struct usb_gadget *gadget);
 
 /*
@@ -604,6 +616,10 @@ struct usb_function_instance {
 	int (*set_inst_name)(struct usb_function_instance *inst,
 			      const char *name);
 	void (*free_func_inst)(struct usb_function_instance *inst);
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	int (*set_inst_eth_addr)(struct usb_function_instance *inst,
+		       u8 *ethaddr);
+#endif
 };
 
 void usb_function_unregister(struct usb_function_driver *f);

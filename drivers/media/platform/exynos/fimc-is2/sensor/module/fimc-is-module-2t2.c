@@ -83,7 +83,7 @@ static int sensor_2t2_init(struct v4l2_subdev *subdev, u32 val)
 	int ret = 0;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 
@@ -111,7 +111,7 @@ static int sensor_2t2_power_setpin(struct platform_device *pdev,
 	int gpio_mclk = 0;
 	int gpio_none = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;

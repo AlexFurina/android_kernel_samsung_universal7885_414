@@ -35,6 +35,10 @@
 #include "debug-snapshot-local.h"
 #include <linux/debug-snapshot-helper.h>
 
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/sec_debug.h>
+#endif /* CONFIG_SEC_DEBUG */
+
 static void dbg_snapshot_soc_dummy_func(void *dummy) {return;}
 static int  dbg_snapshot_soc_dummy_func_int(void *dummy) {return 0;}
 static int  dbg_snapshot_soc_dummy_func_smc(unsigned long dummy1,
@@ -104,9 +108,16 @@ static void dbg_snapshot_report_reason(unsigned int val)
 		__raw_writel(val, dbg_snapshot_get_base_vaddr() + DSS_OFFSET_EMERGENCY_REASON);
 }
 
+void dbg_snapshot_set_debug_level_reg(void)
+{
+	if (dbg_snapshot_get_enable("header"))
+		__raw_writel(dss_desc.debug_level | DSS_DEBUG_LEVEL_PREFIX,
+			dbg_snapshot_get_base_vaddr() + DSS_OFFSET_DEBUG_LEVEL);
+}
+
 int dbg_snapshot_get_debug_level_reg(void)
 {
-	int ret = DSS_DEBUG_LEVEL_MID;
+	int ret = DSS_DEBUG_LEVEL_NONE;
 
 	if (dbg_snapshot_get_enable("header")) {
 		int val = __raw_readl(dbg_snapshot_get_base_vaddr() + DSS_OFFSET_DEBUG_LEVEL);
@@ -116,6 +127,27 @@ int dbg_snapshot_get_debug_level_reg(void)
 	}
 
 	return ret;
+}
+
+void dbg_snapshot_set_sjtag_status(void)
+{
+	int ret;
+
+	ret = dss_soc_ops->soc_smc_call(SMC_CMD_GET_SJTAG_STATUS, 0x3, 0, 0);
+
+	if (ret == true || ret == false) {
+		dss_desc.sjtag_status = ret;
+		pr_info("debug-snapshot: SJTAG is %sabled\n",
+				ret == true ? "en" : "dis");
+		return;
+	}
+
+	dss_desc.sjtag_status = -1;
+}
+
+int dbg_snapshot_get_sjtag_status(void)
+{
+	return dss_desc.sjtag_status;
 }
 
 void dbg_snapshot_scratch_reg(unsigned int val)
@@ -274,7 +306,7 @@ int dbg_snapshot_post_panic(void)
 		dss_soc_ops->soc_post_panic_entry(NULL);
 
 #ifdef CONFIG_DEBUG_SNAPSHOT_PANIC_REBOOT
-		if (!dss_desc.no_wdt_dev) {
+		if (!dss_desc.no_wdt_dev && !dbg_snapshot_get_sjtag_status()) {
 #ifdef CONFIG_DEBUG_SNAPSHOT_WATCHDOG_RESET
 			if (dss_desc.hardlockup_detected || num_online_cpus() > 1) {
 				/* for stall cpu */
@@ -284,6 +316,11 @@ int dbg_snapshot_post_panic(void)
 		}
 #endif
 	}
+
+#ifdef CONFIG_SEC_DEBUG
+	sec_debug_post_panic_handler();
+#endif
+
 	dss_soc_ops->soc_post_panic_exit(NULL);
 
 	/* for stall cpu when not enabling panic reboot */
@@ -321,10 +358,8 @@ int dbg_snapshot_post_reboot(char *cmd)
 
 	dbg_snapshot_report_reason(DSS_SIGN_NORMAL_REBOOT);
 
-	if (!cmd)
-		dbg_snapshot_scratch_reg(DSS_SIGN_RESET);
-	else if (strcmp((char *)cmd, "bootloader") && strcmp((char *)cmd, "ramdump"))
-		dbg_snapshot_scratch_reg(DSS_SIGN_RESET);
+	 if (!cmd || strcmp((char *)cmd, "ramdump"))
+                dbg_snapshot_scratch_reg(DSS_SIGN_RESET);
 
 	pr_emerg("debug-snapshot: normal reboot done\n");
 
@@ -349,6 +384,9 @@ static int dbg_snapshot_reboot_handler(struct notifier_block *nb,
 
 	pr_emerg("debug-snapshot: normal reboot starting\n");
 
+#ifdef CONFIG_SEC_DEBUG
+	sec_debug_reboot_handler(p);
+#endif
 	return 0;
 }
 
@@ -365,12 +403,12 @@ static int dbg_snapshot_panic_handler(struct notifier_block *nb,
 #else
 	pr_emerg("debug-snapshot: panic - normal[%s]\n", __func__);
 #endif
-	/*
-	 * To get more kernel panic log
-	 * dbg_snapshot_dump_task_info();
-	 */
+	dbg_snapshot_dump_task_info();
 	pr_emerg("linux_banner: %s\n", linux_banner);
 
+#ifdef CONFIG_SEC_DEBUG
+	sec_debug_panic_handler(buf, true);
+#endif
 	return 0;
 }
 
@@ -397,7 +435,11 @@ void dbg_snapshot_panic_handler_safe(void)
 
 	dbg_snapshot_report_reason(DSS_SIGN_SAFE_FAULT);
 	dbg_snapshot_dump_panic(text, len);
+#ifdef CONFIG_SEC_DEBUG
+	dss_soc_ops->soc_expire_watchdog((void *)_RET_IP_);
+#else
 	dss_soc_ops->soc_expire_watchdog((void *)NULL);
+#endif
 }
 
 void dbg_snapshot_register_soc_ops(struct dbg_snapshot_helper_ops *ops)

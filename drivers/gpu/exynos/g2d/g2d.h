@@ -19,6 +19,7 @@
 #include <linux/miscdevice.h>
 #include <media/exynos_repeater.h>
 #include <linux/pm_qos.h>
+#include <soc/samsung/exynos-itmon.h>
 
 struct g2d_task; /* defined in g2d_task.h */
 
@@ -121,6 +122,8 @@ struct g2d_device {
 
 	struct g2d_dvfs_table *dvfs_table;
 	u32 dvfs_table_cnt;
+
+	struct notifier_block	itmon_nb;
 };
 
 #define G2D_AUTHORITY_HIGHUSER 1
@@ -135,12 +138,24 @@ struct g2d_context {
 
 	struct delayed_work dwork;
 
-	struct pm_qos_request dev_req;
-	struct pm_qos_request bus_req;
+	struct pm_qos_request req;
 	struct list_head qos_node;
 	u64	r_bw;
 	u64	w_bw;
 };
+
+#define IPPREFIX "[Exynos][G2D] "
+#define perr(format, arg...) \
+	pr_err(IPPREFIX format "\n", ##arg)
+
+#define perrfn(format, arg...) \
+	pr_err(IPPREFIX  "%s: " format "\n", __func__, ##arg)
+
+#define perrdev(g2d, format, arg...) \
+	dev_err(g2d->dev, IPPREFIX format "\n", ##arg)
+
+#define perrfndev(g2d, format, arg...) \
+	dev_err(g2d->dev, IPPREFIX  "%s: " format "\n", __func__, ##arg)
 
 int g2d_device_run(struct g2d_device *g2d_dev, struct g2d_task *task);
 void g2d_hw_timeout_handler(unsigned long arg);

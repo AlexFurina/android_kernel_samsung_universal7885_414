@@ -36,7 +36,6 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/of.h>
-#include <linux/of_gpio.h>
 
 #include "ufshcd.h"
 #include "ufshcd-pltfrm.h"
@@ -203,7 +202,6 @@ static int ufshcd_parse_regulator_info(struct ufs_hba *hba)
 {
 	int err;
 	struct device *dev = hba->dev;
-	struct device_node *np = dev->of_node;
 	struct ufs_vreg_info *info = &hba->vreg_info;
 
 	err = ufshcd_populate_vreg(dev, "vdd-hba", &info->vdd_hba);
@@ -219,14 +217,6 @@ static int ufshcd_parse_regulator_info(struct ufs_hba *hba)
 		goto out;
 
 	err = ufshcd_populate_vreg(dev, "vccq2", &info->vccq2);
-	if (err)
-		goto out;
-
-	if (of_get_property(np, "ufs-power-gpio", NULL))
-		info->ufs_power_gpio = of_get_named_gpio(np, "ufs-power-gpio", 0);
-
-	if (of_get_property(np, "ufs-reset-n-gpio", NULL))
-		info->ufs_reset_n_gpio = of_get_named_gpio(np, "ufs-reset-n-gpio", 0);
 out:
 	return err;
 }
@@ -399,24 +389,22 @@ int ufshcd_pltfrm_init(struct platform_device *pdev,
 
 	ufshcd_parse_pm_lvl_policy(hba);
 	ufshcd_parse_caps_info(hba);
-	pm_runtime_set_active(&pdev->dev);
-	pm_runtime_enable(&pdev->dev);
 
 	ufshcd_init_lanes_per_dir(hba);
 
 	err = ufshcd_init(hba, mmio_base, irq);
 	if (err) {
 		dev_err(dev, "Initialization failed\n");
-		goto out_disable_rpm;
+		goto dealloc_host;
 	}
 
 	platform_set_drvdata(pdev, hba);
 
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
+
 	return 0;
 
-out_disable_rpm:
-	pm_runtime_disable(&pdev->dev);
-	pm_runtime_set_suspended(&pdev->dev);
 dealloc_host:
 	ufshcd_dealloc_host(hba);
 out:

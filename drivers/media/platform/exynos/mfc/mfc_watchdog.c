@@ -14,7 +14,6 @@
 #endif
 
 #include "mfc_watchdog.h"
-#include "mfc_otf.h"
 
 #include "mfc_sync.h"
 
@@ -324,8 +323,9 @@ static void __mfc_dump_state(struct mfc_dev *dev)
 	pr_err("has 2sysmmu:%d, has hwfc:%d, has mmcache:%d, shutdown:%d, sleep:%d, itmon_notified:%d\n",
 			dev->has_2sysmmu, dev->has_hwfc, dev->has_mmcache,
 			dev->shutdown, dev->sleep, dev->itmon_notified);
-	pr_err("options debug_level:%d, debug_mode:%d, mmcache:%d, perf_boost:%d\n",
-			debug_level, dev->pdata->debug_mode, dev->mmcache.is_on_status, perf_boost_mode);
+	pr_err("options debug_level:%d, debug_mode:%d (%d), mmcache:%d, perf_boost:%d\n",
+			debug_level, dev->pdata->debug_mode, debug_mode_en,
+			dev->mmcache.is_on_status, perf_boost_mode);
 	if (nal_q_handle)
 		pr_err("NAL-Q state:%d, exception:%d, in_exe_cnt: %d, out_exe_cnt: %d\n",
 				nal_q_handle->nal_q_state, nal_q_handle->nal_q_exception,
@@ -335,11 +335,13 @@ static void __mfc_dump_state(struct mfc_dev *dev)
 	curr_ctx = __mfc_get_curr_ctx(dev);
 	for (i = 0; i < MFC_NUM_CONTEXTS; i++)
 		if (dev->ctx[i])
-			pr_err("MFC ctx[%d] %s(%scodec_type:%d) state:%d, queue_cnt(src:%d, dst:%d, ref:%d, qsrc:%d, qdst:%d), interrupt(cond:%d, type:%d, err:%d)\n",
+			pr_err("MFC ctx[%d] %s(%scodec_type:%d) %s, state:%d, queue_cnt(src:%d, dst:%d, ref:%d, qsrc:%d, qdst:%d), interrupt(cond:%d, type:%d, err:%d)\n",
 				dev->ctx[i]->num,
 				dev->ctx[i]->type == MFCINST_DECODER ? "DEC" : "ENC",
 				curr_ctx == i ? "curr_ctx! " : "",
-				dev->ctx[i]->codec_mode, dev->ctx[i]->state,
+				dev->ctx[i]->codec_mode,
+				dev->ctx[i]->is_drm ? "DRM" : "Normal",
+				dev->ctx[i]->state,
 				mfc_get_queue_count(&dev->ctx[i]->buf_queue_lock, &dev->ctx[i]->src_buf_queue),
 				mfc_get_queue_count(&dev->ctx[i]->buf_queue_lock, &dev->ctx[i]->dst_buf_queue),
 				mfc_get_queue_count(&dev->ctx[i]->buf_queue_lock, &dev->ctx[i]->ref_buf_queue),
@@ -533,14 +535,7 @@ static void __mfc_dump_info(struct mfc_dev *dev)
 	__mfc_save_logging_sfr(dev);
 	__mfc_dump_buffer_info(dev);
 	__mfc_dump_regs(dev);
-
-	if (dev->num_otf_inst) {
-		pr_err("-----------dumping TS-MUX info-----------\n");
-#ifdef CONFIG_VIDEO_EXYNOS_TSMUX
-		tsmux_sfr_dump();
-#endif
-	}
-
+	mfc_dump_power_clk_status();
 	/* If there was fault addr, sysmmu info is already printed out */
 	if (!dev->logging_data->fault_addr)
 		exynos_sysmmu_show_status(dev->device);
@@ -555,7 +550,7 @@ static void __mfc_dump_info_and_stop_hw(struct mfc_dev *dev)
 
 static void __mfc_dump_info_and_stop_hw_debug(struct mfc_dev *dev)
 {
-	if (!dev->pdata->debug_mode)
+	if (!dev->pdata->debug_mode && !debug_mode_en)
 		return;
 
 	MFC_TRACE_DEV("** mfc will stop!!!\n");
@@ -603,6 +598,41 @@ void mfc_watchdog_worker(struct work_struct *work)
 
 	/* Stop after dumping information */
 	__mfc_dump_info_and_stop_hw(dev);
+}
+
+void mfc_dump_power_clk_status(void)
+{
+	void __iomem *va = NULL;
+	u32 mfcmscl_status = 0;
+	u32 index = 0;
+
+	/*
+	 * SFRs Address are for Exynos 7885
+	 * "MFCMSCL_STATUS", Phy Adrr:0x11C80000 Offset:0x4044
+	 */
+	index = 15;
+	va = pmucal_p2v_list[index].va;
+
+	/* mfcmscl_status = 15 (Power ON), mfcmscl_status = 0 (Power OFF) */
+	mfcmscl_status = readl(va + 0x4044) & 0xF;
+	mfc_info_dev("MFCMSCL Power Domain Status:%u\n", mfcmscl_status);
+
+	/* If Power is ON, Check the CLK Registers */
+	if (mfcmscl_status != 0) {
+		/*
+		 * "DBG_NFO_QCH_CON_LHS_AXI_D_MFCMSCL_QCH", Phy Adrr:0x12CB0000 Offset:0x700c
+		 * "DBG_NFO_QCH_CON_MFC_QCH", Phy Adrr:0x12CB0000 Offset:0x7014
+		 * "DBG_NFO_QCH_CON_SMMU_MFCMSCL_QCH", Phy Adrr:0x12CB0000 Offset:0x7020
+		 */
+		index = 11;
+		va = pmucal_p2v_list[index].va;
+
+		/* CLK ON = 0, CLK OFF = 4 */
+		mfc_info_dev("MFCMSCL CLK Status\n");
+		mfc_info_dev("qch_con_lhs_axi_d_mfcmscl_qch:%u\n", readl(va + 0x700c));
+		mfc_info_dev("qch_con_mfc_qch:%u\n", readl(va + 0x7014));
+		mfc_info_dev("qch_con_smmu_mfcmscl_qch:%u\n", readl(va + 0x7020));
+	}
 }
 
 struct mfc_dump_ops mfc_dump_ops = {

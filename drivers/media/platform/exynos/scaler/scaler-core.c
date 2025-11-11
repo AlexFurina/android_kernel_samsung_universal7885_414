@@ -19,6 +19,7 @@
 #include <linux/clk.h>
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
+#include <linux/reboot.h>
 #include <linux/exynos_iovmm.h>
 #include <linux/smc.h>
 #include <linux/ion_exynos.h>
@@ -349,6 +350,7 @@ static const u32 sc_version_table[][2] = {
 	{ 0x0100000f, SCALER_VERSION(4, 0, 1) }, /* SC_POLY */
 	{ 0xA0000013, SCALER_VERSION(4, 0, 1) },
 	{ 0xA0000012, SCALER_VERSION(4, 0, 1) },
+        { 0x80044001, SCALER_VERSION(4, 0, 2) }, /* SC_POLY w/ CLK_REQ */
 	{ 0x80050007, SCALER_VERSION(4, 0, 0) }, /* SC_POLY */
 	{ 0xA000000B, SCALER_VERSION(3, 0, 2) },
 	{ 0xA000000A, SCALER_VERSION(3, 0, 2) },
@@ -455,6 +457,29 @@ static const struct sc_variant sc_variant[] = {
 		.ratio_20bit		= 1,
 		.initphase		= 1,
 	}, {
+                .limit_input = {
+                        .min_w          = 16,
+                        .min_h          = 16,
+                        .max_w          = 8192,
+                        .max_h          = 8192,
+                },
+                .limit_output = {
+                        .min_w          = 4,
+                        .min_h          = 4,
+                        .max_w          = 8192,
+                        .max_h          = 8192,
+                },
+                .version                = SCALER_VERSION(4, 0, 2),
+                .sc_up_max              = SCALE_RATIO_CONST(1, 8),
+                .sc_down_min            = SCALE_RATIO_CONST(4, 1),
+                .sc_up_swmax            = SCALE_RATIO_CONST(1, 16),
+                .sc_down_swmin          = SCALE_RATIO_CONST(16, 1),
+                .blending               = 0,
+                .prescale               = 0,
+                .ratio_20bit            = 0,
+                .initphase              = 0,
+                .q_chan_ctrl            = 1,
+        }, {
 		.limit_input = {
 			.min_w		= 16,
 			.min_h		= 16,
@@ -1866,7 +1891,7 @@ static int sc_vb2_queue_setup(struct vb2_queue *vq,
 	if (ret)
 		return ret;
 
-	return vb2_queue_init(vq);
+	return 0;
 }
 
 static int sc_vb2_buf_prepare(struct vb2_buffer *vb)
@@ -2558,6 +2583,9 @@ static bool sc_process_2nd_stage(struct sc_dev *sc, struct sc_ctx *ctx)
 	pre_h_ratio = 0;
 	pre_v_ratio = 0;
 
+       sc_hwset_polyphase_hcoef(sc, h_ratio, h_ratio, 0);
+       sc_hwset_polyphase_vcoef(sc, v_ratio, v_ratio, 0);
+
 	if (!sc->variant->ratio_20bit) {
 		/* No prescaler, 1/4 precision */
 		BUG_ON(h_ratio > SCALE_RATIO(4, 1));
@@ -2571,9 +2599,6 @@ static bool sc_process_2nd_stage(struct sc_dev *sc, struct sc_ctx *ctx)
 
 	sc_hwset_hratio(sc, h_ratio, pre_h_ratio);
 	sc_hwset_vratio(sc, v_ratio, pre_v_ratio);
-
-	sc_hwset_polyphase_hcoef(sc, h_ratio, h_ratio, 0);
-	sc_hwset_polyphase_vcoef(sc, v_ratio, v_ratio, 0);
 
 	sc_hwset_src_pos(sc, s_frame->crop.left, s_frame->crop.top,
 			s_frame->sc_fmt->h_shift, s_frame->sc_fmt->v_shift);
@@ -2592,6 +2617,8 @@ static bool sc_process_2nd_stage(struct sc_dev *sc, struct sc_ctx *ctx)
 		sc_hwset_flip_rotation(sc, ctx->flip_rot_cfg);
 	else
 		sc_hwset_flip_rotation(sc, 0);
+        if (ctx->sc_dev->variant->q_chan_ctrl != 0)
+                sc_hwset_clk_request(sc, true);
 
 	sc_hwset_start(sc);
 
@@ -2603,10 +2630,19 @@ static bool sc_process_2nd_stage(struct sc_dev *sc, struct sc_ctx *ctx)
 static void sc_set_dithering(struct sc_ctx *ctx)
 {
 	struct sc_dev *sc = ctx->sc_dev;
+	struct sc_frame *s_frame = &ctx->s_frame;
+	struct sc_frame *d_frame = &ctx->d_frame;
 	unsigned int val = 0;
 
 	if (ctx->dith)
 		val = sc_dith_val(1, 1, 1);
+
+	if (sc->variant->pixfmt_10bit) {
+		if (sc_fmt_is_s10bit_yuv(s_frame->sc_fmt->pixelformat))
+			val |= SCALER_DITH_SRC_INV;
+		if (sc_fmt_is_s10bit_yuv(d_frame->sc_fmt->pixelformat))
+			val |= SCALER_DITH_DST_EN;
+	}
 
 	sc_dbg("dither value is 0x%x\n", val);
 	sc_hwset_dith(sc, val);
@@ -2719,16 +2755,6 @@ static int sc_run_next_job(struct sc_dev *sc)
 	pre_h_ratio = ctx->pre_h_ratio;
 	pre_v_ratio = ctx->pre_v_ratio;
 
-	if (!sc->variant->ratio_20bit) {
-
-		/* No prescaler, 1/4 precision */
-		BUG_ON(h_ratio > SCALE_RATIO(4, 1));
-		BUG_ON(v_ratio > SCALE_RATIO(4, 1));
-
-		h_ratio >>= 4;
-		v_ratio >>= 4;
-	}
-
 	h_shift = s_frame->sc_fmt->h_shift;
 	v_shift = s_frame->sc_fmt->v_shift;
 
@@ -2751,13 +2777,23 @@ static int sc_run_next_job(struct sc_dev *sc)
 	else
 		cv_ratio = v_ratio;
 
-	sc_hwset_hratio(sc, h_ratio, pre_h_ratio);
-	sc_hwset_vratio(sc, v_ratio, pre_v_ratio);
-
 	sc_hwset_polyphase_hcoef(sc, h_ratio, ch_ratio,
 			ctx->dnoise_ft.strength);
 	sc_hwset_polyphase_vcoef(sc, v_ratio, cv_ratio,
 			ctx->dnoise_ft.strength);
+
+        if (!sc->variant->ratio_20bit) {
+
+                /* No prescaler, 1/4 precision */
+                BUG_ON(h_ratio > SCALE_RATIO(4, 1));
+                BUG_ON(v_ratio > SCALE_RATIO(4, 1));
+
+                h_ratio >>= 4;
+                v_ratio >>= 4;
+        }
+
+        sc_hwset_hratio(sc, h_ratio, pre_h_ratio);
+        sc_hwset_vratio(sc, v_ratio, pre_v_ratio);
 
 	sc_hwset_src_pos(sc, s_frame->crop.left, s_frame->crop.top,
 			s_frame->sc_fmt->h_shift, s_frame->sc_fmt->v_shift);
@@ -2814,6 +2850,10 @@ static int sc_run_next_job(struct sc_dev *sc)
 			set_bit(DEV_CP, &sc->state);
 	}
 #endif
+
+        if (ctx->sc_dev->variant->q_chan_ctrl != 0)
+                sc_hwset_clk_request(sc, true);
+
 	sc_hwset_start(sc);
 
 	return 0;
@@ -3217,6 +3257,7 @@ static int sc_m2m1shot_prepare_format(struct m2m1shot_context *m21ctx,
 					&ctx->s_frame : &ctx->d_frame;
 	s32 size_min = (dir == DMA_TO_DEVICE) ? 16 : 4;
 	int i;
+        bool crop_modified = false;
 	unsigned int ext_size = 0;
 
 	frame->sc_fmt = sc_find_format(ctx->sc_dev, fmt->fmt,
@@ -3234,83 +3275,119 @@ static int sc_m2m1shot_prepare_format(struct m2m1shot_context *m21ctx,
 	if (!fmt->crop.height)
 		fmt->crop.height = fmt->height;
 
-	if (!fmt->width || !fmt->height ||
-				!fmt->crop.width || !fmt->crop.height) {
+        frame->height = fmt->height;
+        frame->width  = fmt->width;
+        frame->crop   = fmt->crop;
+
+        /* just checking for an informative message */
+        if (((fmt->crop.left | fmt->crop.width) & frame->sc_fmt->h_shift) ||
+                ((fmt->crop.top | fmt->crop.height) & frame->sc_fmt->v_shift)) {
+                dev_info(ctx->sc_dev->dev,
+                        "%s: shrinking %s image of %dx%d@(%d,%d) for %s\n",
+                        __func__, (dir == DMA_TO_DEVICE) ? "src" : "dst",
+                        fmt->crop.width, fmt->crop.height, fmt->crop.left,
+                        fmt->crop.top, frame->sc_fmt->name);
+                crop_modified = true;
+        }
+
+        if (frame->sc_fmt->h_shift) {
+                unsigned int halign = 1 << frame->sc_fmt->h_shift;
+
+                if (!IS_ALIGNED(fmt->width, halign) ||
+                                !IS_ALIGNED(fmt->crop.width, halign)) {
+                        dev_err(ctx->sc_dev->dev,
+                                "span(%d) or width(%d) is not aligned as %d\n",
+                                fmt->width, fmt->crop.width, halign);
+                        return -EINVAL;
+                }
+        }
+
+        if (frame->sc_fmt->v_shift) {
+                unsigned int valign = (1 << frame->sc_fmt->v_shift);
+
+                if (!IS_ALIGNED(fmt->height, valign)) {
+                        dev_err(ctx->sc_dev->dev,
+                                "height(%d) is not aligned as %d\n",
+                                fmt->height, valign);
+                        return -EINVAL;
+                }
+        }
+
+        if (sc_fmt_is_s10bit_yuv(frame->sc_fmt->pixelformat) &&
+                        !IS_ALIGNED(fmt->crop.width, 4)) {
+                dev_err(ctx->sc_dev->dev,
+                        "%s: crop.width(%d) is not aligned as 4\n",
+                        __func__, fmt->crop.width);
+                return -EINVAL;
+        }
+
+        if (frame->crop.left & frame->sc_fmt->h_shift) {
+                frame->crop.left++;
+                frame->crop.width--;
+        }
+
+        if (frame->crop.top & frame->sc_fmt->v_shift) {
+                frame->crop.top++;
+                frame->crop.height--;
+        }
+
+        if (frame->crop.width & frame->sc_fmt->h_shift)
+                frame->crop.width--;
+
+        if (frame->crop.height & frame->sc_fmt->v_shift)
+                frame->crop.height--;
+
+        if (crop_modified)
+                dev_info(ctx->sc_dev->dev,
+                        "%s: into %dx%d@(%d,%d)\n", __func__, frame->crop.width,
+                        frame->crop.height, frame->crop.left, frame->crop.top);
+
+	if (!frame->width || !frame->height ||
+				!frame->crop.width || !frame->crop.height) {
 		dev_err(ctx->sc_dev->dev,
 			"%s: neither width nor height can be zero\n",
 			__func__);
 		return -EINVAL;
 	}
 
-	if ((fmt->width > 8192) || (fmt->height > 8192)) {
+	if ((frame->width > 8192) || (frame->height > 8192)) {
 		dev_err(ctx->sc_dev->dev,
 			"%s: requested image size %dx%d exceed 8192x8192\n",
-			__func__, fmt->width, fmt->height);
+			__func__, frame->width, frame->height);
 		return -EINVAL;
 	}
 
-	if ((fmt->crop.width < size_min) || (fmt->crop.height < size_min)) {
+	if ((frame->crop.width < size_min) || (frame->crop.height < size_min)) {
 		dev_err(ctx->sc_dev->dev,
 			"%s: image size %dx%d must not less than %dx%d\n",
-			__func__, fmt->width, fmt->height, size_min, size_min);
+			__func__, frame->width, frame->height, size_min, size_min);
 		return -EINVAL;
 	}
 
-	if ((fmt->crop.left < 0) || (fmt->crop.top < 0)) {
+	if ((frame->crop.left < 0) || (frame->crop.top < 0)) {
 		dev_err(ctx->sc_dev->dev,
 			"%s: negative crop offset(%d, %d) is not supported\n",
-			__func__, fmt->crop.left, fmt->crop.top);
+			__func__, frame->crop.left, frame->crop.top);
 		return -EINVAL;
 	}
 
-	if ((fmt->width < (fmt->crop.width + fmt->crop.left)) ||
-		(fmt->height < (fmt->crop.height + fmt->crop.top))) {
+	if ((frame->width < (frame->crop.width + frame->crop.left)) ||
+		(frame->height < (frame->crop.height + frame->crop.top))) {
 		dev_err(ctx->sc_dev->dev,
 			"%s: crop region(%d,%d,%d,%d) is larger than image\n",
-			__func__, fmt->crop.left, fmt->crop.top,
-			fmt->crop.width, fmt->crop.height);
-		return -EINVAL;
-	}
-
-	if (frame->sc_fmt->h_shift) {
-		unsigned int halign = 1 << frame->sc_fmt->h_shift;
-
-		if (!IS_ALIGNED(fmt->width, halign) ||
-				!IS_ALIGNED(fmt->crop.width, halign)) {
-			dev_err(ctx->sc_dev->dev,
-				"span(%d) or width(%d) is not aligned as %d\n",
-				fmt->width, fmt->crop.width, halign);
-			return -EINVAL;
-		}
-	}
-
-	if (frame->sc_fmt->v_shift) {
-		unsigned int valign = (1 << frame->sc_fmt->v_shift);
-
-		if (!IS_ALIGNED(fmt->height, valign)) {
-			dev_err(ctx->sc_dev->dev,
-				"height(%d) is not aligned as %d\n",
-				fmt->height, valign);
-			return -EINVAL;
-		}
-	}
-
-	if (sc_fmt_is_s10bit_yuv(frame->sc_fmt->pixelformat) &&
-			!IS_ALIGNED(fmt->crop.width, 4)) {
-		dev_err(ctx->sc_dev->dev,
-			"%s: crop.width(%d) is not aligned as 4\n",
-			__func__, fmt->crop.width);
+			__func__, frame->crop.left, frame->crop.top,
+			frame->crop.width, frame->crop.height);
 		return -EINVAL;
 	}
 
 	for (i = 0; i < frame->sc_fmt->num_planes; i++) {
 		if (sc_fmt_is_ayv12(fmt->fmt)) {
 			unsigned int y_size, c_span;
-			y_size = fmt->width * fmt->height;
-			c_span = ALIGN(fmt->width / 2, 16);
-			bytes_used[i] = y_size + (c_span * fmt->height / 2) * 2;
+			y_size = frame->width * frame->height;
+			c_span = ALIGN(frame->width / 2, 16);
+			bytes_used[i] = y_size + (c_span * frame->height / 2) * 2;
 		} else {
-			bytes_used[i] = fmt->width * fmt->height;
+			bytes_used[i] = frame->width * frame->height;
 			bytes_used[i] *= frame->sc_fmt->bitperpixel[i];
 			bytes_used[i] /= 8;
 		}
@@ -3318,17 +3395,13 @@ static int sc_m2m1shot_prepare_format(struct m2m1shot_context *m21ctx,
 	}
 
 	if (ctx->sc_dev->variant->extra_buf && dir == DMA_TO_DEVICE) {
-		ext_size = sc_ext_buf_size(fmt->width);
+		ext_size = sc_ext_buf_size(frame->crop.width);
 
 		for (i = 0; i < frame->sc_fmt->num_planes; i++) {
 			bytes_used[i] += (i == 0) ? ext_size : ext_size/2;
 			frame->bytesused[i] = bytes_used[i];
 		}
 	}
-
-	frame->width = fmt->width;
-	frame->height = fmt->height;
-	frame->crop = fmt->crop;
 
 	return frame->sc_fmt->num_planes;
 }
@@ -3733,6 +3806,91 @@ static int sc_populate_dt(struct sc_dev *sc)
 	return 0;
 }
 
+#ifdef CONFIG_EXYNOS_ITMON
+static bool sc_itmon_check(struct sc_dev *sc, char *str_itmon, char *str_attr)
+{
+	const char *name = NULL;
+
+	if (!str_itmon)
+		return false;
+
+	of_property_read_string(sc->dev->of_node, str_attr, &name);
+	if (!name)
+		return false;
+
+	if (strncmp(str_itmon, name, strlen(name)) == 0)
+		return true;
+
+	return false;
+}
+
+static int sc_itmon_notifier(struct notifier_block *nb,
+			unsigned long action, void *nb_data)
+{
+	struct sc_dev *sc = container_of(nb, struct sc_dev, itmon_nb);
+	struct itmon_notifier *itmon_info = nb_data;
+	static int called_count;
+
+	if (called_count != 0) {
+		dev_info(sc->dev, "%s is called %d times, ignore it.\n",
+				__func__, called_count);
+		return NOTIFY_DONE;
+	}
+
+	if (sc_itmon_check(sc, itmon_info->master, "itmon,master")) {
+		if (test_bit(DEV_RUN, &sc->state)) {
+			if (sc->current_ctx)
+				sc_ctx_dump(sc->current_ctx);
+			sc_hwregs_dump(sc);
+			exynos_sysmmu_show_status(sc->dev);
+		} else {
+			dev_info(sc->dev, "MSCL is not running!\n");
+		}
+		called_count++;
+	} else if (sc_itmon_check(sc, itmon_info->dest, "itmon,dest")) {
+		if (test_bit(DEV_RUN, &sc->state)) {
+			if (sc->current_ctx)
+				sc_ctx_dump(sc->current_ctx);
+			if (itmon_info->onoff) {
+				sc_hwregs_dump(sc);
+				exynos_sysmmu_show_status(sc->dev);
+			} else {
+				dev_info(sc->dev, "MSCL power is disabled!\n");
+			}
+		} else {
+			dev_info(sc->dev, "MSCL is not running!\n");
+		}
+		called_count++;
+	}
+
+	return NOTIFY_DONE;
+}
+#endif
+
+static int sc_reboot_notifier(struct notifier_block *nb,
+                                unsigned long l, void *p)
+{
+        struct sc_dev *sc = container_of(nb, struct sc_dev, reboot_notifier);
+        bool rpm_active = false;
+
+        set_bit(DEV_SUSPEND, &sc->state);
+
+        wait_event(sc->wait, !test_bit(DEV_RUN, &sc->state));
+
+        pm_runtime_barrier(sc->dev);
+        if (pm_runtime_active(sc->dev)) {
+                pm_runtime_put_sync(sc->dev);
+                rpm_active = true;
+        }
+
+        iovmm_deactivate(sc->dev);
+
+        dev_info(sc->dev, "reboot notifier with RPM [%s] status\n",
+                        rpm_active ? "Activated" : "Deactivated");
+
+        return 0;
+}
+
 static int sc_probe(struct platform_device *pdev)
 {
 	struct sc_dev *sc;
@@ -3883,6 +4041,14 @@ static int sc_probe(struct platform_device *pdev)
 
 	iovmm_set_fault_handler(&pdev->dev, sc_sysmmu_fault_handler, sc);
 
+#ifdef CONFIG_EXYNOS_ITMON
+	sc->itmon_nb.notifier_call = sc_itmon_notifier;
+	itmon_notifier_chain_register(&sc->itmon_nb);
+#endif
+
+        sc->reboot_notifier.notifier_call = sc_reboot_notifier;
+        register_reboot_notifier(&sc->reboot_notifier);
+
 	dev_info(&pdev->dev,
 		"Driver probed successfully(version: %08x(%x))\n",
 		hwver, sc->version);
@@ -3929,12 +4095,7 @@ static void sc_shutdown(struct platform_device *pdev)
 {
 	struct sc_dev *sc = platform_get_drvdata(pdev);
 
-	set_bit(DEV_SUSPEND, &sc->state);
-
-	wait_event(sc->wait,
-			!test_bit(DEV_RUN, &sc->state));
-
-	iovmm_deactivate(sc->dev);
+        dev_info(sc->dev, "shutdown with state: %#lx\n", sc->state);
 }
 
 static const struct of_device_id exynos_sc_match[] = {

@@ -16,7 +16,7 @@
 /*
  * Time out in seconds for disks and Magneto-opticals (which are slower).
  */
-#define SD_TIMEOUT		(5 * HZ)
+#define SD_TIMEOUT		(30 * HZ)
 #define SD_MOD_TIMEOUT		(75 * HZ)
 /*
  * Flush timeout is a multiplier over the standard device timeout which is
@@ -122,6 +122,14 @@ struct scsi_disk {
 	unsigned	urswrz : 1;
 	unsigned	security : 1;
 	unsigned	ignore_medium_access_errors : 1;
+#ifdef CONFIG_USB_STORAGE_DETECT
+	wait_queue_head_t	delay_wait;
+	struct completion	scanning_done;
+	struct task_struct	*th;
+	int		thread_remove;
+	int		async_end;
+	int		prv_media_present;
+#endif
 };
 #define to_scsi_disk(obj) container_of(obj,struct scsi_disk,dev)
 

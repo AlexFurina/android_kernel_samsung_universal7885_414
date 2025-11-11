@@ -39,6 +39,7 @@ struct fimc_is_fmt {
 	u32				pixelformat;
 	u32				field;
 	u32				num_planes;
+	u32				bitwidth;
 	u32				hw_format;
 	u32				hw_order;
 	u32				hw_bitwidth;

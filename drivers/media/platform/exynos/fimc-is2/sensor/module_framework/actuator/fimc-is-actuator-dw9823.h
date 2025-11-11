@@ -2,7 +2,7 @@
  * Samsung Exynos5 SoC series Actuator driver
  *
  *
- * Copyright (c) 2018 Samsung Electronics Co., Ltd
+ * Copyright (c) 2014 Samsung Electronics Co., Ltd
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -15,10 +15,10 @@
 #define DW9823_POS_SIZE_BIT		ACTUATOR_POS_SIZE_10BIT
 #define DW9823_POS_MAX_SIZE		((1 << DW9823_POS_SIZE_BIT) - 1)
 #define DW9823_POS_DIRECTION		ACTUATOR_RANGE_INF_TO_MAC
-#define RINGING_CONTROL			0x2F /* 11ms */
-#define PRESCALER			0x01 /* Tvib x 1 */
+#define RINGING_CONTROL			0x2F /* 11ms */    
+#define PRESCALER			0x01 /* Tvib x 1 */  
 
-#define PWR_ON_DELAY	5000 /* DW9823 need delay for 5msec after power-on */
+#define PWR_ON_DELAY	5000 /* DW9823 need delay for 5msec after power-on */ 
 
 struct fimc_is_caldata_list_dw9823 {
 	u32 af_position_type;

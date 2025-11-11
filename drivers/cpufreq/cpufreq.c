@@ -173,14 +173,7 @@ int cpufreq_generic_init(struct cpufreq_policy *policy,
 		struct cpufreq_frequency_table *table,
 		unsigned int transition_latency)
 {
-	int ret;
-
-	ret = cpufreq_table_validate_and_show(policy, table);
-	if (ret) {
-		pr_err("%s: invalid frequency table: %d\n", __func__, ret);
-		return ret;
-	}
-
+	policy->freq_table = table;
 	policy->cpuinfo.transition_latency = transition_latency;
 
 	/*
@@ -340,7 +333,7 @@ static void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 			 (unsigned long)freqs->new, (unsigned long)freqs->cpu);
 		trace_cpu_frequency(freqs->new, freqs->cpu);
 		cpufreq_stats_record_transition(policy, freqs->new);
-		cpufreq_times_record_transition(freqs);
+		cpufreq_times_record_transition(policy, freqs->new);
 		srcu_notifier_call_chain(&cpufreq_transition_notifier_list,
 				CPUFREQ_POSTCHANGE, freqs);
 		if (likely(policy) && likely(policy->cpu == freqs->cpu))
@@ -913,6 +906,9 @@ static ssize_t show(struct kobject *kobj, struct attribute *attr, char *buf)
 	struct freq_attr *fattr = to_attr(attr);
 	ssize_t ret;
 
+	if (!fattr->show)
+		return -EIO;
+
 	down_read(&policy->rwsem);
 	ret = fattr->show(policy, buf);
 	up_read(&policy->rwsem);
@@ -926,6 +922,9 @@ static ssize_t store(struct kobject *kobj, struct attribute *attr,
 	struct cpufreq_policy *policy = to_policy(kobj);
 	struct freq_attr *fattr = to_attr(attr);
 	ssize_t ret = -EINVAL;
+
+	if (!fattr->store)
+		return -EIO;
 
 	cpus_read_lock();
 
@@ -1011,10 +1010,19 @@ static int cpufreq_add_dev_interface(struct cpufreq_policy *policy)
 
 	return 0;
 }
+__weak unsigned long cpufreq_governor_get_util(unsigned int cpu)
+{
+	return 0;
+}
 
 __weak struct cpufreq_governor *cpufreq_default_governor(void)
 {
 	return NULL;
+}
+
+__weak unsigned int cpufreq_governor_get_freq(int cpu)
+{
+	return 0;
 }
 
 static int cpufreq_init_policy(struct cpufreq_policy *policy)
@@ -1103,6 +1111,7 @@ static struct cpufreq_policy *cpufreq_policy_alloc(unsigned int cpu)
 				   cpufreq_global_kobject, "policy%u", cpu);
 	if (ret) {
 		pr_err("%s: failed to init policy->kobj: %d\n", __func__, ret);
+		kobject_put(&policy->kobj);
 		goto err_free_real_cpus;
 	}
 
@@ -1252,6 +1261,10 @@ static int cpufreq_online(unsigned int cpu)
 		pr_debug("initialization failed\n");
 		goto out_free_policy;
 	}
+
+	ret = cpufreq_table_validate_and_sort(policy);
+	if (ret)
+		goto out_exit_policy;
 
 	down_write(&policy->rwsem);
 
@@ -1533,7 +1546,12 @@ static void cpufreq_remove_dev(struct device *dev, struct subsys_interface *sif)
 static void cpufreq_out_of_sync(struct cpufreq_policy *policy,
 				unsigned int new_freq)
 {
+	unsigned int cur_freq = cpufreq_driver->get(policy->cpu);
 	struct cpufreq_freqs freqs;
+
+	/* False alarm: policy->cur updated appropriately */
+	if (cur_freq == policy->cur)
+		return;
 
 	pr_debug("Warning: CPU frequency out of sync: cpufreq and timing core thinks of %u, is %u kHz\n",
 		 policy->cur, new_freq);
@@ -1543,6 +1561,11 @@ static void cpufreq_out_of_sync(struct cpufreq_policy *policy,
 
 	cpufreq_freq_transition_begin(policy, &freqs);
 	cpufreq_freq_transition_end(policy, &freqs, 0);
+
+	cur_freq = cpufreq_driver->get(policy->cpu);
+
+	if (cur_freq != policy->cur)
+		pr_debug("Warning: CPU frequency stays unsynced even after trial\n");
 }
 
 /**
@@ -1751,6 +1774,9 @@ void cpufreq_resume(void)
 	if (!cpufreq_driver)
 		return;
 
+	if (unlikely(!cpufreq_suspended))
+		return;
+
 	cpufreq_suspended = false;
 
 	if (!has_target() && !cpufreq_driver->resume)
@@ -1928,9 +1954,14 @@ EXPORT_SYMBOL(cpufreq_unregister_notifier);
 unsigned int cpufreq_driver_fast_switch(struct cpufreq_policy *policy,
 					unsigned int target_freq)
 {
+	int ret;
 	target_freq = clamp_val(target_freq, policy->min, policy->max);
 
-	return cpufreq_driver->fast_switch(policy, target_freq);
+        ret = cpufreq_driver->fast_switch(policy, target_freq);
+	if (ret)
+		cpufreq_times_record_transition(policy, ret);
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(cpufreq_driver_fast_switch);
 
@@ -2024,7 +2055,7 @@ int __weak __cpufreq_driver_target(struct cpufreq_policy *policy,
 	unsigned int old_target_freq = target_freq;
 	int index;
 
-	if (cpufreq_disabled())
+	if (cpufreq_disabled() || !policy->freq_table)
 		return -ENODEV;
 
 	/* Make sure that target_freq is within supported range */
@@ -2565,6 +2596,13 @@ int cpufreq_register_driver(struct cpufreq_driver *driver_data)
 	if (cpufreq_disabled())
 		return -ENODEV;
 
+	/*
+	 * The cpufreq core depends heavily on the availability of device
+	 * structure, make sure they are available before proceeding further.
+	 */
+	if (!get_cpu_device(0))
+		return -EPROBE_DEFER;
+
 	if (!driver_data || !driver_data->verify || !driver_data->init ||
 	    !(driver_data->setpolicy || driver_data->target_index ||
 		    driver_data->target) ||
@@ -2669,14 +2707,6 @@ int cpufreq_unregister_driver(struct cpufreq_driver *driver)
 }
 EXPORT_SYMBOL_GPL(cpufreq_unregister_driver);
 
-/*
- * Stop cpufreq at shutdown to make sure it isn't holding any locks
- * or mutexes when secondary CPUs are halted.
- */
-static struct syscore_ops cpufreq_syscore_ops = {
-	.shutdown = cpufreq_suspend,
-};
-
 struct kobject *cpufreq_global_kobject;
 EXPORT_SYMBOL(cpufreq_global_kobject);
 
@@ -2687,8 +2717,6 @@ static int __init cpufreq_core_init(void)
 
 	cpufreq_global_kobject = kobject_create_and_add("cpufreq", &cpu_subsys.dev_root->kobj);
 	BUG_ON(!cpufreq_global_kobject);
-
-	register_syscore_ops(&cpufreq_syscore_ops);
 
 	return 0;
 }

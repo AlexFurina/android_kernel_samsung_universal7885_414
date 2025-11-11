@@ -29,6 +29,7 @@
 #include "../ra.h"
 
 void __iomem *cmu_base;
+void __iomem *pmu_base;
 void __iomem *dll_apm_base;
 void __iomem *sysreg_apm_base;
 void __iomem *cmu_apm_base;
@@ -151,6 +152,18 @@ int cal_pll_mmc_set_ssc(unsigned int mfr, unsigned int mrr, unsigned int ssc_on)
 	return ret;
 }
 
+int cal_pll_mmc_check(void)
+{
+	u32 reg;
+	bool ret = false;
+
+	reg = readl(cmu_base + PLL_CON1_PLL_MMC);
+	if (reg & (1 << SSCG_EN))
+		ret = true;
+
+	return ret;
+}
+
 int cal_dll_apm_enable(void)
 {
 	u32 timeout = 0, reg = 0;
@@ -160,7 +173,7 @@ int cal_dll_apm_enable(void)
 		return -EINVAL;
 
 	/* DLL_APM_N_DCO settings */
-	__raw_writel(0x1574, dll_apm_base + 0x4);
+	__raw_writel(0x632, dll_apm_base + 0x4);
 
 	/* DLL_APM_CTRL0 settings */
 	__raw_writel(0x111, sysreg_apm_base + 0x0440);
@@ -269,11 +282,45 @@ int cal_dll_apm_disable(void)
 	return 0;
 }
 
+void exynos9610_set_xclkout0_13(void)
+{
+	if (pmu_base && cmu_apm_base) {
+		u32 reg = 0;
+
+		/* Disable XCLKOUT0 */
+		reg = __raw_readl(pmu_base + 0xa00);
+		__raw_writel(reg & ~(1 << 0), pmu_base + 0xa00);
+
+		/* Set APM_CLKOUT (26/2 = 13Mhz) */
+		reg = __raw_readl(cmu_apm_base + 0x810);
+		__raw_writel(reg & ~(1 << 29), cmu_apm_base + 0x810);	// disable
+
+		reg = __raw_readl(cmu_apm_base + 0x810);
+		reg &= ~(0x1f << 8);					// select TCXO
+		reg = (reg & ~(0xf << 0)) | (1 << 0);			// div by 2
+		__raw_writel(reg, cmu_apm_base + 0x810);
+
+		reg = __raw_readl(cmu_apm_base + 0x810);
+		__raw_writel(reg | (1 << 29), cmu_apm_base + 0x810);	// enable
+
+		/* Select APM_CLKOUT for XCLKOUT0 */
+		reg = __raw_readl(pmu_base + 0xa00);
+		reg = (reg & ~(0x3f << 8)) | (0x14 << 8);
+		__raw_writel(reg, pmu_base + 0xa00);
+
+		/* Enable XCLKOUT0 */
+		reg = __raw_readl(pmu_base + 0xa00);
+		__raw_writel(reg | (1 << 0), pmu_base + 0xa00);
+	}
+
+	return ;
+}
+
 void exynos9610_cal_data_init(void)
 {
 	pr_info("%s: cal data init\n", __func__);
 
-	cmu_base = ioremap(0x1a240000, SZ_4K);
+	cmu_base = ioremap(0x12100000, SZ_4K);
 	if (!cmu_base)
 		pr_err("%s: cmu_base cmuioremap failed\n", __func__);
 
@@ -288,6 +335,10 @@ void exynos9610_cal_data_init(void)
 	cmu_apm_base = ioremap(0x11800000, SZ_8K);
 	if (!cmu_apm_base)
 		pr_err("%s: cmu_apm_base ioremap failed\n", __func__);
+
+	pmu_base = ioremap(0x11860000, SZ_8K);
+	if (!pmu_base)
+		pr_err("%s: pm_base ioremap failed\n", __func__);
 }
 
 void (*cal_data_init)(void) = exynos9610_cal_data_init;

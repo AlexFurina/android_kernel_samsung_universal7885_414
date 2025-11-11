@@ -100,7 +100,7 @@ static int fimc_is_hw_mcsc_handle_interrupt(u32 id, void *context)
 
 		if (frame == NULL) {
 			mserr_hw("[F:%d] frame(null)!!", instance, hw_ip, atomic_read(&hw_ip->fcount));
-			FIMC_BUG(1);
+			BUG_ON(1);
 		}
 
 		index = hw_ip->debug_index[1];
@@ -152,7 +152,7 @@ static int fimc_is_hw_mcsc_open(struct fimc_is_hw_ip *hw_ip, u32 instance,
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (test_bit(HW_OPEN, &hw_ip->state))
 		return 0;
@@ -185,7 +185,7 @@ static int fimc_is_hw_mcsc_init(struct fimc_is_hw_ip *hw_ip, u32 instance,
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	set_bit(HW_INIT, &hw_ip->state);
 	return ret;
@@ -195,15 +195,15 @@ static int fimc_is_hw_mcsc_close(struct fimc_is_hw_ip *hw_ip, u32 instance)
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit(HW_OPEN, &hw_ip->state))
 		return 0;
 
 	vfree(hw_ip->priv_info);
-	hw_ip->priv_info = NULL;
 
 	clear_bit(HW_OPEN, &hw_ip->state);
+	msinfo_hw("close (%d)\n", instance, hw_ip, atomic_read(&hw_ip->rsccount));
 
 	return ret;
 }
@@ -212,7 +212,7 @@ static int fimc_is_hw_mcsc_enable(struct fimc_is_hw_ip *hw_ip, u32 instance, ulo
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
@@ -232,7 +232,7 @@ static int fimc_is_hw_mcsc_disable(struct fimc_is_hw_ip *hw_ip, u32 instance, ul
 	int ret = 0;
 	long timetowait;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
@@ -279,8 +279,8 @@ static int fimc_is_hw_mcsc_shot(struct fimc_is_hw_ip *hw_ip, struct fimc_is_fram
 	bool start_flag = true;
 	u32 lindex, hindex;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!frame);
+	BUG_ON(!hw_ip);
+	BUG_ON(!frame);
 
 	msdbgs_hw(2, "[F:%d]shot\n", frame->instance, hw_ip, frame->fcount);
 
@@ -368,8 +368,8 @@ static int fimc_is_hw_mcsc_set_param(struct fimc_is_hw_ip *hw_ip, struct is_regi
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct scp_param *param;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!region);
+	BUG_ON(!hw_ip);
+	BUG_ON(!region);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map))
 		return 0;
@@ -425,8 +425,8 @@ int fimc_is_hw_mcsc_update_param(struct fimc_is_hw_ip *hw_ip,
 	bool control_cmd = false;
 	struct fimc_is_hw_mcsc *hw_mcsc;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!param);
+	BUG_ON(!hw_ip);
+	BUG_ON(!param);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 
@@ -474,7 +474,7 @@ int fimc_is_hw_mcsc_reset(struct fimc_is_hw_ip *hw_ip)
 {
 	int ret = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	ret = fimc_is_scaler_sw_reset(hw_ip->regs);
 	if (ret != 0) {
@@ -500,7 +500,7 @@ static int fimc_is_hw_mcsc_load_setfile(struct fimc_is_hw_ip *hw_ip, u32 instanc
 	enum exynos_sensor_position sensor_position;
 	u32 index;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
 		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
@@ -554,7 +554,7 @@ static int fimc_is_hw_mcsc_apply_setfile(struct fimc_is_hw_ip *hw_ip, u32 scenar
 	enum exynos_sensor_position sensor_position;
 	u32 setfile_index = 0;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
 		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
@@ -596,7 +596,7 @@ static int fimc_is_hw_mcsc_delete_setfile(struct fimc_is_hw_ip *hw_ip, u32 insta
 {
 	struct fimc_is_hw_mcsc *hw_mcsc = NULL;
 
-	FIMC_BUG(!hw_ip);
+	BUG_ON(!hw_ip);
 
 	if (!test_bit_variables(hw_ip->id, &hw_map)) {
 		msdbg_hw(2, "%s: hw_map(0x%lx)\n", instance, hw_ip, __func__, hw_map);
@@ -644,8 +644,8 @@ int fimc_is_hw_mcsc_otf_input(struct fimc_is_hw_ip *hw_ip,
 	u32 format, bit_width;
 	struct fimc_is_hw_mcsc *hw_mcsc;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!input);
+	BUG_ON(!hw_ip);
+	BUG_ON(!input);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 
@@ -686,8 +686,8 @@ int fimc_is_hw_mcsc_poly_phase(struct fimc_is_hw_ip *hw_ip, struct scp_param *pa
 	struct param_otf_output *otf_output;
 	struct param_dma_output *dma_output;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!in_crop);
+	BUG_ON(!hw_ip);
+	BUG_ON(!in_crop);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 	otf_output = &param->otf_output;
@@ -802,8 +802,8 @@ int fimc_is_hw_mcsc_post_chain(struct fimc_is_hw_ip *hw_ip, struct scp_param *pa
 	struct param_otf_output *otf_output;
 	struct param_dma_output *dma_output;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!param);
+	BUG_ON(!hw_ip);
+	BUG_ON(!param);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 	otf_output = &param->otf_output;
@@ -856,9 +856,9 @@ int fimc_is_hw_mcsc_flip(struct fimc_is_hw_ip *hw_ip, struct scp_param *param,
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct param_dma_output *dma_output;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!param);
-	FIMC_BUG(!flip);
+	BUG_ON(!hw_ip);
+	BUG_ON(!param);
+	BUG_ON(!flip);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 	dma_output = &param->dma_output;
@@ -883,9 +883,9 @@ int fimc_is_hw_mcsc_otf_output(struct fimc_is_hw_ip *hw_ip, struct scp_param *pa
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct param_dma_output *dma_output;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!param);
-	FIMC_BUG(!otf_output);
+	BUG_ON(!hw_ip);
+	BUG_ON(!param);
+	BUG_ON(!otf_output);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 	dma_output = &param->dma_output;
@@ -928,9 +928,9 @@ int fimc_is_hw_mcsc_dma_output(struct fimc_is_hw_ip *hw_ip, struct scp_param *pa
 	struct fimc_is_hw_mcsc *hw_mcsc;
 	struct param_otf_output *otf_output;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!param);
-	FIMC_BUG(!dma_output);
+	BUG_ON(!hw_ip);
+	BUG_ON(!param);
+	BUG_ON(!dma_output);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 	otf_output = &param->otf_output;
@@ -997,9 +997,9 @@ int fimc_is_hw_mcsc_output_yuvrange(struct fimc_is_hw_ip *hw_ip, struct scp_para
 	struct param_dma_output *dma_output;
 	scaler_setfile_contents contents;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!param);
-	FIMC_BUG(!image_effect);
+	BUG_ON(!hw_ip);
+	BUG_ON(!param);
+	BUG_ON(!image_effect);
 
 	hw_mcsc = (struct fimc_is_hw_mcsc *)hw_ip->priv_info;
 	otf_output = &param->otf_output;
@@ -1292,9 +1292,9 @@ int fimc_is_hw_mcsc_probe(struct fimc_is_hw_ip *hw_ip, struct fimc_is_interface 
 	int ret = 0;
 	int hw_slot = -1;
 
-	FIMC_BUG(!hw_ip);
-	FIMC_BUG(!itf);
-	FIMC_BUG(!itfc);
+	BUG_ON(!hw_ip);
+	BUG_ON(!itf);
+	BUG_ON(!itfc);
 
 	/* initialize device hardware */
 	hw_ip->id   = id;

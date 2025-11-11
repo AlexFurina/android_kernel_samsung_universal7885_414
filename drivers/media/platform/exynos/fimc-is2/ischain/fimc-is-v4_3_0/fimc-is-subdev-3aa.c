@@ -41,13 +41,13 @@ static int fimc_is_ischain_3aa_cfg(struct fimc_is_subdev *leader,
 
 	device = (struct fimc_is_device_ischain *)device_data;
 
-	FIMC_BUG(!leader);
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->sensor);
-	FIMC_BUG(!incrop);
-	FIMC_BUG(!lindex);
-	FIMC_BUG(!hindex);
-	FIMC_BUG(!indexes);
+	BUG_ON(!leader);
+	BUG_ON(!device);
+	BUG_ON(!device->sensor);
+	BUG_ON(!incrop);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
 	group = &device->group_3aa;
 
@@ -186,10 +186,10 @@ static int fimc_is_ischain_3aa_tag(struct fimc_is_subdev *subdev,
 
 	device = (struct fimc_is_device_ischain *)device_data;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->is_region);
-	FIMC_BUG(!frame);
+	BUG_ON(!subdev);
+	BUG_ON(!device);
+	BUG_ON(!device->is_region);
+	BUG_ON(!frame);
 
 #ifdef DBG_STREAMING
 	mdbgd_ischain("3AA TAG\n", device);

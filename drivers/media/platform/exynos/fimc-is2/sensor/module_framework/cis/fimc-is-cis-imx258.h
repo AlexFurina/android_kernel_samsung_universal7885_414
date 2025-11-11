@@ -14,7 +14,7 @@
 
 #include "fimc-is-cis.h"
 
-#define EXT_CLK_Mhz (24.37)
+#define EXT_CLK_Mhz (26)
 
 #define SENSOR_IMX258_MAX_WIDTH		(4128 + 16)
 #define SENSOR_IMX258_MAX_HEIGHT		(3096 + 10)
@@ -26,6 +26,8 @@
 #define SENSOR_IMX258_COARSE_INTEGRATION_TIME_MAX_MARGIN       0xA
 
 #define USE_GROUP_PARAM_HOLD	(0)
+
+#define NUMBER_OF_PIPELINE		(4)
 
 #endif
 

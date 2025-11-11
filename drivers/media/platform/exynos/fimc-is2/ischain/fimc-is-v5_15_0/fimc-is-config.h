@@ -48,6 +48,7 @@
 #define SOC_SSVC1
 #define SOC_SSVC2
 /* #define SOC_DCP *//* TODO */
+/* #define SOC_SRDZ *//* TODO */
 
 /* Post Processing Configruation */
 /* #define ENABLE_DRC */
@@ -77,26 +78,11 @@
 #undef ENABLE_CLOCK_GATE
 /* #define ENABLE_DIRECT_CLOCK_GATE */
 
-/* FIMC-IS task priority setting */
-#define TASK_SENSOR_WORK_PRIO		(FIMC_IS_MAX_PRIO - 48) /* 52 */
-#define TASK_GRP_OTF_INPUT_PRIO		(FIMC_IS_MAX_PRIO - 49) /* 51 */
-#define TASK_GRP_DMA_INPUT_PRIO		(FIMC_IS_MAX_PRIO - 50) /* 50 */
-#define TASK_MSHOT_WORK_PRIO		(FIMC_IS_MAX_PRIO - 43) /* 57 */
-#define TASK_LIB_OTF_PRIO		(FIMC_IS_MAX_PRIO - 44) /* 56 */
-#define TASK_LIB_AF_PRIO		(FIMC_IS_MAX_PRIO - 45) /* 55 */
-#define TASK_LIB_ISP_DMA_PRIO		(FIMC_IS_MAX_PRIO - 46) /* 54 */
-#define TASK_LIB_3AA_DMA_PRIO		(FIMC_IS_MAX_PRIO - 47) /* 53 */
-#define TASK_LIB_AA_PRIO		(FIMC_IS_MAX_PRIO - 48) /* 52 */
-#define TASK_LIB_RTA_PRIO		(FIMC_IS_MAX_PRIO - 49) /* 51 */
-#define TASK_LIB_VRA_PRIO		(FIMC_IS_MAX_PRIO - 45) /* 55 */
-
 /*
  * =================================================================================================
  * CONFIG - FEATURE ENABLE
  * =================================================================================================
  */
-
-#define FIMC_IS_MAX_TASK               (20)
 
 #if defined(CONFIG_ARM_EXYNOS8895_BUS_DEVFREQ)
 #define CONFIG_FIMC_IS_BUS_DEVFREQ
@@ -135,7 +121,4 @@
 #endif
 
 /* #define ENABLE_DBG_EVENT_PRINT */
-
-#define CHAIN_USE_VC_TASKLET	1
-
 #endif

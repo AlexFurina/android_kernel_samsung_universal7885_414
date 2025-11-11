@@ -99,7 +99,16 @@ static struct pll_spec gpll1460X_spec = {
 	12.5*MHZ,	800*MHZ,
 	150,		3000,
 };
-
+static struct pll_spec gpll1480X_spec = {
+	1,              63,
+	64,             1023,
+	0,              6,
+	0,              0,
+	4*MHZ,          12*MHZ,
+	1900*MHZ,       3800*MHZ,
+	200*MHZ,        3800*MHZ,
+	150,            0,
+};
 static struct pll_spec gpll1050X_spec = {
 	1,		63,
 	64,		1023,
@@ -241,6 +250,9 @@ struct pll_spec *pll_get_spec(struct cmucal_pll *pll)
 		break;
 	case PLL_1460X:
 		pll_spec = &gpll1460X_spec;
+		break;
+	case PLL_1480X:
+		pll_spec = &gpll1480X_spec;
 		break;
 	case PLL_1050X:
 		pll_spec = &gpll1050X_spec;

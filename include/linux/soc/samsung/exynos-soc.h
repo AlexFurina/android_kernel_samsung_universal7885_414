@@ -28,6 +28,7 @@
 #define EXYNOS7872_SOC_ID	0x005E7872
 #define EXYNOS9810_SOC_ID	0xE9810000
 #define EXYNOS9610_SOC_ID	0xE9610000
+#define EXYNOS7885_SOC_ID	0xE7885000
 
 #define EXYNOS_SOC_MASK		0xFFFFF000
 #define EXYNOS_SOC_MASK_V2	0x00FFFFFF
@@ -61,7 +62,6 @@ struct exynos_chipid_info {
 	u32 sub_rev;
 	u32 lot_id;
 	u64 unique_id;
-	u64 memsize;
 	struct exynos_chipid_variant *drv_data;
 };
 

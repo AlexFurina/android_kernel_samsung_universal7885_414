@@ -100,9 +100,6 @@ enum mc_scaler_interrupt_map {
 	INTR_MC_SCALER_SHADOW_COPY_FINISH_OVF	= 17,
 };
 
-/* VRA */
-#define VRA_CH1_INTR_CNT_PER_FRAME	(4)
-
 enum vra_chain0_interrupt_map {
 	CH0INT_CIN_FR_ST			= 0,	/* VSYNC rise - verified when CIN is active */
 	CH0INT_CIN_FR_END			= 1,	/* VSYNC fall - verified when CIN is active */

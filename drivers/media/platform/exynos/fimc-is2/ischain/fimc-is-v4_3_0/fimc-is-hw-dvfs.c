@@ -736,7 +736,7 @@ int fimc_is_hw_dvfs_init(void *dvfs_data)
 
 	dvfs_ctrl = (struct fimc_is_dvfs_ctrl *)dvfs_data;
 
-	FIMC_BUG(!dvfs_ctrl);
+	BUG_ON(!dvfs_ctrl);
 
 	/* set priority by order */
 	for (i = 0; i < ARRAY_SIZE(static_scenarios); i++)

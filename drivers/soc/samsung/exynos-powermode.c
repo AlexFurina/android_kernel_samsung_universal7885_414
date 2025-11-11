@@ -53,7 +53,7 @@ void exynos_system_idle_exit(int cancel)
 	exynos_wakeup_sys_powerdown(SYS_SICD, cancel);
 }
 
-#define PMU_EINT_WAKEUP_MASK	0x650
+#define PMU_EINT_WAKEUP_MASK	0x648
 static void exynos_set_wakeupmask(enum sys_powerdown mode)
 {
 	int i;
@@ -145,7 +145,7 @@ static int parsing_dt_wakeup_mask(struct device_node *np)
 				return ret;
 		}
 
-		ret = of_property_read_u32(child, "mask-offset",
+		ret = of_property_read_u32(child, "reg-offset",
 				&pm_info->wakeup_mask_offset[mask_index]);
 		if (ret)
 			return ret;

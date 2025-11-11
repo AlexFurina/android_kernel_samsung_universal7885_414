@@ -25,6 +25,7 @@
 #include <linux/irq.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
+#include <linux/power_supply.h>
 
 #define MFD_DEV_NAME "s2mu106"
 
@@ -61,7 +62,7 @@ enum s2mu106_irq_source {
 	CHG_INT2,
 	CHG_INT3,
 #endif
-#if defined(CONFIG_LEDS_S2MU106)
+#if defined(CONFIG_LEDS_S2MU106_FLASH)
 	FLED_INT1,
 	FLED_INT2,
 #endif
@@ -136,7 +137,7 @@ enum s2mu106_irq {
 	S2MU106_CHG3_IRQ_PEdone,
 	S2MU106_CHG3_IRQ_BAT_Contact_CK_Done,
 #endif
-#if defined(CONFIG_LEDS_S2MU106)
+#if defined(CONFIG_LEDS_S2MU106_FLASH)
 	S2MU106_FLED1_IRQ_C2F_Vbyp_ovp_prot,
 	S2MU106_FLED1_IRQ_C2F_Vbyp_OK_Warning,
 	S2MU106_FLED1_IRQ_OPEN_CH3,
@@ -248,6 +249,7 @@ struct s2mu106_dev {
 	int irq_base;
 	int irq_gpio;
 	bool wakeup;
+	bool change_irq_mask;
 	struct mutex irqlock;
 	int irq_masks_cur[S2MU106_IRQ_GROUP_NR];
 	int irq_masks_cache[S2MU106_IRQ_GROUP_NR];
@@ -261,6 +263,24 @@ struct s2mu106_dev {
 
 enum s2mu106_types {
 	TYPE_S2MU106,
+};
+
+enum power_supply_lsi_property {
+	POWER_SUPPLY_LSI_PROP_POWER_ROLE = POWER_SUPPLY_EXT_PROP_MAX,
+	POWER_SUPPLY_LSI_PROP_WATER_CHECK,
+	POWER_SUPPLY_LSI_PROP_DRY_CHECK,
+	POWER_SUPPLY_LSI_PROP_WATER_CHECKDONE,
+	POWER_SUPPLY_LSI_PROP_PM_IRQ_TIME,
+	POWER_SUPPLY_LSI_PROP_USBPD_OPMODE,
+	POWER_SUPPLY_LSI_PROP_USBPD_ATTACHED,
+	POWER_SUPPLY_LSI_PROP_USBPD_SOURCE_ATTACH,
+	POWER_SUPPLY_LSI_PROP_WATER_GET_POWER_ROLE,
+	POWER_SUPPLY_LSI_PROP_GET_CC_STATE,
+	POWER_SUPPLY_LSI_PROP_WATER_STATUS,
+	POWER_SUPPLY_LSI_PROP_PD_PSY,
+	POWER_SUPPLY_LSI_PROP_HICCUP_MODE,
+	POWER_SUPPLY_LSI_PROP_FAC_WATER_CHECK,
+	POWER_SUPPLY_LSI_PROP_SET_TH,
 };
 
 extern int s2mu106_irq_init(struct s2mu106_dev *s2mu106);
@@ -279,4 +299,3 @@ extern int s2mu106_read_word(struct i2c_client *i2c, u8 reg);
 extern int s2mu106_update_reg(struct i2c_client *i2c, u8 reg, u8 val, u8 mask);
 
 #endif /* __LINUX_MFD_S2MU106_PRIV_H */
-

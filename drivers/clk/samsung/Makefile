@@ -14,6 +14,7 @@ obj-$(CONFIG_EXYNOS_AUDSS_CLK_CON) += clk-exynos-audss.o
 ifeq ($(CONFIG_COMPOSITE_CLK_SAMSUNG), y)
 	obj-y				+= composite.o
 	obj-$(CONFIG_SOC_EXYNOS9610)	+= clk-exynos9610.o
+	obj-$(CONFIG_SOC_EXYNOS7885)	+= clk-exynos7885.o
 else
 	obj-$(CONFIG_COMMON_CLK)	+= clk.o clk-pll.o clk-cpu.o
 	obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos5433.o

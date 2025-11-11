@@ -26,6 +26,7 @@
 #include <linux/nmi.h>
 #include <linux/init_task.h>
 #include <linux/ftrace.h>
+#include <linux/sec_debug.h>
 
 #include <asm/cputype.h>
 #include <asm/smp_plat.h>
@@ -91,10 +92,19 @@ void dbg_snapshot_hook_hardlockup_entry(void *v_regs)
 		regs->pc = last_pc;
 
 		/* Then, we expect bug() function works well */
-		pr_emerg("\n--------------------------------------------------------------------------\n"
-			"      Debugging Information for Hardlockup core - CPU(%d), Mask:(0x%x)"
-			"\n--------------------------------------------------------------------------\n\n",
+		pr_emerg("\n--------------------------------------------------------------------------\n");
+		pr_auto(ASL4, "      Debugging Information for Hardlockup core - CPU(%d), Mask:(0x%x)\n",
 			cpu, dss_desc.hardlockup_core_mask);
+		pr_emerg("--------------------------------------------------------------------------\n\n");
+
+#if defined(CONFIG_HARDLOCKUP_DETECTOR_OTHER_CPU)			\
+	&& defined(CONFIG_SEC_DEBUG)
+		update_hardlockup_type(cpu);
+#endif
+
+#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
+		sec_debug_set_extra_info_backtrace_cpu(v_regs, cpu);
+#endif
 	}
 }
 
@@ -276,9 +286,8 @@ static void dbg_snapshot_dump_one_task_info(struct task_struct *tsk, bool is_mai
 			task_cpu(tsk), wchan, pc, (unsigned long)tsk,
 			is_main ? '*' : ' ', tsk->comm, symname);
 
-	if (tsk->state == TASK_RUNNING
-			|| tsk->state == TASK_UNINTERRUPTIBLE
-			|| tsk->mm == NULL) {
+	if (tsk->state == TASK_RUNNING || tsk->state == TASK_UNINTERRUPTIBLE || tsk->state == TASK_KILLABLE) {
+		sec_debug_wtsk_print_info(tsk, true);
 		show_stack(tsk, NULL);
 		pr_info("\n");
 	}

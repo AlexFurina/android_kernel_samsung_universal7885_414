@@ -21,6 +21,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/slab.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
 #include <linux/mutex.h>
@@ -28,12 +29,14 @@
 #include <linux/mfd/samsung/s2mu106.h>
 #include <linux/of_gpio.h>
 
+#define I2C_RETRY_CNT	3
+
 static struct mfd_cell s2mu106_devs[] = {
+#if defined(CONFIG_PM_S2MU106)
+	{ .name = "s2mu106-powermeter", },
+#endif
 #if defined(CONFIG_CHARGER_S2MU106)
 	{ .name = "s2mu106-charger", },
-#endif
-#if defined(CONFIG_BATTERY_S2MU00X)
-	{ .name = "s2mu00x-battery", },
 #endif
 #if defined(CONFIG_LEDS_S2MU106_FLASH)
 	{ .name = "leds-s2mu106", },
@@ -44,16 +47,13 @@ static struct mfd_cell s2mu106_devs[] = {
 #if defined(CONFIG_MUIC_S2MU106)
 	{ .name = "s2mu106-muic", },
 #endif
-#if defined(CONFIG_AFC_S2MU106)
+#if defined(CONFIG_HV_MUIC_S2MU106_AFC)
 	{ .name = "s2mu106-afc", },
 #endif
 #if defined(CONFIG_MST_S2MU106)
 	{ .name = "s2mu106-mst", },
 #endif
-#if defined(CONFIG_PM_S2MU106)
-	{ .name = "s2mu106-powermeter", },
-#endif
-#if defined(CONFIG_INPUT_S2MU106_HAPTIC)
+#if defined(CONFIG_MOTOR_S2MU106)
 	{ .name = "s2mu106-haptic", },
 #endif
 #if defined(CONFIG_REGULATOR_S2MU106)
@@ -64,10 +64,16 @@ static struct mfd_cell s2mu106_devs[] = {
 int s2mu106_read_reg(struct i2c_client *i2c, u8 reg, u8 *dest)
 {
 	struct s2mu106_dev *s2mu106 = i2c_get_clientdata(i2c);
-	int ret;
+	int ret, i;
 
 	mutex_lock(&s2mu106->i2c_lock);
-	ret = i2c_smbus_read_byte_data(i2c, reg);
+	for (i = 0; i < I2C_RETRY_CNT; ++i) {
+		ret = i2c_smbus_read_byte_data(i2c, reg);
+		if (ret >= 0)
+			break;
+		pr_info("%s:%s reg(0x%x), ret(%d), i2c_retry_cnt(%d/%d)\n",
+				MFD_DEV_NAME, __func__, reg, ret, i + 1, I2C_RETRY_CNT);
+	}
 	mutex_unlock(&s2mu106->i2c_lock);
 	if (ret < 0) {
 		pr_err("%s:%s reg(0x%x), ret(%d)\n", MFD_DEV_NAME,
@@ -84,10 +90,16 @@ EXPORT_SYMBOL_GPL(s2mu106_read_reg);
 int s2mu106_bulk_read(struct i2c_client *i2c, u8 reg, int count, u8 *buf)
 {
 	struct s2mu106_dev *s2mu106 = i2c_get_clientdata(i2c);
-	int ret;
+	int ret, i;
 
 	mutex_lock(&s2mu106->i2c_lock);
-	ret = i2c_smbus_read_i2c_block_data(i2c, reg, count, buf);
+	for (i = 0; i < I2C_RETRY_CNT; ++i) {
+		ret = i2c_smbus_read_i2c_block_data(i2c, reg, count, buf);
+		if (ret >= 0)
+			break;
+		pr_info("%s:%s reg(0x%x), ret(%d), i2c_retry_cnt(%d/%d)\n",
+				MFD_DEV_NAME, __func__, reg, ret, i + 1, I2C_RETRY_CNT);
+	}
 	mutex_unlock(&s2mu106->i2c_lock);
 	if (ret < 0)
 		return ret;
@@ -99,10 +111,16 @@ EXPORT_SYMBOL_GPL(s2mu106_bulk_read);
 int s2mu106_read_word(struct i2c_client *i2c, u8 reg)
 {
 	struct s2mu106_dev *s2mu106 = i2c_get_clientdata(i2c);
-	int ret;
+	int ret, i;
 
 	mutex_lock(&s2mu106->i2c_lock);
-	ret = i2c_smbus_read_word_data(i2c, reg);
+	for (i = 0; i < I2C_RETRY_CNT; ++i) {
+		ret = i2c_smbus_read_word_data(i2c, reg);
+		if (ret >= 0)
+			break;
+		pr_info("%s:%s reg(0x%x), ret(%d), i2c_retry_cnt(%d/%d)\n",
+				MFD_DEV_NAME, __func__, reg, ret, i + 1, I2C_RETRY_CNT);
+	}
 	mutex_unlock(&s2mu106->i2c_lock);
 	if (ret < 0)
 		return ret;
@@ -114,10 +132,15 @@ EXPORT_SYMBOL_GPL(s2mu106_read_word);
 int s2mu106_write_reg(struct i2c_client *i2c, u8 reg, u8 value)
 {
 	struct s2mu106_dev *s2mu106 = i2c_get_clientdata(i2c);
-	int ret;
-
+	int ret, i;
 	mutex_lock(&s2mu106->i2c_lock);
-	ret = i2c_smbus_write_byte_data(i2c, reg, value);
+	for (i = 0; i < I2C_RETRY_CNT; ++i) {
+		ret = i2c_smbus_write_byte_data(i2c, reg, value);
+		if (ret >= 0)
+			break;
+		pr_info("%s:%s reg(0x%x), ret(%d), i2c_retry_cnt(%d/%d)\n",
+				MFD_DEV_NAME, __func__, reg, ret, i + 1, I2C_RETRY_CNT);
+	}
 	mutex_unlock(&s2mu106->i2c_lock);
 	if (ret < 0)
 		pr_err("%s:%s reg(0x%x), ret(%d)\n",
@@ -130,10 +153,16 @@ EXPORT_SYMBOL_GPL(s2mu106_write_reg);
 int s2mu106_bulk_write(struct i2c_client *i2c, u8 reg, int count, u8 *buf)
 {
 	struct s2mu106_dev *s2mu106 = i2c_get_clientdata(i2c);
-	int ret;
+	int ret, i;
 
 	mutex_lock(&s2mu106->i2c_lock);
-	ret = i2c_smbus_write_i2c_block_data(i2c, reg, count, buf);
+	for (i = 0; i < I2C_RETRY_CNT; ++i) {
+		ret = i2c_smbus_write_i2c_block_data(i2c, reg, count, buf);
+		if (ret >= 0)
+			break;
+		pr_info("%s:%s reg(0x%x), ret(%d), i2c_retry_cnt(%d/%d)\n",
+				MFD_DEV_NAME, __func__, reg, ret, i + 1, I2C_RETRY_CNT);
+	}
 	mutex_unlock(&s2mu106->i2c_lock);
 	if (ret < 0)
 		return ret;
@@ -145,10 +174,16 @@ EXPORT_SYMBOL_GPL(s2mu106_bulk_write);
 int s2mu106_write_word(struct i2c_client *i2c, u8 reg, u16 value)
 {
 	struct s2mu106_dev *s2mu106 = i2c_get_clientdata(i2c);
-	int ret;
+	int ret, i;
 
 	mutex_lock(&s2mu106->i2c_lock);
-	ret = i2c_smbus_write_word_data(i2c, reg, value);
+	for (i = 0; i < I2C_RETRY_CNT; ++i) {
+		ret = i2c_smbus_write_word_data(i2c, reg, value);
+		if (ret >= 0)
+			break;
+		pr_info("%s:%s reg(0x%x), ret(%d), i2c_retry_cnt(%d/%d)\n",
+				MFD_DEV_NAME, __func__, reg, ret, i + 1, I2C_RETRY_CNT);
+	}
 	mutex_unlock(&s2mu106->i2c_lock);
 	if (ret < 0)
 		return ret;
@@ -159,15 +194,27 @@ EXPORT_SYMBOL_GPL(s2mu106_write_word);
 int s2mu106_update_reg(struct i2c_client *i2c, u8 reg, u8 val, u8 mask)
 {
 	struct s2mu106_dev *s2mu106 = i2c_get_clientdata(i2c);
-	int ret;
+	int ret, i;
 	u8 old_val, new_val;
 
 	mutex_lock(&s2mu106->i2c_lock);
-	ret = i2c_smbus_read_byte_data(i2c, reg);
+	for (i = 0; i < I2C_RETRY_CNT; ++i) {
+		ret = i2c_smbus_read_byte_data(i2c, reg);
+		if (ret >= 0)
+			break;
+		pr_info("%s:%s reg(0x%x), ret(%d), i2c_retry_cnt(%d/%d)\n",
+				MFD_DEV_NAME, __func__, reg, ret, i + 1, I2C_RETRY_CNT);
+	}
 	if (ret >= 0) {
 		old_val = ret & 0xff;
 		new_val = (val & mask) | (old_val & (~mask));
-		ret = i2c_smbus_write_byte_data(i2c, reg, new_val);
+		for (i = 0; i < I2C_RETRY_CNT; ++i) {
+			ret = i2c_smbus_write_byte_data(i2c, reg, new_val);
+			if (ret >= 0)
+				break;
+			pr_info("%s:%s reg(0x%x), ret(%d), i2c_retry_cnt(%d/%d)\n",
+					MFD_DEV_NAME, __func__, reg, ret, i + 1, I2C_RETRY_CNT);
+		}
 	}
 	mutex_unlock(&s2mu106->i2c_lock);
 	return ret;
@@ -266,8 +313,8 @@ static int s2mu106_i2c_probe(struct i2c_client *i2c,
 
 	i2c_set_clientdata(i2c, s2mu106);
 
-	s2mu106_read_reg(s2mu106->i2c, S2MU106_REG_PMICID, &temp);
-	if (temp < 0)
+	ret = s2mu106_read_reg(s2mu106->i2c, S2MU106_REG_PMICID, &temp);
+	if (ret < 0)
 		pr_err("[s2mu106 mfd] %s : i2c read error\n", __func__);
 
 	s2mu106->pmic_ver = temp & S2MU106_REG_PMICID_MASK;

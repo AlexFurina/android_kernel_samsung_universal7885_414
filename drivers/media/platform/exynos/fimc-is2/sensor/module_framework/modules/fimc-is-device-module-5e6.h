@@ -22,4 +22,7 @@ struct fimc_is_module_5e6 {
 	u32		system_clock;
 };
 
+int sensor_5e6_probe(struct i2c_client *client,
+	const struct i2c_device_id *id);
+
 #endif

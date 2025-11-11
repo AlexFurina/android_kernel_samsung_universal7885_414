@@ -30,7 +30,6 @@
 #define	DVFS_SKIP		2 /* matched, but do not anything. skip changing dvfs */
 
 #define KEEP_FRAME_TICK_DEFAULT (5)
-#define FIMC_IS_DVFS_DUAL_TICK (4)
 #define DVFS_SN_STR(__SCENARIO) #__SCENARIO
 #define GET_DVFS_CHK_FUNC(__SCENARIO) check_ ## __SCENARIO
 #define DECLARE_DVFS_CHK_FUNC(__SCENARIO) \
@@ -49,15 +48,9 @@
 #define DECLARE_EXTERN_DVFS_DT(SIZE) \
 	extern struct fimc_is_dvfs_dt_t fimc_is_dvfs_dt_arr[SIZE];
 
-#define SIZE_HD (720 * 480)
 #define SIZE_FHD (1920 * 1080)
 #define SIZE_WHD (2560 * 1440)
 #define SIZE_UHD (3840 * 2160)
-#define SIZE_12MP_FHD_BDS (2688 * 2016) /* based a 4:3 */
-#define SIZE_12MP_QHD_BDS (3072 * 2304)
-#define SIZE_12MP_UHD_BDS (4032 * 3024)
-#define SIZE_8MP_FHD_BDS (2176 * 1632)
-#define SIZE_8MP_QHD_BDS (3264 * 1836)
 
 struct fimc_is_dvfs_dt_t {
 	const char *parse_scenario_nm;	/* string for parsing from DTS */
@@ -92,10 +85,4 @@ int fimc_is_dvfs_sel_dynamic(struct fimc_is_device_ischain *device, struct fimc_
 int fimc_is_dvfs_sel_external(struct fimc_is_device_sensor *device);
 int fimc_is_get_qos(struct fimc_is_core *core, u32 type, u32 scenario_id);
 int fimc_is_set_dvfs(struct fimc_is_core *core, struct fimc_is_device_ischain *device, u32 scenario_id);
-void fimc_is_dual_mode_update(struct fimc_is_device_ischain *device,
-	struct fimc_is_group *group,
-	struct fimc_is_frame *frame);
-void fimc_is_dual_dvfs_update(struct fimc_is_device_ischain *device,
-	struct fimc_is_group *group,
-	struct fimc_is_frame *frame);
 #endif

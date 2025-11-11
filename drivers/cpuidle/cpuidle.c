@@ -22,6 +22,7 @@
 #include <linux/module.h>
 #include <linux/suspend.h>
 #include <linux/tick.h>
+#include <linux/exynos-ucc.h>
 #include <trace/events/power.h>
 
 #include "cpuidle.h"
@@ -161,7 +162,8 @@ static void enter_s2idle_proper(struct cpuidle_driver *drv,
 	 */
 	stop_critical_timings();
 	drv->states[index].enter_s2idle(dev, drv, index);
-	WARN_ON(!irqs_disabled());
+	if (WARN_ON_ONCE(!irqs_disabled()))
+		local_irq_disable();
 	/*
 	 * timekeeping_resume() that will be called by tick_unfreeze() for the
 	 * first CPU executing it calls functions containing RCU read-side
@@ -227,6 +229,8 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 		target_state = &drv->states[index];
 		broadcast = false;
 	}
+
+	index = filter_cstate(dev->cpu, index);
 
 	/* Take note of the planned idle state. */
 	sched_idle_set_state(target_state, index);

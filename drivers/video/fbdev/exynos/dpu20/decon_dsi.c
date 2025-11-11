@@ -36,9 +36,6 @@
 #ifdef CONFIG_EXYNOS_WD_DVFS
 struct task_struct *devfreq_change_task;
 #endif
-#if defined(CONFIG_EXYNOS_DECON_DQE)
-#include "dqe.h"
-#endif
 
 /* DECON irq handler for DSI interface */
 static irqreturn_t decon_irq_handler(int irq, void *dev_data)
@@ -385,7 +382,7 @@ void decon_destroy_vsync_thread(struct decon_device *decon)
 
 #if defined(CONFIG_EXYNOS_READ_ESD_SOLUTION)
 #define ESD_RECOVERY_RETRY_CNT	5
-int decon_handle_recovery(struct decon_device *decon)
+static int decon_handle_esd(struct decon_device *decon)
 {
 	struct dsim_device *dsim;
 	int ret = 0;
@@ -398,8 +395,6 @@ int decon_handle_recovery(struct decon_device *decon)
 		decon_warn("%s invalid param\n", __func__);
 		return -EINVAL;
 	}
-
-	mutex_lock(&decon->rcv_lock);
 
 	decon_bypass_on(decon);
 	dsim = container_of(decon->out_sd[0], struct dsim_device, sd);
@@ -425,7 +420,7 @@ int decon_handle_recovery(struct decon_device *decon)
 #if defined(READ_ESD_SOLUTION_TEST)
 		status = DSIM_ESD_OK;
 #else
-		status = DSIM_ESD_OK;
+		status = call_panel_ops(dsim, read_state, dsim);
 #endif
 		if (status != DSIM_ESD_OK) {
 			decon_err("%s failed to recover subdev(status %d)\n",
@@ -457,14 +452,7 @@ int decon_handle_recovery(struct decon_device *decon)
 	}
 
 	dsim->esd_recovering = false;
-
-	if (!decon_is_bypass(decon))
-		decon_set_bypass(decon, true);
-
 	decon_bypass_off(decon);
-
-	mutex_unlock(&decon->rcv_lock);
-
 	decon_info("%s -\n", __func__);
 
 	return ret;
@@ -478,16 +466,13 @@ static void decon_esd_process(int esd, struct decon_device *decon)
 	case DSIM_ESD_CHECK_ERROR:
 		decon_err("%s, It is not ESD, \
 			but DDI is abnormal state(%d)\n", __func__, esd);
-		ret = decon_handle_recovery(decon);
-		if (ret)
-			decon_err("%s, failed to recover ESD\n", __func__);
 		break;
 	case DSIM_ESD_OK:
 		decon_info("%s, DDI has normal state(%d)\n", __func__, esd);
 		break;
 	case DSIM_ESD_ERROR:
 		decon_err("%s, ESD is detected(%d)\n", __func__, esd);
-		ret = decon_handle_recovery(decon);
+		ret = decon_handle_esd(decon);
 		if (ret)
 			decon_err("%s, failed to recover ESD\n", __func__);
 		break;
@@ -604,11 +589,10 @@ static ssize_t decon_show_psr_info(struct device *dev,
 			len += sprintf(p + len, "%d\n%d\n%d\n%d\n%d\n",
 				mres_info->res_info[i].width,
 				mres_info->res_info[i].height,
-				(res.src_f_w.min * sz_align),
-				(res.src_f_h.min * sz_align),
+				max((res.src_f_w.min * sz_align), lcd_info->update_min_w),
+				max((res.src_f_h.min * sz_align), lcd_info->update_min_h),
 				mres_info->res_info[i].dsc_en);
 	}
-	len += sprintf(p + len, "%d\n", lcd_info->fps);
 	return len;
 }
 static DEVICE_ATTR(psr_info, S_IRUGO, decon_show_psr_info, NULL);
@@ -875,7 +859,7 @@ int decon_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 		break;
 	case 24:
 	case 32:
-		config.format = DECON_PIXEL_FORMAT_ABGR_8888;
+		config.format = DECON_PIXEL_FORMAT_BGRA_8888;
 		break;
 	default:
 		decon_err("%s: Not supported bpp %d\n", __func__,
@@ -983,10 +967,7 @@ int decon_exit_hiber(struct decon_device *decon)
 
 	decon_to_init_param(decon, &p);
 	decon_reg_init(decon->id, decon->dt.out_idx[0], &p);
-#if defined(CONFIG_EXYNOS_DECON_DQE)
-	dqe_restore_context();
-	dqe_reg_start(decon->id, decon->lcd_info);
-#endif
+
 	/*
 	 * After hibernation exit, If panel is partial size, DECON and DSIM
 	 * are also set as same partial size.
@@ -1050,10 +1031,7 @@ int decon_enter_hiber(struct decon_device *decon)
 	decon_hiber_trig_reset(decon);
 
 	kthread_flush_worker(&decon->up.worker);
-#if defined(CONFIG_EXYNOS_DECON_DQE)
-	dqe_save_context();
-	dqe_reg_stop(decon->id);
-#endif
+
 	decon_to_psr_info(decon, &psr);
 	decon_reg_set_int(decon->id, &psr, 0);
 

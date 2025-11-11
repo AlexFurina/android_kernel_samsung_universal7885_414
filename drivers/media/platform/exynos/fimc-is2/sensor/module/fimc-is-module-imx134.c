@@ -63,7 +63,7 @@ static int sensor_imx134_init(struct v4l2_subdev *subdev, u32 val)
 	int ret = 0;
 	struct fimc_is_module_enum *module;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 
@@ -97,7 +97,7 @@ int sensor_imx134_probe(struct i2c_client *client,
 	struct fimc_is_device_sensor *device;
 	struct sensor_open_extended *ext;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {

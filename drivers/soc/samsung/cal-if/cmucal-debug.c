@@ -27,10 +27,10 @@ void print_clk_on_blk(void)
 	size = cmucal_get_list_size(PLL_TYPE);
 	for (i = 0; i < size ; i++) {
 		clk = cmucal_get_node(i | PLL_TYPE);
-		if (!clk || (clk->paddr & 0xFFFF0000) != 0x12100000)
+		if (!clk || (clk->paddr & 0xFFFF0000) != 0x15a80000)
 			continue;
 
-		reg = readl((clk->pll_con0) + dbg_offset);
+		reg = readl((clk->pll_con0-0xE0) + dbg_offset);
 		if (((reg >> 4) & 0x7) != 0x3)
 			printk("name %s : [0x%x] active\n", clk->name, reg);
 		else
@@ -42,7 +42,7 @@ void print_clk_on_blk(void)
 
 	for (i = 0; i < size ; i++) {
 		clk = cmucal_get_node(i | GATE_TYPE);
-		if (!clk || (clk->paddr & 0xFFFF0000) != 0x12100000)
+		if (!clk || (clk->paddr & 0xFFFF0000) != 0x15a80000)
 			continue;
 
 		reg = readl(clk->offset + dbg_offset);

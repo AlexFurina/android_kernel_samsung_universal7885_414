@@ -17,10 +17,6 @@
 /* Shared register with 64 * 32 words */
 #define MAX_MBOX_NUM	64
 
-/* Mailbox interrupt affinity core number */
-/* It should be assigned in little core */
-#define MCU_IPC_AFFINITY_CORE 3
-
 enum mcu_ipc_region {
 	MCU_CP,
 	MCU_GNSS,
@@ -50,7 +46,7 @@ struct mcu_ipc_drv_data {
 	struct mcu_ipc_ipc_handler hd[16];
 	spinlock_t lock;
 	spinlock_t reg_lock;
-	int irq;
+
 };
 
 static struct mcu_ipc_drv_data mcu_dat[MCU_MAX];

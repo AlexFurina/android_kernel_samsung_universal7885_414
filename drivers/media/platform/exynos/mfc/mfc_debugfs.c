@@ -22,6 +22,7 @@
 
 unsigned int debug_level;
 unsigned int debug_ts;
+unsigned int debug_mode_en;
 unsigned int dbg_enable;
 unsigned int nal_q_dump;
 unsigned int nal_q_disable;
@@ -52,7 +53,8 @@ static int __mfc_info_show(struct seq_file *s, void *unused)
 	seq_printf(s, "[HWLOCK] bits: %#lx, dev: %#lx, owned_by_irq = %d, wl_count = %d\n",
 			dev->hwlock.bits, dev->hwlock.dev,
 			dev->hwlock.owned_by_irq, dev->hwlock.wl_count);
-	seq_printf(s, "[DEBUG MODE] %s\n", dev->pdata->debug_mode ? "enabled" : "disabled");
+	seq_printf(s, "[DEBUG MODE] dt: %s sysfs: %s\n", dev->pdata->debug_mode ? "enabled" : "disabled",
+			debug_mode_en ? "enabled" : "disabled");
 	seq_printf(s, "[MMCACHE] %s(%s)\n",
 			dev->has_mmcache ? "supported" : "not supported",
 			dev->mmcache.is_on_status ? "enabled" : "disabled");
@@ -84,8 +86,9 @@ static int __mfc_info_show(struct seq_file *s, void *unused)
 			else
 				codec_name = ctx->dst_fmt->name;
 
-			seq_printf(s, "[CTX:%d] codec: %s(%s), width: %d, height: %d, crop: %d %d %d %d, state: %d\n",
+			seq_printf(s, "[CTX:%d] codec: %s(%s), %s, width: %d, height: %d, crop: %d %d %d %d, state: %d\n",
 				ctx->num, ctx->type == MFCINST_DECODER ? "DEC" : "ENC", codec_name,
+				ctx->is_drm ? "DRM" : "Normal",
 				ctx->img_width, ctx->img_height, ctx->crop_width, ctx->crop_height,
 				ctx->crop_left, ctx->crop_top, ctx->state);
 			seq_printf(s, "        queue(src: %d, dst: %d, src_nal: %d, dst_nal: %d, ref: %d)\n",
@@ -259,6 +262,8 @@ void mfc_init_debugfs(struct mfc_dev *dev)
 			0644, debugfs->root, &debug_level);
 	debugfs->debug_ts = debugfs_create_u32("debug_ts",
 			0644, debugfs->root, &debug_ts);
+	debugfs->debug_mode_en = debugfs_create_u32("debug_mode_en",
+			0644, debugfs->root, &debug_mode_en);
 	debugfs->dbg_enable = debugfs_create_u32("dbg_enable",
 			0644, debugfs->root, &dbg_enable);
 	debugfs->nal_q_dump = debugfs_create_u32("nal_q_dump",

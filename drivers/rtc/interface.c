@@ -57,6 +57,46 @@ int rtc_read_time(struct rtc_device *rtc, struct rtc_time *tm)
 }
 EXPORT_SYMBOL_GPL(rtc_read_time);
 
+#ifdef CONFIG_RTC_HIGH_RES
+static int __rtc_read_hrtime(struct rtc_device *rtc, struct rtc_hrtime *tm)
+{
+	int err;
+	if (!rtc->ops)
+		err = -ENODEV;
+	else if (!rtc->ops->read_hrtime)
+		err = -EINVAL;
+	else {
+		memset(tm, 0, sizeof(struct rtc_hrtime));
+		err = rtc->ops->read_hrtime(rtc->dev.parent, tm);
+		if (err < 0) {
+			dev_dbg(&rtc->dev, "read_hrtime: fail to read: %d\n",
+					err);
+			return err;
+		}
+
+		err = rtc_valid_hrtm(tm);
+		if (err < 0)
+			dev_dbg(&rtc->dev,
+					"read_hrtime: rtc_hrtime isn't valid\n");
+	}
+	return err;
+}
+
+int rtc_read_hrtime(struct rtc_device *rtc, struct rtc_hrtime *tm)
+{
+	int err;
+
+	err = mutex_lock_interruptible(&rtc->ops_lock);
+	if (err)
+		return err;
+
+	err = __rtc_read_hrtime(rtc, tm);
+	mutex_unlock(&rtc->ops_lock);
+
+	return err;
+}
+#endif /* CONFIG_RTC_HIGH_RES*/
+
 int rtc_set_time(struct rtc_device *rtc, struct rtc_time *tm)
 {
 	int err;
@@ -383,46 +423,6 @@ int rtc_set_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm)
 	return err;
 }
 EXPORT_SYMBOL_GPL(rtc_set_alarm);
-
-#ifdef CONFIG_RTC_BOOT_ALARM
-int rtc_read_boot_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm)
-{
-	int err;
-
-	err = mutex_lock_interruptible(&rtc->ops_lock);
-	if (err)
-		return err;
-
-	if (rtc->ops->read_boot_alarm)
-		err = rtc->ops->read_boot_alarm(rtc->dev.parent, alarm);
-	else
-		err = -EINVAL;
-
-	mutex_unlock(&rtc->ops_lock);
-
-	return err;
-}
-EXPORT_SYMBOL_GPL(rtc_read_boot_alarm);
-
-int rtc_set_boot_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm)
-{
-	int err;
-
-	err = mutex_lock_interruptible(&rtc->ops_lock);
-	if (err)
-		return err;
-
-	if (rtc->ops->set_boot_alarm)
-		err = rtc->ops->set_boot_alarm(rtc->dev.parent, alarm);
-	else
-		err = -EINVAL;
-
-	mutex_unlock(&rtc->ops_lock);
-
-	return err;
-}
-EXPORT_SYMBOL_GPL(rtc_set_boot_alarm);
-#endif
 
 /* Called once per device from rtc_device_register */
 int rtc_initialize_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm)

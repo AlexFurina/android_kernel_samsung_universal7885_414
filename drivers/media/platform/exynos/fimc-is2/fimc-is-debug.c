@@ -504,7 +504,7 @@ void fimc_is_dmsg_concate(const char *fmt, ...)
 	vsnprintf(term, sizeof(term), fmt, ap);
 	va_end(ap);
 
-	copy_len = (u32)min((DEBUG_SENTENCE_MAX - fimc_is_debug.dsentence_pos), strlen(term));
+	copy_len = min((DEBUG_SENTENCE_MAX - fimc_is_debug.dsentence_pos), strlen(term));
 	strncpy(fimc_is_debug.dsentence + fimc_is_debug.dsentence_pos, term, copy_len);
 	fimc_is_debug.dsentence_pos += copy_len;
 }
@@ -521,7 +521,7 @@ void fimc_is_print_buffer(char *buffer, size_t len)
 	char sentence[250];
 	char letter;
 
-	FIMC_BUG_VOID(!buffer);
+	BUG_ON(!buffer);
 
 	sentence_i = 0;
 
@@ -627,7 +627,7 @@ int fimc_is_debug_dma_dump(struct fimc_is_queue *queue, u32 index, u32 vid, u32 
 	u32 flags = 0;
 	int total_size = 0;
 	u32 framecount = 0;
-	char *filename;
+	char *filename = NULL;
 	struct vb2_buffer *buf;
 	struct fimc_is_binary bin;
 	buf = queue->vbq->bufs[index];
@@ -657,7 +657,7 @@ int fimc_is_debug_dma_dump(struct fimc_is_queue *queue, u32 index, u32 vid, u32 
 
 			if (!i) {
 				/* first plane for image */
-				flags = O_TRUNC | O_CREAT | O_EXCL | O_WRONLY | O_APPEND;
+				flags = O_TRUNC | O_CREAT | O_WRONLY | O_APPEND;
 				total_size += bin.size;
 			} else {
 				/* after first plane for image */
@@ -690,7 +690,7 @@ int fimc_is_debug_dma_dump(struct fimc_is_queue *queue, u32 index, u32 vid, u32 
 		bin.size = queue->framecfg.size[buf->num_planes - 1];
 
 		/* last plane for meta */
-		flags = O_TRUNC | O_CREAT | O_EXCL | O_WRONLY;
+		flags = O_TRUNC | O_CREAT | O_WRONLY;
 		total_size = bin.size;
 
 		ret = put_filesystem_binary(filename, &bin, flags);
@@ -708,6 +708,9 @@ int fimc_is_debug_dma_dump(struct fimc_is_queue *queue, u32 index, u32 vid, u32 
 		err("invalid type(%d)", type);
 		break;
 	}
+
+	if(filename)
+		__putname(filename);
 
 	return 0;
 }
@@ -730,11 +733,12 @@ static ssize_t isfw_debug_read(struct file *file, char __user *user_buf,
 	size_t read_cnt, read_cnt1, read_cnt2;
 	struct fimc_is_minfo *minfo;
 
-	if (!test_bit(FIMC_IS_DEBUG_OPEN, &fimc_is_debug.state))
-		return 0;
+	while (!test_bit(FIMC_IS_DEBUG_OPEN, &fimc_is_debug.state))
+		msleep(500);
 
 	minfo = fimc_is_debug.minfo;
 
+retry:
 	CALL_BUFOP(minfo->pb_fw, sync_for_cpu, minfo->pb_fw,
 		DEBUG_REGION_OFFSET, DEBUG_REGION_SIZE + 4, DMA_FROM_DEVICE);
 
@@ -790,6 +794,11 @@ static ssize_t isfw_debug_read(struct file *file, char __user *user_buf,
 
 	/* info("[DBG] FW_READ : read_vptr(%zd), write_vptr(%zd) - dump(%zd)\n", read_vptr, write_vptr, read_cnt); */
 
+	if (read_cnt == 0) {
+		msleep(500);
+		goto retry;
+	}
+
 	return read_cnt;
 }
 #else
@@ -802,10 +811,12 @@ static ssize_t isfw_debug_read(struct file *file, char __user *user_buf,
 	size_t read_cnt, read_cnt1, read_cnt2;
 	struct fimc_is_minfo *minfo;
 
-	if (!test_bit(FIMC_IS_DEBUG_OPEN, &fimc_is_debug.state))
-		return 0;
+	while (!test_bit(FIMC_IS_DEBUG_OPEN, &fimc_is_debug.state))
+		msleep(500);
 
 	minfo = fimc_is_debug.minfo;
+
+retry:
 
 	write_vptr = *((int *)(minfo->kvaddr_debug_cnt));
 	read_vptr = fimc_is_debug.read_vptr;
@@ -858,6 +869,11 @@ static ssize_t isfw_debug_read(struct file *file, char __user *user_buf,
 	read_cnt = buf_len - buf_vptr;
 
 	/* info("[DBG] FW_READ : read_vptr(%zd), write_vptr(%zd) - dump(%zd)\n", read_vptr, write_vptr, read_cnt); */
+
+	if (read_cnt == 0) {
+		msleep(500);
+		goto retry;
+	}
 
 	return read_cnt;
 }
@@ -1037,6 +1053,8 @@ int fimc_is_debug_info_dump(struct seq_file *s, struct fimc_is_debug_event *debu
 			} else if (!critical_done) {
 				log_print = log_critical;
 				index_critical++;
+			} else {
+				break;
 			}
 
 			if (latest_normal == index_normal)

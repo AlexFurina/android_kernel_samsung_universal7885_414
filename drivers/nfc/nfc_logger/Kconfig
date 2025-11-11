@@ -1,0 +1,11 @@
+config SEC_NFC_LOGGER
+	bool "NFC logger"
+	default n
+	help
+	  support for saving nfc log.
+	  This option enables device driver support for nfc log.
+	  help for debugging.
+
+	  If unsure, say N.
+
+

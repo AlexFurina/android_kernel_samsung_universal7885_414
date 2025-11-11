@@ -21,21 +21,9 @@ config CSIS_V5_0
 	help
 	  csi version 5.0
 
-config CSIS_V5_1
-	bool "Use CSI H/W v5.1"
-	default n
-	help
-	  csi version 5.1
-
-config CSIS_V5_2
-	bool "Use CSI H/W v5.2"
-	default n
-	help
-	  csi version 5.2
-
 config USE_CSI_DMAOUT_FEATURE
 	bool "Use csi dmaout feature"
-        depends on CSIS_V4_0 || CSIS_V4_1 || CSIS_V5_0 || CSIS_V5_1 || CSIS_V5_2
+        depends on CSIS_V4_0 || CSIS_V4_1 || CSIS_V5_0
 	default n
 	help
 	  csi dmaout feature

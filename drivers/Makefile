@@ -70,11 +70,7 @@ obj-$(CONFIG_CONNECTOR)		+= connector/
 obj-$(CONFIG_FB_I810)           += video/fbdev/i810/
 obj-$(CONFIG_FB_INTEL)          += video/fbdev/intelfb/
 
-ifdef CONFIG_MUIC_S2MU004
-obj-$(CONFIG_USE_MUIC)		+= muic_mu004/
-else
 obj-$(CONFIG_USE_MUIC)		+= muic/
-endif
 obj-$(CONFIG_IFCONN_MANAGER)    += ifconn/
 obj-$(CONFIG_PARPORT)		+= parport/
 obj-$(CONFIG_NVM)		+= lightnvm/
@@ -168,6 +164,9 @@ obj-$(CONFIG_VIRT_DRIVERS)	+= virt/
 obj-$(CONFIG_HYPERV)		+= hv/
 
 obj-$(CONFIG_PM_DEVFREQ)	+= devfreq/
+ifeq ($(CONFIG_BATTERY_SAMSUNG_V2), y)
+  obj-$(CONFIG_BATTERY_SAMSUNG)   += battery_v2/
+endif
 obj-$(CONFIG_EXTCON)		+= extcon/
 obj-$(CONFIG_MEMORY)		+= memory/
 obj-$(CONFIG_IIO)		+= iio/
@@ -191,12 +190,25 @@ obj-$(CONFIG_TEE)		+= tee/
 obj-$(CONFIG_MULTIPLEXER)	+= mux/
 
 obj-$(CONFIG_EXYNOS_BTS)	+= bts/
-
 obj-$(CONFIG_TRUSTONIC_TEE)     += gud/
-
-obj-$(CONFIG_USBPD_CORE)		+= ccic/
+obj-$(CONFIG_SWITCH)     	+= switch/
+# Vibrator
+obj-y                           += vibrator/
 
 obj-$(CONFIG_VISION_SUPPORT)    += vision/
 
-obj-$(CONFIG_USE_CCIC)		+= ccic/
-obj-$(CONFIG_SENSORS_CLASS)     += sensors/
+obj-$(CONFIG_SEC_EXT)           += samsung/
+
+# FIVE TEE driver
+obj-$(CONFIG_FIVE_TEE_DRIVER)	+= security/samsung/five_tee_driver/
+# ICDriver
+obj-$(CONFIG_ICD)		+= security/samsung/icdrv/
+#TZIC
+obj-y  += security/samsung/tzic/
+
+#Sensor
+obj-$(CONFIG_SENSORS)		+= sensors/
+
+# uH
+obj-$(CONFIG_UH)		+= uh/
+

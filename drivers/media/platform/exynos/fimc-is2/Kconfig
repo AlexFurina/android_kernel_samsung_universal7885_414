@@ -6,7 +6,7 @@ config VIDEO_EXYNOS_FIMC_IS2
 	select VIDEOBUF2_DMA_SG
 	default n
 	help
-	  This is a v4l2 driver for exynos FIMC-IS device.
+		This is a v4l2 driver for exynos FIMC-IS device.
 
 source "drivers/media/platform/exynos/fimc-is2/ischain/Kconfig"
 source "drivers/media/platform/exynos/fimc-is2/sensor/Kconfig"

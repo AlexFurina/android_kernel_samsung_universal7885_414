@@ -41,9 +41,6 @@ static void *ion_page_pool_alloc_pages(struct ion_page_pool *pool, bool nozero)
 			perrfn("failed to alloc order-0 page (gfp %pGg)", &gfpmask);
 		return NULL;
 	}
-
-	mm_event_count(MM_KERN_ALLOC, 1 << pool->order);
-
 	return page;
 }
 
@@ -119,7 +116,7 @@ void ion_page_pool_free(struct ion_page_pool *pool, struct page *page)
 		ion_page_pool_free_pages(pool, page);
 }
 
-int ion_page_pool_total(struct ion_page_pool *pool, bool high)
+static int ion_page_pool_total(struct ion_page_pool *pool, bool high)
 {
 	int count = pool->low_count;
 

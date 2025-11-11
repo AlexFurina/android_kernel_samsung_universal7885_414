@@ -141,8 +141,8 @@ static int sensor_virtual_zebu_s_param(struct v4l2_subdev *subdev, struct v4l2_s
 	struct v4l2_fract *tpf;
 	u64 duration;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!param);
+	BUG_ON(!subdev);
+	BUG_ON(!param);
 
 	pr_info("%s\n", __func__);
 

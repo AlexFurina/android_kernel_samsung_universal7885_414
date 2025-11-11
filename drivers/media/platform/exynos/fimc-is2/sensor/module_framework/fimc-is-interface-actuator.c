@@ -27,18 +27,18 @@ int set_actuator_position_table(struct fimc_is_sensor_interface *itf,
 	struct fimc_is_actuator_interface *actuator_itf = NULL;
 	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
 
-	FIMC_BUG(!itf);
-	FIMC_BUG(!position_table);
-	FIMC_BUG(itf->magic != SENSOR_INTERFACE_MAGIC);
+	BUG_ON(!itf);
+	BUG_ON(!position_table);
+	BUG_ON(itf->magic != SENSOR_INTERFACE_MAGIC);
 
 	actuator = get_subdev_actuator(itf);
-	FIMC_BUG(!actuator);
+	BUG_ON(!actuator);
 
 	actuator_itf = &itf->actuator_itf;
-	FIMC_BUG(!actuator_itf);
+	BUG_ON(!actuator_itf);
 
 	sensor_peri = container_of(itf, struct fimc_is_device_sensor_peri, sensor_interface);
-	FIMC_BUG(!sensor_peri);
+	BUG_ON(!sensor_peri);
 
 	if (!test_bit(FIMC_IS_SENSOR_ACTUATOR_AVAILABLE, &sensor_peri->peri_state)) {
 		dbg_actuator("%s: FIMC_IS_SENSOR_ACTUATOR_NOT_AVAILABLE\n", __func__);
@@ -99,17 +99,17 @@ int set_soft_landing_config(struct fimc_is_sensor_interface *itf,
 		goto p_err;
 	}
 
-	FIMC_BUG(!position_table);
-	FIMC_BUG(itf->magic != SENSOR_INTERFACE_MAGIC);
+	BUG_ON(!position_table);
+	BUG_ON(itf->magic != SENSOR_INTERFACE_MAGIC);
 
 	actuator = get_subdev_actuator(itf);
-	FIMC_BUG(!actuator);
+	BUG_ON(!actuator);
 
 	actuator_itf = &itf->actuator_itf;
-	FIMC_BUG(!actuator_itf);
+	BUG_ON(!actuator_itf);
 
 	sensor_peri = container_of(itf, struct fimc_is_device_sensor_peri, sensor_interface);
-	FIMC_BUG(!sensor_peri);
+	BUG_ON(!sensor_peri);
 
 	if (!test_bit(FIMC_IS_SENSOR_ACTUATOR_AVAILABLE, &sensor_peri->peri_state)) {
 		dbg_actuator("%s: FIMC_IS_SENSOR_ACTUATOR_NOT_AVAILABLE\n", __func__);
@@ -174,11 +174,11 @@ int set_position(struct fimc_is_sensor_interface *itf, u32 position)
 	struct fimc_is_actuator_interface *actuator_itf = NULL;
 	struct fimc_is_actuator *actuator = NULL;
 
-	FIMC_BUG(!itf);
-	FIMC_BUG(itf->magic != SENSOR_INTERFACE_MAGIC);
+	BUG_ON(!itf);
+	BUG_ON(itf->magic != SENSOR_INTERFACE_MAGIC);
 
 	sensor_peri = container_of(itf, struct fimc_is_device_sensor_peri, sensor_interface);
-	FIMC_BUG(!sensor_peri);
+	BUG_ON(!sensor_peri);
 
 	if (!test_bit(FIMC_IS_SENSOR_ACTUATOR_AVAILABLE, &sensor_peri->peri_state)) {
 		dbg_actuator("%s: FIMC_IS_SENSOR_ACTUATOR_NOT_AVAILABLE\n", __func__);
@@ -187,19 +187,19 @@ int set_position(struct fimc_is_sensor_interface *itf, u32 position)
 	}
 
 	module = sensor_peri->module;
-	FIMC_BUG(!module);
+	BUG_ON(!module);
 
 	subdev_module = module->subdev;
-	FIMC_BUG(!subdev_module);
+	BUG_ON(!subdev_module);
 
 	device = v4l2_get_subdev_hostdata(subdev_module);
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	actuator_itf = &itf->actuator_itf;
-	FIMC_BUG(!actuator_itf);
+	BUG_ON(!actuator_itf);
 
 	actuator = get_subdev_actuator(itf);
-	FIMC_BUG(!actuator);
+	BUG_ON(!actuator);
 
 	actuator_itf->virtual_pos = position;
 
@@ -283,11 +283,11 @@ int get_cur_frame_position(struct fimc_is_sensor_interface *itf, u32 *position)
 		goto p_err;
 	}
 
-	FIMC_BUG(!position);
-	FIMC_BUG(itf->magic != SENSOR_INTERFACE_MAGIC);
+	BUG_ON(!position);
+	BUG_ON(itf->magic != SENSOR_INTERFACE_MAGIC);
 
 	sensor_peri = container_of(itf, struct fimc_is_device_sensor_peri, sensor_interface);
-	FIMC_BUG(!sensor_peri);
+	BUG_ON(!sensor_peri);
 
 	if (!test_bit(FIMC_IS_SENSOR_ACTUATOR_AVAILABLE, &sensor_peri->peri_state)) {
 		dbg_actuator("%s: FIMC_IS_SENSOR_ACTUATOR_NOT_AVAILABLE\n", __func__);
@@ -296,12 +296,11 @@ int get_cur_frame_position(struct fimc_is_sensor_interface *itf, u32 *position)
 	}
 
 	actuator_itf = &itf->actuator_itf;
-	FIMC_BUG(!actuator_itf);
+	BUG_ON(!actuator_itf);
 
 	cur_frame_cnt = get_frame_count(itf);
 	index = cur_frame_cnt % EXPECT_DM_NUM;
-	FIMC_BUG(!sensor_peri->actuator);
-	*position = sensor_peri->actuator->expecting_lens_udm[index].pos;
+	*position = sensor_peri->cis.expecting_lens_udm[index].pos;
 
 	dbg_actuator("%s: cur_frame(%d), position(%d)\n",
 			__func__, cur_frame_cnt, *position);
@@ -327,11 +326,11 @@ int get_applied_actual_position(struct fimc_is_sensor_interface *itf, u32 *posit
 		goto p_err;
 	}
 
-	FIMC_BUG(!position);
-	FIMC_BUG(itf->magic != SENSOR_INTERFACE_MAGIC);
+	BUG_ON(!position);
+	BUG_ON(itf->magic != SENSOR_INTERFACE_MAGIC);
 
 	sensor_peri = container_of(itf, struct fimc_is_device_sensor_peri, sensor_interface);
-	FIMC_BUG(!sensor_peri);
+	BUG_ON(!sensor_peri);
 
 	if (!test_bit(FIMC_IS_SENSOR_ACTUATOR_AVAILABLE, &sensor_peri->peri_state)) {
 		dbg_actuator("%s: FIMC_IS_SENSOR_ACTUATOR_NOT_AVAILABLE\n", __func__);
@@ -340,7 +339,7 @@ int get_applied_actual_position(struct fimc_is_sensor_interface *itf, u32 *posit
 	}
 
 	actuator_itf = &itf->actuator_itf;
-	FIMC_BUG(!actuator_itf);
+	BUG_ON(!actuator_itf);
 
 	*position = actuator_itf->virtual_pos;
 
@@ -356,12 +355,12 @@ int get_prev_frame_position(struct fimc_is_sensor_interface *itf,
 	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
 	u32 cur_frame_cnt, prev_frame_cnt, index;
 
-	FIMC_BUG(!itf);
-	FIMC_BUG(!position);
-	FIMC_BUG(itf->magic != SENSOR_INTERFACE_MAGIC);
+	BUG_ON(!itf);
+	BUG_ON(!position);
+	BUG_ON(itf->magic != SENSOR_INTERFACE_MAGIC);
 
 	sensor_peri = container_of(itf, struct fimc_is_device_sensor_peri, sensor_interface);
-	FIMC_BUG(!sensor_peri);
+	BUG_ON(!sensor_peri);
 
 	if (!test_bit(FIMC_IS_SENSOR_ACTUATOR_AVAILABLE, &sensor_peri->peri_state)) {
 		dbg_actuator("%s: FIMC_IS_SENSOR_ACTUATOR_NOT_AVAILABLE\n", __func__);
@@ -372,8 +371,7 @@ int get_prev_frame_position(struct fimc_is_sensor_interface *itf,
 	cur_frame_cnt = get_frame_count(itf);
 	prev_frame_cnt = cur_frame_cnt - frame_diff;
 	index = (cur_frame_cnt - frame_diff) % EXPECT_DM_NUM;
-	FIMC_BUG(!sensor_peri->actuator);
-	*position = sensor_peri->actuator->expecting_lens_udm[index].pos;
+	*position = sensor_peri->cis.expecting_lens_udm[index].pos;
 
 	dbg_actuator("%s: cur_frame(%d), prev_frame(%d), prev_position(%d)\n",
 			__func__, cur_frame_cnt, prev_frame_cnt, *position);
@@ -388,10 +386,10 @@ int set_af_window_position(struct fimc_is_sensor_interface *itf, u32 left_x, u32
 	int ret = 0;
 	struct fimc_is_device_sensor_peri *sensor_peri = NULL;
 
-	FIMC_BUG(!itf);
+	BUG_ON(!itf);
 
 	sensor_peri = container_of(itf, struct fimc_is_device_sensor_peri, sensor_interface);
-	FIMC_BUG(!sensor_peri);
+	BUG_ON(!sensor_peri);
 
 	sensor_peri->actuator->left_x = left_x;
 	sensor_peri->actuator->left_y = left_y;
@@ -413,11 +411,11 @@ int get_status(struct fimc_is_sensor_interface *itf, u32 *status)
 		goto p_err;
 	}
 
-	FIMC_BUG(!status);
-	FIMC_BUG(itf->magic != SENSOR_INTERFACE_MAGIC);
+	BUG_ON(!status);
+	BUG_ON(itf->magic != SENSOR_INTERFACE_MAGIC);
 
 	sensor_peri = container_of(itf, struct fimc_is_device_sensor_peri, sensor_interface);
-	FIMC_BUG(!sensor_peri);
+	BUG_ON(!sensor_peri);
 
 	if (!test_bit(FIMC_IS_SENSOR_ACTUATOR_AVAILABLE, &sensor_peri->peri_state)) {
 		dbg_actuator("%s: FIMC_IS_SENSOR_ACTUATOR_NOT_AVAILABLE\n", __func__);
@@ -431,23 +429,6 @@ int get_status(struct fimc_is_sensor_interface *itf, u32 *status)
 		ret = -EINVAL;
 		goto p_err;
 	}
-
-	FIMC_BUG(!sensor_peri->actuator);
-
-	if (sensor_peri->actuator->actual_pos_support) {
-		u32 act_pos, index;
-
-		ret = sensor_get_ctrl(itf, V4L2_CID_ACTUATOR_GET_ACTUAL_POSITION, &act_pos);
-		if (ret < 0) {
-			err("Actuator get status fail. ret(%d)", ret);
-			ret = -EINVAL;
-			goto p_err;
-		}
-
-		index = get_frame_count(itf) % EXPECT_DM_NUM;
-		sensor_peri->actuator->expecting_actual_pos[index] = act_pos;
-	}
-
 p_err:
 	return ret;
 }

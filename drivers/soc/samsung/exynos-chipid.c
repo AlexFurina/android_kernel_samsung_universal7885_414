@@ -22,21 +22,6 @@
 struct exynos_chipid_info exynos_soc_info;
 EXPORT_SYMBOL(exynos_soc_info);
 
-static long board_rev;
-
-static int __init get_revision(char *str)
-{
-	int res = 0;
-	res  = kstrtol(str, 16, &board_rev);
-	if (res)
-		pr_info("%s: Get Board Revision fail!!\n", __func__);
-	else
-		pr_info("Board Revision = 0x%x\n", board_rev);
-	return 0;
-}
-
-early_param("revision", get_revision);
-
 static const char * __init product_id_to_name(unsigned int product_id)
 {
 	const char *soc_name;
@@ -87,6 +72,9 @@ static const char * __init product_id_to_name(unsigned int product_id)
 		break;
 	case EXYNOS9610_SOC_ID:
 		soc_name = "EXYNOS9610";
+		break;
+	case EXYNOS7885_SOC_ID:
+		soc_name = "EXYNOS7885";
 		break;
 	default:
 		soc_name = "UNKNOWN";
@@ -193,7 +181,6 @@ void __init exynos_chipid_early_init(void)
 {
 	struct device_node *np;
 	const struct of_device_id *match;
-	void __iomem *reg;
 
 	if (exynos_soc_info.reg)
 		return;
@@ -206,12 +193,6 @@ void __init exynos_chipid_early_init(void)
 	exynos_soc_info.reg = of_iomap(np, 0);
 	if (!exynos_soc_info.reg)
 		panic("%s: failed to map registers\n", __func__);
-
-	reg = of_iomap(np, 1);
-	if (!reg)
-		pr_err("%s: can't get base of memsize\n", __func__);
-	else
-		exynos_soc_info.memsize = __raw_readq(reg);
 
 	exynos_chipid_get_chipid_info();
 }
@@ -282,32 +263,32 @@ static struct bus_type chipid_subsys = {
 	.dev_name = "chip-id",
 };
 
-static ssize_t chipid_product_id_show(struct device *dev,
-			         struct device_attribute *attr, char *buf)
+static ssize_t chipid_product_id_show(struct kobject *kobj,
+			         struct kobj_attribute *attr, char *buf)
 {
 	return snprintf(buf, 10, "%08X\n", exynos_soc_info.product_id);
 }
 
-static ssize_t chipid_unique_id_show(struct device *dev,
-			         struct device_attribute *attr, char *buf)
+static ssize_t chipid_unique_id_show(struct kobject *kobj,
+			         struct kobj_attribute *attr, char *buf)
 {
 	return snprintf(buf, 20, "%010LX\n", exynos_soc_info.unique_id);
 }
 
-static ssize_t chipid_lot_id_show(struct device *dev,
-			         struct device_attribute *attr, char *buf)
+static ssize_t chipid_lot_id_show(struct kobject *kobj,
+			         struct kobj_attribute *attr, char *buf)
 {
 	return snprintf(buf, 14, "%08X\n", exynos_soc_info.lot_id);
 }
 
-static ssize_t chipid_revision_show(struct device *dev,
-			         struct device_attribute *attr, char *buf)
+static ssize_t chipid_revision_show(struct kobject *kobj,
+			         struct kobj_attribute *attr, char *buf)
 {
 	return snprintf(buf, 14, "%08X\n", exynos_soc_info.revision);
 }
 
-static ssize_t chipid_evt_ver_show(struct device *dev,
-			         struct device_attribute *attr, char *buf)
+static ssize_t chipid_evt_ver_show(struct kobject *kobj,
+			         struct kobj_attribute *attr, char *buf)
 {
 	if (exynos_soc_info.revision == 0)
 		return snprintf(buf, 14, "EVT0\n");
@@ -317,38 +298,20 @@ static ssize_t chipid_evt_ver_show(struct device *dev,
 				exynos_soc_info.sub_rev);
 }
 
-static ssize_t chipid_memsize_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	return snprintf(buf, 20, "%llu\n", exynos_soc_info.memsize);
-}
-
-static ssize_t chipid_board_id_show(struct device *dev,
-			   struct device_attribute *attr, char *buf)
-{
-	return snprintf(buf, 14, "%ld", board_rev);
-}
-
-static struct device_attribute chipid_product_id_attr =
+static struct kobj_attribute chipid_product_id_attr =
         __ATTR(product_id, 0644, chipid_product_id_show, NULL);
 
-static struct device_attribute chipid_unique_id_attr =
+static struct kobj_attribute chipid_unique_id_attr =
         __ATTR(unique_id, 0644, chipid_unique_id_show, NULL);
 
-static struct device_attribute chipid_lot_id_attr =
+static struct kobj_attribute chipid_lot_id_attr =
         __ATTR(lot_id, 0644, chipid_lot_id_show, NULL);
 
-static struct device_attribute chipid_revision_attr =
+static struct kobj_attribute chipid_revision_attr =
         __ATTR(revision, 0644, chipid_revision_show, NULL);
 
-static struct device_attribute chipid_evt_ver_attr =
+static struct kobj_attribute chipid_evt_ver_attr =
         __ATTR(evt_ver, 0644, chipid_evt_ver_show, NULL);
-
-static struct device_attribute chipid_memsize_attr =
-	__ATTR(memsize, 0440, chipid_memsize_show, NULL);
-
-static struct device_attribute chipid_board_id_attr =
-	__ATTR(board_id, 0644, chipid_board_id_show, NULL);
 
 static struct attribute *chipid_sysfs_attrs[] = {
 	&chipid_product_id_attr.attr,
@@ -356,8 +319,6 @@ static struct attribute *chipid_sysfs_attrs[] = {
 	&chipid_lot_id_attr.attr,
 	&chipid_revision_attr.attr,
 	&chipid_evt_ver_attr.attr,
-	&chipid_memsize_attr.attr,
-	&chipid_board_id_attr.attr,
 	NULL,
 };
 

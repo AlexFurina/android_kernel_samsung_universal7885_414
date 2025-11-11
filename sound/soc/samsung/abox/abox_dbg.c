@@ -16,11 +16,13 @@
 #include <linux/iommu.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/pm_runtime.h>
-#include <linux/sched/clock.h>
 #include <linux/mm_types.h>
 #include <asm/cacheflush.h>
+#include <linux/sched/clock.h>
 #include "abox_dbg.h"
 #include "abox_gic.h"
+
+#define ABOX_DBG_DUMP_LIMIT_NS		(5 * NSEC_PER_SEC)
 
 static struct dentry *abox_dbg_root_dir __read_mostly;
 
@@ -34,8 +36,8 @@ struct dentry *abox_dbg_get_root_dir(void)
 	return abox_dbg_root_dir;
 }
 
-void abox_dbg_print_gpr_from_addr(struct device *dev, struct abox_data *data,
-		unsigned int *addr)
+void abox_dbg_print_gpr_from_addr(struct device *dev,
+		struct abox_data *data, unsigned int *addr)
 {
 	int i;
 	char version[4];
@@ -63,19 +65,19 @@ void abox_dbg_print_gpr(struct device *dev, struct abox_data *data)
 	dev_info(dev, "A-Box CPU register dump (%c%c%c%c)\n",
 			version[3], version[2], version[1], version[0]);
 	dev_info(dev, "----------------------------------------\n");
-	for (i = 0; i <= 14; i++) {
+	for (i = 0; i <= 14; i++)
 		dev_info(dev, "CA7_R%02d        : %08x\n", i,
-				readl(data->sfr_base + ABOX_CPU_R(i)));
-	}
+				readl(data->sfr_base + ABOX_CA7_R(i)));
 	dev_info(dev, "CA7_PC         : %08x\n",
-			readl(data->sfr_base + ABOX_CPU_PC));
+			readl(data->sfr_base + ABOX_CA7_PC));
 	dev_info(dev, "CA7_L2C_STATUS : %08x\n",
-			readl(data->sfr_base + ABOX_CPU_L2C_STATUS));
+			readl(data->sfr_base + ABOX_CA7_L2C_STATUS));
 	dev_info(dev, "========================================\n");
 }
 
 struct abox_dbg_dump {
 	char sram[SZ_512K];
+	char iva[IVA_FIRMWARE_SIZE];
 	char dram[DRAM_FIRMWARE_SIZE];
 	u32 sfr[SZ_64K / sizeof(u32)];
 	u32 sfr_gic_gicd[SZ_4K / sizeof(u32)];
@@ -86,6 +88,7 @@ struct abox_dbg_dump {
 
 struct abox_dbg_dump_min {
 	char sram[SZ_512K];
+	char iva[IVA_FIRMWARE_SIZE];
 	void *dram;
 	struct page **pages;
 	u32 sfr[SZ_64K / sizeof(u32)];
@@ -99,22 +102,43 @@ static struct abox_dbg_dump (*p_abox_dbg_dump)[ABOX_DBG_DUMP_COUNT];
 static struct abox_dbg_dump_min (*p_abox_dbg_dump_min)[ABOX_DBG_DUMP_COUNT];
 static struct reserved_mem *abox_rmem;
 
+static void *abox_rmem_vmap(struct reserved_mem *rmem)
+{
+	phys_addr_t phys = rmem->base;
+	size_t size = rmem->size;
+	unsigned int num_pages = DIV_ROUND_UP(size, PAGE_SIZE);
+	pgprot_t prot = pgprot_writecombine(PAGE_KERNEL);
+	struct page **pages, **page;
+	void *vaddr = NULL;
+
+	pages = kcalloc(num_pages, sizeof(pages[0]), GFP_KERNEL);
+	if (!pages) {
+		pr_err("%s: malloc failed\n", __func__);
+		goto out;
+	}
+
+	for (page = pages; (page - pages < num_pages); page++) {
+		*page = phys_to_page(phys);
+		phys += PAGE_SIZE;
+	}
+
+	vaddr = vmap(pages, num_pages, VM_MAP, prot);
+	kfree(pages);
+out:
+	return vaddr;
+}
+
 static int __init abox_rmem_setup(struct reserved_mem *rmem)
 {
 	pr_info("%s: base=%pa, size=%pa\n", __func__, &rmem->base, &rmem->size);
-
 	abox_rmem = rmem;
-	if (sizeof(*p_abox_dbg_dump) <= abox_rmem->size)
-		p_abox_dbg_dump = phys_to_virt(abox_rmem->base);
-	else if (sizeof(*p_abox_dbg_dump_min) <= abox_rmem->size)
-		p_abox_dbg_dump_min = phys_to_virt(abox_rmem->base);
-
 	return 0;
 }
 
 RESERVEDMEM_OF_DECLARE(abox_rmem, "exynos,abox_rmem", abox_rmem_setup);
 
-static void *abox_dbg_alloc_mem_atomic(struct device *dev, struct abox_dbg_dump_min *p_dump)
+static void *abox_dbg_alloc_mem_atomic(struct device *dev,
+		struct abox_dbg_dump_min *p_dump)
 {
 	int i, j;
 	int npages = DRAM_FIRMWARE_SIZE / PAGE_SIZE;
@@ -151,6 +175,8 @@ void abox_dbg_dump_gpr_from_addr(struct device *dev, unsigned int *addr,
 		enum abox_dbg_dump_src src, const char *reason)
 {
 	int i;
+	static unsigned long long called[ABOX_DBG_DUMP_COUNT];
+	unsigned long long time = sched_clock();
 
 	dev_dbg(dev, "%s\n", __func__);
 
@@ -159,10 +185,17 @@ void abox_dbg_dump_gpr_from_addr(struct device *dev, unsigned int *addr,
 		return;
 	}
 
+	if (called[src] && time - called[src] < ABOX_DBG_DUMP_LIMIT_NS) {
+		dev_dbg_ratelimited(dev, "%s(%d): skipped\n", __func__, src);
+		called[src] = time;
+		return;
+	}
+	called[src] = time;
+
 	if (p_abox_dbg_dump) {
 		struct abox_dbg_dump *p_dump = &(*p_abox_dbg_dump)[src];
 
-		p_dump->time = sched_clock();
+		p_dump->time = time;
 		strncpy(p_dump->reason, reason, sizeof(p_dump->reason) - 1);
 		for (i = 0; i <= 14; i++)
 			p_dump->gpr[i] = *addr++;
@@ -170,7 +203,7 @@ void abox_dbg_dump_gpr_from_addr(struct device *dev, unsigned int *addr,
 	} else if (p_abox_dbg_dump_min) {
 		struct abox_dbg_dump_min *p_dump = &(*p_abox_dbg_dump_min)[src];
 
-		p_dump->time = sched_clock();
+		p_dump->time = time;
 		strncpy(p_dump->reason, reason, sizeof(p_dump->reason) - 1);
 		for (i = 0; i <= 14; i++)
 			p_dump->gpr[i] = *addr++;
@@ -182,6 +215,8 @@ void abox_dbg_dump_gpr(struct device *dev, struct abox_data *data,
 		enum abox_dbg_dump_src src, const char *reason)
 {
 	int i;
+	static unsigned long long called[ABOX_DBG_DUMP_COUNT];
+	unsigned long long time = sched_clock();
 
 	dev_dbg(dev, "%s\n", __func__);
 
@@ -190,30 +225,39 @@ void abox_dbg_dump_gpr(struct device *dev, struct abox_data *data,
 		return;
 	}
 
+	if (called[src] && time - called[src] < ABOX_DBG_DUMP_LIMIT_NS) {
+		dev_dbg_ratelimited(dev, "%s(%d): skipped\n", __func__, src);
+		called[src] = time;
+		return;
+	}
+	called[src] = time;
+
 	if (p_abox_dbg_dump) {
 		struct abox_dbg_dump *p_dump = &(*p_abox_dbg_dump)[src];
 
-		p_dump->time = sched_clock();
+		p_dump->time = time;
 		strncpy(p_dump->reason, reason, sizeof(p_dump->reason) - 1);
 		for (i = 0; i <= 14; i++)
-			p_dump->gpr[i] = readl(data->sfr_base + ABOX_CPU_R(i));
-		p_dump->gpr[i++] = readl(data->sfr_base + ABOX_CPU_PC);
-		p_dump->gpr[i++] = readl(data->sfr_base + ABOX_CPU_L2C_STATUS);
+			p_dump->gpr[i] = readl(data->sfr_base + ABOX_CA7_R(i));
+		p_dump->gpr[i++] = readl(data->sfr_base + ABOX_CA7_PC);
+		p_dump->gpr[i++] = readl(data->sfr_base + ABOX_CA7_L2C_STATUS);
 	} else if (p_abox_dbg_dump_min) {
 		struct abox_dbg_dump_min *p_dump = &(*p_abox_dbg_dump_min)[src];
 
-		p_dump->time = sched_clock();
+		p_dump->time = time;
 		strncpy(p_dump->reason, reason, sizeof(p_dump->reason) - 1);
 		for (i = 0; i <= 14; i++)
-			p_dump->gpr[i] = readl(data->sfr_base + ABOX_CPU_R(i));
-		p_dump->gpr[i++] = readl(data->sfr_base + ABOX_CPU_PC);
-		p_dump->gpr[i++] = readl(data->sfr_base + ABOX_CPU_L2C_STATUS);
+			p_dump->gpr[i] = readl(data->sfr_base + ABOX_CA7_R(i));
+		p_dump->gpr[i++] = readl(data->sfr_base + ABOX_CA7_PC);
+		p_dump->gpr[i++] = readl(data->sfr_base + ABOX_CA7_L2C_STATUS);
 	}
 }
 
 void abox_dbg_dump_mem(struct device *dev, struct abox_data *data,
 		enum abox_dbg_dump_src src, const char *reason)
 {
+	static unsigned long long called[ABOX_DBG_DUMP_COUNT];
+	unsigned long long time = sched_clock();
 	struct abox_gic_data *gic_data = dev_get_drvdata(data->dev_gic);
 
 	dev_dbg(dev, "%s\n", __func__);
@@ -223,10 +267,17 @@ void abox_dbg_dump_mem(struct device *dev, struct abox_data *data,
 		return;
 	}
 
+	if (called[src] && time - called[src] < ABOX_DBG_DUMP_LIMIT_NS) {
+		dev_dbg_ratelimited(dev, "%s(%d): skipped\n", __func__, src);
+		called[src] = time;
+		return;
+	}
+	called[src] = time;
+
 	if (p_abox_dbg_dump) {
 		struct abox_dbg_dump *p_dump = &(*p_abox_dbg_dump)[src];
 
-		p_dump->time = sched_clock();
+		p_dump->time = time;
 		strncpy(p_dump->reason, reason, sizeof(p_dump->reason) - 1);
 		memcpy_fromio(p_dump->sram, data->sram_base, data->sram_size);
 		memcpy(p_dump->dram, data->dram_base, sizeof(p_dump->dram));
@@ -235,7 +286,8 @@ void abox_dbg_dump_mem(struct device *dev, struct abox_data *data,
 				sizeof(p_dump->sfr_gic_gicd));
 	} else if (p_abox_dbg_dump_min) {
 		struct abox_dbg_dump_min *p_dump = &(*p_abox_dbg_dump_min)[src];
-		p_dump->time = sched_clock();
+
+		p_dump->time = time;
 		strncpy(p_dump->reason, reason, sizeof(p_dump->reason) - 1);
 		memcpy_fromio(p_dump->sram, data->sram_base, data->sram_size);
 		memcpy_fromio(p_dump->sfr, data->sfr_base, sizeof(p_dump->sfr));
@@ -245,7 +297,8 @@ void abox_dbg_dump_mem(struct device *dev, struct abox_data *data,
 			p_dump->dram = abox_dbg_alloc_mem_atomic(dev, p_dump);
 
 		if (!IS_ERR_OR_NULL(p_dump->dram)) {
-			memcpy(p_dump->dram, data->dram_base, DRAM_FIRMWARE_SIZE);
+			memcpy(p_dump->dram, data->dram_base,
+					DRAM_FIRMWARE_SIZE);
 			flush_cache_all();
 		} else {
 			dev_info(dev, "Failed to save ABOX dram\n");
@@ -260,44 +313,6 @@ void abox_dbg_dump_gpr_mem(struct device *dev, struct abox_data *data,
 	abox_dbg_dump_mem(dev, data, src, reason);
 }
 
-struct abox_dbg_dump_simple {
-	char sram[SZ_512K];
-	u32 sfr[SZ_64K / sizeof(u32)];
-	u32 sfr_gic_gicd[SZ_4K / sizeof(u32)];
-	unsigned int gpr[17];
-	long long time;
-	char reason[SZ_32];
-};
-
-static struct abox_dbg_dump_simple abox_dump_simple;
-
-void abox_dbg_dump_simple(struct device *dev, struct abox_data *data,
-		const char *reason)
-{
-	struct abox_gic_data *gic_data = dev_get_drvdata(data->dev_gic);
-	int i;
-
-	dev_info(dev, "%s\n", __func__);
-
-	if (!abox_is_on()) {
-		dev_info(dev, "%s is skipped due to no power\n", __func__);
-		return;
-	}
-
-	abox_dump_simple.time = sched_clock();
-	strncpy(abox_dump_simple.reason, reason,
-			sizeof(abox_dump_simple.reason) - 1);
-	for (i = 0; i <= 14; i++)
-		abox_dump_simple.gpr[i] = readl(data->sfr_base + ABOX_CPU_R(i));
-	abox_dump_simple.gpr[i++] = readl(data->sfr_base + ABOX_CPU_PC);
-	abox_dump_simple.gpr[i++] = readl(data->sfr_base + ABOX_CPU_L2C_STATUS);
-	memcpy_fromio(abox_dump_simple.sram, data->sram_base, data->sram_size);
-	memcpy_fromio(abox_dump_simple.sfr, data->sfr_base,
-			sizeof(abox_dump_simple.sfr));
-	memcpy_fromio(abox_dump_simple.sfr_gic_gicd, gic_data->gicd_base,
-			sizeof(abox_dump_simple.sfr_gic_gicd));
-}
-
 static atomic_t abox_error_count = ATOMIC_INIT(0);
 
 void abox_dbg_report_status(struct device *dev, bool ok)
@@ -308,9 +323,9 @@ void abox_dbg_report_status(struct device *dev, bool ok)
 	dev_info(dev, "%s\n", __func__);
 
 	if (ok)
-		atomic_set(&abox_error_count, 0);
-	else
 		atomic_inc(&abox_error_count);
+	else
+		atomic_set(&abox_error_count, 0);
 
 	snprintf(env, sizeof(env), "ERR_CNT=%d",
 			atomic_read(&abox_error_count));
@@ -331,17 +346,24 @@ static ssize_t calliope_sram_read(struct file *file, struct kobject *kobj,
 		loff_t off, size_t size)
 {
 	struct device *dev = kobj_to_dev(kobj);
-	struct device *dev_abox = dev->parent;
 
 	dev_dbg(dev, "%s(%lld, %zu)\n", __func__, off, size);
 
-	if (pm_runtime_get_if_in_use(dev_abox) > 0) {
-		memcpy_fromio(buf, battr->private + off, size);
-		pm_runtime_put(dev_abox);
-	} else {
-		memset(buf, 0x0, size);
-	}
+	memcpy_fromio(buf, battr->private + off, size);
+	return size;
+}
 
+static ssize_t calliope_iva_read(struct file *file, struct kobject *kobj,
+		struct bin_attribute *battr, char *buf,
+		loff_t off, size_t size)
+{
+	struct device *dev = kobj_to_dev(kobj);
+
+	dev_dbg(dev, "%s(%lld, %zu)\n", __func__, off, size);
+
+	if (!battr->private)
+		return -EIO;
+	memcpy(buf, battr->private + off, size);
 	return size;
 }
 
@@ -359,9 +381,11 @@ static ssize_t calliope_dram_read(struct file *file, struct kobject *kobj,
 
 /* size will be updated later */
 static BIN_ATTR_RO(calliope_sram, 0);
+static BIN_ATTR_RO(calliope_iva, IVA_FIRMWARE_SIZE);
 static BIN_ATTR_RO(calliope_dram, DRAM_FIRMWARE_SIZE);
 static struct bin_attribute *calliope_bin_attrs[] = {
 	&bin_attr_calliope_sram,
+	&bin_attr_calliope_iva,
 	&bin_attr_calliope_dram,
 };
 
@@ -386,12 +410,12 @@ static ssize_t gpr_show(struct device *dev,
 	pbuf += sprintf(pbuf, "----------------------------------------\n");
 	for (i = 0; i <= 14; i++) {
 		pbuf += sprintf(pbuf, "CA7_R%02d        : %08x\n", i,
-				readl(data->sfr_base + ABOX_CPU_R(i)));
+				readl(data->sfr_base + ABOX_CA7_R(i)));
 	}
 	pbuf += sprintf(pbuf, "CA7_PC         : %08x\n",
-			readl(data->sfr_base + ABOX_CPU_PC));
+			readl(data->sfr_base + ABOX_CA7_PC));
 	pbuf += sprintf(pbuf, "CA7_L2C_STATUS : %08x\n",
-			readl(data->sfr_base + ABOX_CPU_L2C_STATUS));
+			readl(data->sfr_base + ABOX_CA7_L2C_STATUS));
 	pbuf += sprintf(pbuf, "========================================\n");
 
 	return pbuf - buf;
@@ -408,20 +432,25 @@ static int samsung_abox_debug_probe(struct platform_device *pdev)
 
 	dev_dbg(dev, "%s\n", __func__);
 
-	if (abox_rmem == NULL)
-		return -ENOMEM;
+	if (abox_rmem) {
+		if (sizeof(*p_abox_dbg_dump) <= abox_rmem->size) {
+			p_abox_dbg_dump = abox_rmem_vmap(abox_rmem);
+			data->dump_base = p_abox_dbg_dump;
+		} else if (sizeof(*p_abox_dbg_dump_min) <= abox_rmem->size) {
+			p_abox_dbg_dump_min = abox_rmem_vmap(abox_rmem);
+			data->dump_base =  p_abox_dbg_dump_min;
+		}
 
-	dev_info(dev, "%s(%pa) is mapped on %p with size of %pa\n",
-			"dump buffer", &abox_rmem->base,
-			phys_to_virt(abox_rmem->base), &abox_rmem->size);
-	iommu_map(data->iommu_domain, IOVA_DUMP_BUFFER, abox_rmem->base,
-			abox_rmem->size, 0);
-	data->dump_base = phys_to_virt(abox_rmem->base);
-	data->dump_base_phys = abox_rmem->base;
-	memset(data->dump_base, 0x0, abox_rmem->size);
+		data->dump_base_phys = abox_rmem->base;
+		iommu_map(data->iommu_domain, IOVA_DUMP_BUFFER, abox_rmem->base,
+				abox_rmem->size, 0);
+		memset(data->dump_base, 0x0, abox_rmem->size);
+	}
+
 	ret = device_create_file(dev, &dev_attr_gpr);
 	bin_attr_calliope_sram.size = data->sram_size;
 	bin_attr_calliope_sram.private = data->sram_base;
+	bin_attr_calliope_iva.private = data->iva_base;
 	bin_attr_calliope_dram.private = data->dram_base;
 	for (i = 0; i < ARRAY_SIZE(calliope_bin_attrs); i++) {
 		struct bin_attribute *battr = calliope_bin_attrs[i];

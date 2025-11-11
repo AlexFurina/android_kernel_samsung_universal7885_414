@@ -11,9 +11,6 @@
  */
 
 #include <linux/slab.h>
-#ifdef CONFIG_SCHED_EHMP
-#include <linux/ehmp.h>
-#endif
 #include "fimc-is-core.h"
 #include "fimc-is-dvfs.h"
 #include "fimc-is-hw-dvfs.h"
@@ -21,17 +18,13 @@
 
 #ifdef CONFIG_PM_DEVFREQ
 
-#if defined(QOS_INTCAM)
+#ifdef CONFIG_SOC_EXYNOS8895
 extern struct pm_qos_request exynos_isp_qos_int_cam;
 #endif
 extern struct pm_qos_request exynos_isp_qos_int;
 extern struct pm_qos_request exynos_isp_qos_mem;
 extern struct pm_qos_request exynos_isp_qos_cam;
 extern struct pm_qos_request exynos_isp_qos_hpg;
-
-#ifdef CONFIG_SCHED_EHMP
-extern struct gb_qos_request gb_req;
-#endif
 
 static inline int fimc_is_get_start_sensor_cnt(struct fimc_is_core *core)
 {
@@ -44,22 +37,6 @@ static inline int fimc_is_get_start_sensor_cnt(struct fimc_is_core *core)
 	return sensor_cnt;
 }
 
-#ifdef BDS_DVFS
-static int fimc_is_get_bds_size(struct fimc_is_device_ischain *device)
-{
-	int resol = 0;
-	struct fimc_is_group *group;
-
-	group = &device->group_3aa;
-
-	if (!test_bit(FIMC_IS_GROUP_INIT, &group->state))
-		return resol;
-
-	resol = device->txp.output.width * device->txp.output.height;
-
-	return resol;
-}
-#else
 static int fimc_is_get_target_resol(struct fimc_is_device_ischain *device)
 {
 	int resol = 0;
@@ -80,18 +57,17 @@ static int fimc_is_get_target_resol(struct fimc_is_device_ischain *device)
 #endif
 	return resol;
 }
-#endif
 
 int fimc_is_dvfs_init(struct fimc_is_resourcemgr *resourcemgr)
 {
 	int ret = 0;
 	struct fimc_is_dvfs_ctrl *dvfs_ctrl;
 
-	FIMC_BUG(!resourcemgr);
+	BUG_ON(!resourcemgr);
 
 	dvfs_ctrl = &resourcemgr->dvfs_ctrl;
 
-#if defined(QOS_INTCAM)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	dvfs_ctrl->cur_int_cam_qos = 0;
 #endif
 	dvfs_ctrl->cur_int_qos = 0;
@@ -140,14 +116,13 @@ int fimc_is_dvfs_sel_table(struct fimc_is_resourcemgr *resourcemgr)
 	struct fimc_is_dvfs_ctrl *dvfs_ctrl;
 	u32 dvfs_table_idx = 0;
 
-	FIMC_BUG(!resourcemgr);
+	BUG_ON(!resourcemgr);
 
 	dvfs_ctrl = &resourcemgr->dvfs_ctrl;
 
 	if (test_bit(FIMC_IS_DVFS_SEL_TABLE, &dvfs_ctrl->state))
 		return 0;
 
-#if defined(EXPANSION_DVFS_TABLE)
 	switch(resourcemgr->hal_version) {
 	case IS_HAL_VER_1_0:
 		dvfs_table_idx = 0;
@@ -161,7 +136,6 @@ int fimc_is_dvfs_sel_table(struct fimc_is_resourcemgr *resourcemgr)
 		ret = -EINVAL;
 		break;
 	}
-#endif
 
 	if (dvfs_table_idx >= dvfs_ctrl->dvfs_table_max) {
 		err("dvfs index(%d) is invalid", dvfs_table_idx);
@@ -189,8 +163,8 @@ int fimc_is_dvfs_sel_static(struct fimc_is_device_ischain *device)
 	int position, resol, fps, stream_cnt;
 	unsigned long sensor_map;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!device->interface);
+	BUG_ON(!device);
+	BUG_ON(!device->interface);
 
 	core = (struct fimc_is_core *)device->interface->core;
 	resourcemgr = device->resourcemgr;
@@ -216,11 +190,7 @@ int fimc_is_dvfs_sel_static(struct fimc_is_device_ischain *device)
 	scenarios = static_ctrl->scenarios;
 	scenario_cnt = static_ctrl->scenario_cnt;
 	position = fimc_is_sensor_g_position(device->sensor);
-#ifdef BDS_DVFS
-	resol = fimc_is_get_bds_size(device);
-#else
 	resol = fimc_is_get_target_resol(device);
-#endif
 	fps = fimc_is_sensor_g_framerate(device->sensor);
 	stream_cnt = fimc_is_get_start_sensor_cnt(core);
 	sensor_map = core->sensor_map;
@@ -267,7 +237,7 @@ int fimc_is_dvfs_sel_dynamic(struct fimc_is_device_ischain *device, struct fimc_
 	int position, resol, fps;
 	unsigned long sensor_map;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	core = (struct fimc_is_core *)device->interface->core;
 	resourcemgr = device->resourcemgr;
@@ -306,15 +276,11 @@ int fimc_is_dvfs_sel_dynamic(struct fimc_is_device_ischain *device, struct fimc_
 		}
 	}
 
-	if (!test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state) || group->id == GROUP_ID_VRA0)
+	if (!test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state))
 		return -EAGAIN;
 
 	position = fimc_is_sensor_g_position(device->sensor);
-#ifdef BDS_DVFS
-	resol = fimc_is_get_bds_size(device);
-#else
 	resol = fimc_is_get_target_resol(device);
-#endif
 	fps = fimc_is_sensor_g_framerate(device->sensor);
 	sensor_map = core->sensor_map;
 	dual_info = &core->dual_info;
@@ -358,7 +324,7 @@ int fimc_is_dvfs_sel_external(struct fimc_is_device_sensor *device)
 	int position, resol, fps, stream_cnt;
 	unsigned long sensor_map;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	core = device->private_data;
 	resourcemgr = device->resourcemgr;
@@ -442,7 +408,7 @@ int fimc_is_get_qos(struct fimc_is_core *core, u32 type, u32 scenario_id)
 int fimc_is_set_dvfs(struct fimc_is_core *core, struct fimc_is_device_ischain *device, u32 scenario_id)
 {
 	int ret = 0;
-#if defined(QOS_INTCAM)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	int int_cam_qos, int_qos, mif_qos, i2c_qos, cam_qos, disp_qos, hpg_qos;
 #else
 	int int_qos, mif_qos, i2c_qos, cam_qos, disp_qos, hpg_qos;
@@ -458,7 +424,7 @@ int fimc_is_set_dvfs(struct fimc_is_core *core, struct fimc_is_device_ischain *d
 	resourcemgr = &core->resourcemgr;
 	dvfs_ctrl = &(resourcemgr->dvfs_ctrl);
 
-#if defined(QOS_INTCAM)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	int_cam_qos = fimc_is_get_qos(core, FIMC_IS_DVFS_INT_CAM, scenario_id);
 #endif
 	int_qos = fimc_is_get_qos(core, FIMC_IS_DVFS_INT, scenario_id);
@@ -468,7 +434,7 @@ int fimc_is_set_dvfs(struct fimc_is_core *core, struct fimc_is_device_ischain *d
 	disp_qos = fimc_is_get_qos(core, FIMC_IS_DVFS_DISP, scenario_id);
 	hpg_qos = fimc_is_get_qos(core, FIMC_IS_DVFS_HPG, scenario_id);
 
-#if defined(QOS_INTCAM)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	if ((int_cam_qos < 0) || (int_qos < 0) || (mif_qos < 0)
 	|| (i2c_qos < 0) || (cam_qos < 0) || (disp_qos < 0)) {
 		err("getting qos value is failed!!\n");
@@ -482,7 +448,7 @@ int fimc_is_set_dvfs(struct fimc_is_core *core, struct fimc_is_device_ischain *d
 	}
 #endif
 
-#if defined(QOS_INTCAM)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	/* check current qos */
 	if (int_cam_qos && dvfs_ctrl->cur_int_cam_qos != int_cam_qos) {
 		if (i2c_qos && device) {
@@ -548,7 +514,9 @@ int fimc_is_set_dvfs(struct fimc_is_core *core, struct fimc_is_device_ischain *d
 #if defined(ENABLE_HMP_BOOST)
 	/* hpg_qos : number of minimum online CPU */
 	if (hpg_qos && dvfs_ctrl->cur_hpg_qos != hpg_qos) {
+#if !defined(CONFIG_SOC_EXYNOS7885)        /* QOS related to online cpu is not supported by Lassen. */
 		pm_qos_update_request(&exynos_isp_qos_hpg, hpg_qos);
+#endif
 		dvfs_ctrl->cur_hpg_qos = hpg_qos;
 
 #if defined(CONFIG_HMP_VARIABLE_SCALE)
@@ -564,24 +532,11 @@ int fimc_is_set_dvfs(struct fimc_is_core *core, struct fimc_is_device_ischain *d
 				dvfs_ctrl->cur_hmp_bst = 0;
 			}
 		}
-#elif defined(CONFIG_SCHED_EHMP)
-		/* for migration to big core */
-		if (hpg_qos > 4) {
-			if (!dvfs_ctrl->cur_hmp_bst) {
-				gb_qos_update_request(&gb_req, 100);
-				dvfs_ctrl->cur_hmp_bst = 1;
-			}
-		} else {
-			if (dvfs_ctrl->cur_hmp_bst) {
-				gb_qos_update_request(&gb_req, 0);
-				dvfs_ctrl->cur_hmp_bst = 0;
-			}
-		}
 #endif
 	}
 #endif
 
-#if defined(QOS_INTCAM)
+#if defined(CONFIG_SOC_EXYNOS8895)
 	info("[RSC:%d]: New QoS [INT_CAM(%d), INT(%d), MIF(%d), CAM(%d), DISP(%d), I2C(%d), HPG(%d, %d)]\n",
 			device ? device->instance : 0, int_cam_qos, int_qos, mif_qos,
 			cam_qos, disp_qos, i2c_qos, hpg_qos, dvfs_ctrl->cur_hmp_bst);
@@ -592,140 +547,5 @@ int fimc_is_set_dvfs(struct fimc_is_core *core, struct fimc_is_device_ischain *d
 #endif
 exit:
 	return ret;
-}
-
-void fimc_is_dual_mode_update(struct fimc_is_device_ischain *device,
-	struct fimc_is_group *group,
-	struct fimc_is_frame *frame)
-{
-	struct fimc_is_core *core = NULL;
-	struct fimc_is_device_sensor *sensor = NULL;
-	struct fimc_is_resourcemgr *resourcemgr = NULL;
-	struct fimc_is_dual_info *dual_info = NULL;
-
-	core = (struct fimc_is_core *)device->interface->core;
-	sensor = device->sensor;
-	resourcemgr = device->resourcemgr;
-	dual_info = &core->dual_info;
-
-	/* Continue if wide and tele complete fimc_is_sensor_s_input(). */
-	if (!(test_bit(SENSOR_POSITION_REAR, &core->sensor_map) &&
-		test_bit(SENSOR_POSITION_REAR2, &core->sensor_map)))
-		return;
-
-	if (group->head->device_type != FIMC_IS_DEVICE_SENSOR)
-		return;
-
-	/* Update max fps of dual sensor device with reference to shot meta. */
-	switch (sensor->position) {
-	case SENSOR_POSITION_REAR:
-		dual_info->max_fps_master = frame->shot->ctl.aa.aeTargetFpsRange[1];
-		break;
-	case SENSOR_POSITION_REAR2:
-		dual_info->max_fps_slave = frame->shot->ctl.aa.aeTargetFpsRange[1];
-		break;
-	default:
-		err("invalid dual sensor position\n");
-		return;
-	}
-
-	/*
-	 * bypass - master_max_fps : 30fps, slave_max_fps : 0fps (sensor standby)
-	 * sync - master_max_fps : 30fps, slave_max_fps : 30fps (fusion)
-	 * switch - master_max_fps : 5ps, slave_max_fps : 30fps (post standby)
-	 * nothing - invalid mode
-	 */
-	if (dual_info->max_fps_master >= 24 && dual_info->max_fps_slave == 0)
-		dual_info->mode = FIMC_IS_DUAL_MODE_BYPASS;
-	else if (dual_info->max_fps_master >= 24 && dual_info->max_fps_slave >= 24)
-		dual_info->mode = FIMC_IS_DUAL_MODE_SYNC;
-	else if (dual_info->max_fps_master <= 5 && dual_info->max_fps_slave >= 24)
-		dual_info->mode = FIMC_IS_DUAL_MODE_SWITCH;
-	else
-		dual_info->mode = FIMC_IS_DUAL_MODE_NOTHING;
-}
-
-void fimc_is_dual_dvfs_update(struct fimc_is_device_ischain *device,
-	struct fimc_is_group *group,
-	struct fimc_is_frame *frame)
-{
-	struct fimc_is_core *core = NULL;
-	struct fimc_is_device_sensor *sensor = NULL;
-	struct fimc_is_resourcemgr *resourcemgr = NULL;
-	struct fimc_is_dvfs_scenario_ctrl *static_ctrl = NULL;
-	struct fimc_is_dual_info *dual_info = NULL;
-	int scenario_id, pre_scenario_id;
-
-	core = (struct fimc_is_core *)device->interface->core;
-	sensor = device->sensor;
-	resourcemgr = device->resourcemgr;
-	static_ctrl = resourcemgr->dvfs_ctrl.static_ctrl;
-	dual_info = &core->dual_info;
-
-	/* Continue if wide and tele complete fimc_is_sensor_s_input(). */
-	if (!(test_bit(SENSOR_POSITION_REAR, &core->sensor_map) &&
-		test_bit(SENSOR_POSITION_REAR2, &core->sensor_map)))
-		return;
-
-	if (group->head->device_type != FIMC_IS_DEVICE_SENSOR)
-		return;
-
-	/*
-	 * tick_count : Add dvfs update margin for dvfs update when mode is changed
-	 * from fusion(sync) to standby(bypass, switch) because H/W does not apply
-	 * immediately even if mode is dropped from hal.
-	 * tick_count == 0 : dvfs update
-	 * tick_count > 0 : tick count decrease
-	 * tick count < 0 : ignore
-	 */
-	if (dual_info->tick_count >= 0)
-		dual_info->tick_count--;
-
-	/* If pre_mode and mode are different, tick_count setup. */
-	if (dual_info->pre_mode != dual_info->mode) {
-
-		/* If current state is FIMC_IS_DUAL_NOTHING, do not do DVFS update. */
-		if (dual_info->mode == FIMC_IS_DUAL_MODE_NOTHING)
-			dual_info->tick_count = -1;
-
-		switch (dual_info->pre_mode) {
-		case FIMC_IS_DUAL_MODE_BYPASS:
-		case FIMC_IS_DUAL_MODE_SWITCH:
-		case FIMC_IS_DUAL_MODE_NOTHING:
-			dual_info->tick_count = 0;
-			break;
-		case FIMC_IS_DUAL_MODE_SYNC:
-			dual_info->tick_count = FIMC_IS_DVFS_DUAL_TICK;
-			break;
-		default:
-			err("invalid dual mode %d -> %d\n", dual_info->pre_mode, dual_info->mode);
-			dual_info->tick_count = -1;
-			dual_info->pre_mode = FIMC_IS_DUAL_MODE_NOTHING;
-			dual_info->mode = FIMC_IS_DUAL_MODE_NOTHING;
-			break;
-		}
-	}
-
-	/* Only if tick_count is 0 dvfs update. */
-	if (dual_info->tick_count == 0) {
-		pre_scenario_id = static_ctrl->cur_scenario_id;
-		scenario_id = fimc_is_dvfs_sel_static(device);
-		if (scenario_id >= 0 && scenario_id != pre_scenario_id) {
-			struct fimc_is_dvfs_scenario_ctrl *static_ctrl = resourcemgr->dvfs_ctrl.static_ctrl;
-
-			mgrinfo("tbl[%d] dual static scenario(%d)-[%s]\n", device, group, frame,
-				resourcemgr->dvfs_ctrl.dvfs_table_idx,
-				static_ctrl->cur_scenario_id,
-				static_ctrl->scenarios[static_ctrl->cur_scenario_idx].scenario_nm);
-			fimc_is_set_dvfs((struct fimc_is_core *)device->interface->core, device, scenario_id);
-		} else {
-			mgrinfo("tbl[%d] dual DVFS update skip %d -> %d\n", device, group, frame,
-				resourcemgr->dvfs_ctrl.dvfs_table_idx,
-				pre_scenario_id, scenario_id);
-		}
-	}
-
-	/* Update current mode to pre_mode. */
-	dual_info->pre_mode = dual_info->mode;
 }
 #endif

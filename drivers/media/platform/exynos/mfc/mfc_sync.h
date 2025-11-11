@@ -32,11 +32,9 @@
 #define need_to_special_parsing_nal(ctx)	\
 	(ctx->state == MFCINST_RUNNING)
 #define ready_to_get_crop(ctx)			\
-	((ctx->state == MFCINST_HEAD_PARSED) ||		\
-	(ctx->state == MFCINST_RUNNING) ||		\
-	(ctx->state == MFCINST_SPECIAL_PARSING) ||	\
-	(ctx->state == MFCINST_SPECIAL_PARSING_NAL) ||	\
-	(ctx->state == MFCINST_FINISHING))
+	((ctx->state == MFCINST_HEAD_PARSED) || \
+	 (ctx->state == MFCINST_RUNNING) || \
+	 (ctx->state == MFCINST_FINISHING))
 
 int mfc_wait_for_done_dev(struct mfc_dev *dev, int command);
 int mfc_wait_for_done_ctx(struct mfc_ctx *ctx, int command);
@@ -46,9 +44,7 @@ void mfc_wake_up_ctx(struct mfc_ctx *ctx, unsigned int reason,
 		unsigned int err);
 
 int mfc_get_new_ctx(struct mfc_dev *dev);
-
-int mfc_ctx_ready_set_bit(struct mfc_ctx *ctx, struct mfc_bits *data);
-int mfc_ctx_ready_clear_bit(struct mfc_ctx *ctx, struct mfc_bits *data);
+int mfc_ctx_ready(struct mfc_ctx *ctx);
 
 static inline void mfc_set_bit(int num, struct mfc_bits *data)
 {

@@ -45,7 +45,6 @@
 #include <linux/property.h>
 #include <linux/rwsem.h>
 #include <linux/slab.h>
-#include <linux/debug-snapshot.h>
 
 #include "i2c-core.h"
 
@@ -1285,8 +1284,8 @@ static int i2c_register_adapter(struct i2c_adapter *adap)
 
 	/* create pre-declared device nodes */
 	of_i2c_register_devices(adap);
-	i2c_acpi_register_devices(adap);
 	i2c_acpi_install_space_handler(adap);
+	i2c_acpi_register_devices(adap);
 
 	if (adap->nr < __i2c_first_dynamic_bus_num)
 		i2c_scan_static_board_info(adap);
@@ -1948,9 +1947,7 @@ int i2c_transfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 			i2c_lock_bus(adap, I2C_LOCK_SEGMENT);
 		}
 
-		dbg_snapshot_i2c(adap, msgs, num, DSS_FLAG_IN);
 		ret = __i2c_transfer(adap, msgs, num);
-		dbg_snapshot_i2c(adap, msgs, num, DSS_FLAG_OUT);
 		i2c_unlock_bus(adap, I2C_LOCK_SEGMENT);
 
 		return ret;
@@ -1979,7 +1976,6 @@ int i2c_master_send(const struct i2c_client *client, const char *buf, int count)
 	msg.flags = client->flags & I2C_M_TEN;
 	msg.len = count;
 	msg.buf = (char *)buf;
-	msg.freq = client->frequency;
 
 	ret = i2c_transfer(adap, &msg, 1);
 

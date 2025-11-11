@@ -2,11 +2,7 @@
 #include <linux/module.h>
 #include <linux/ifconn/ifconn_notifier.h>
 #include <linux/ifconn/ifconn_manager.h>
-#ifdef CONFIG_MUIC_S2MU004
-#include <linux/muic_mu004/muic.h>
-#else
 #include <linux/muic/muic.h>
-#endif
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include <linux/workqueue.h>
@@ -17,9 +13,6 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/of.h>
-#if defined(CONFIG_CCIC_NOTIFIER)
-#include <linux/ccic/core.h>
-#endif
 
 static int _ifconn_manager_template_notify(struct ifconn_notifier_template *template)
 {
@@ -657,6 +650,9 @@ static int ifconn_manager_probe(struct platform_device *pdev)
 		pdata = dev_get_platdata(&pdev->dev);
 		ifconn_manager->pdata = pdata;
 	}
+
+	if (ret < 0)
+		goto ERROR_PDATA_FREE;
 
 	mutex_init(&ifconn_manager->noti_mutex);
 	mutex_init(&ifconn_manager->workqueue_mutex);

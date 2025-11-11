@@ -21,16 +21,8 @@ extern const struct file_operations debugfs_full_proxy_file_operations;
 
 struct debugfs_fsdata {
 	const struct file_operations *real_fops;
-	refcount_t active_users;
+	atomic_t active_users;
 	struct completion active_users_drained;
 };
-
-/*
- * A dentry's ->d_fsdata either points to the real fops or to a
- * dynamically allocated debugfs_fsdata instance.
- * In order to distinguish between these two cases, a real fops
- * pointer gets its lowest bit set.
- */
-#define DEBUGFS_FSDATA_IS_REAL_FOPS_BIT BIT(0)
 
 #endif /* _DEBUGFS_INTERNAL_H_ */

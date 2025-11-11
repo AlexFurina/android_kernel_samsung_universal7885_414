@@ -74,10 +74,6 @@ static const char * const power_supply_scope_text[] = {
 	"Unknown", "System", "Device"
 };
 
-static const char * const power_supply_charge_rate_text[] = {
-        "None","Normal","Weak","Turbo"
-};
-
 static ssize_t power_supply_show_property(struct device *dev,
 					  struct device_attribute *attr,
 					  char *buf) {
@@ -96,7 +92,8 @@ static ssize_t power_supply_show_property(struct device *dev,
 				dev_dbg(dev, "driver has no data for `%s' property\n",
 					attr->attr.name);
 			else if (ret != -ENODEV && ret != -EAGAIN)
-				dev_err(dev, "driver failed to report `%s' property: %zd\n",
+				dev_err_ratelimited(dev,
+					"driver failed to report `%s' property: %zd\n",
 					attr->attr.name, ret);
 			return ret;
 		}
@@ -108,9 +105,6 @@ static ssize_t power_supply_show_property(struct device *dev,
 	else if (off == POWER_SUPPLY_PROP_CHARGE_TYPE)
 		return sprintf(buf, "%s\n",
 			       power_supply_charge_type_text[value.intval]);
-	else if (off == POWER_SUPPLY_PROP_CHARGE_RATE)
-		return sprintf(buf,"%s\n",
-				power_supply_charge_rate_text[value.intval]);
 	else if (off == POWER_SUPPLY_PROP_HEALTH)
 		return sprintf(buf, "%s\n",
 			       power_supply_health_text[value.intval]);
@@ -227,7 +221,6 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(charge_counter),
 	POWER_SUPPLY_ATTR(charge_otg_control),
 	POWER_SUPPLY_ATTR(charge_powered_otg_control),
-	POWER_SUPPLY_ATTR(charge_temp),
 	POWER_SUPPLY_ATTR(constant_charge_current),
 	POWER_SUPPLY_ATTR(constant_charge_current_max),
 	POWER_SUPPLY_ATTR(constant_charge_voltage),
@@ -267,31 +260,12 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(usb_otg),
 	POWER_SUPPLY_ATTR(charge_enabled),
 	POWER_SUPPLY_ATTR(fuelgauge_reset),
-	POWER_SUPPLY_ATTR(soh),
 	/* Local extensions of type int64_t */
 	POWER_SUPPLY_ATTR(charge_counter_ext),
 	/* Properties of type `const char *' */
 	POWER_SUPPLY_ATTR(model_name),
 	POWER_SUPPLY_ATTR(manufacturer),
 	POWER_SUPPLY_ATTR(serial_number),
-
-	POWER_SUPPLY_ATTR(vchgin),
-	POWER_SUPPLY_ATTR(vwcin),
-	POWER_SUPPLY_ATTR(vbyp),
-	POWER_SUPPLY_ATTR(vsys),
-	POWER_SUPPLY_ATTR(vbat),
-	POWER_SUPPLY_ATTR(vgpadc),
-	POWER_SUPPLY_ATTR(vcc1),
-	POWER_SUPPLY_ATTR(vcc2),
-	POWER_SUPPLY_ATTR(ichgin),
-	POWER_SUPPLY_ATTR(iwcin),
-	POWER_SUPPLY_ATTR(iotg),
-	POWER_SUPPLY_ATTR(itx),
-	POWER_SUPPLY_ATTR(co_enable),
-	POWER_SUPPLY_ATTR(rr_enable),
-	POWER_SUPPLY_ATTR(usbpd_reset),
-	POWER_SUPPLY_ATTR(usbpd_test_read),
-	POWER_SUPPLY_ATTR(charge_rate),
 };
 
 static struct attribute *
@@ -368,14 +342,10 @@ int power_supply_uevent(struct device *dev, struct kobj_uevent_env *env)
 	char *prop_buf;
 	char *attrname;
 
-	dev_dbg(dev, "uevent\n");
-
 	if (!psy || !psy->desc) {
 		dev_dbg(dev, "No power supply yet\n");
 		return ret;
 	}
-
-	dev_dbg(dev, "POWER_SUPPLY_NAME=%s\n", psy->desc->name);
 
 	ret = add_uevent_var(env, "POWER_SUPPLY_NAME=%s", psy->desc->name);
 	if (ret)
@@ -411,8 +381,6 @@ int power_supply_uevent(struct device *dev, struct kobj_uevent_env *env)
 			ret = -ENOMEM;
 			goto out;
 		}
-
-		dev_dbg(dev, "prop %s=%s\n", attrname, prop_buf);
 
 		ret = add_uevent_var(env, "POWER_SUPPLY_%s=%s", attrname, prop_buf);
 		kfree(attrname);

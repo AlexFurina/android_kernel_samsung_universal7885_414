@@ -88,7 +88,8 @@
 /*DIS(600~700)*/
 #define IS_ERROR_DIS_PWRDN_FAIL         600
 
-/*TDNR(700~800)*/
+/*TDNR(700~800)
+*/
 #define IS_ERROR_TDNR_PWRDN_FAIL        700
 
 /*SCALERP(800~900)*/

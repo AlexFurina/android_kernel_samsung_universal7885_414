@@ -86,4 +86,19 @@ static inline int acpm_get_mif_request(void)
 }
 
 #endif
+
+#if defined(CONFIG_SEC_DEBUG)
+enum ids_info {
+	tg,
+	lg,
+	bg,
+	g3dg,
+	mifg,
+	bids,
+	gids,
+};
+
+extern int asv_ids_information(enum ids_info id);
+#endif
+
 #endif /* __EXYNOS_PM_H */

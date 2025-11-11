@@ -23,7 +23,6 @@
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/mm.h>
-#include <linux/rtc.h>
 #include <linux/slab.h>
 #include <linux/export.h>
 #include <linux/suspend.h>
@@ -33,6 +32,11 @@
 #include <linux/compiler.h>
 #include <linux/moduleparam.h>
 #include <linux/wakeup_reason.h>
+#ifdef CONFIG_SEC_PM_DEBUG
+#include <linux/rtc.h>
+#include <linux/regulator/machine.h>
+#endif
+#include <linux/sec_debug.h>
 
 #include "power.h"
 
@@ -356,9 +360,41 @@ static int suspend_prepare(suspend_state_t state)
 
 	error = __pm_notifier_call_chain(PM_SUSPEND_PREPARE, -1, &nr_calls);
 	if (error) {
+#ifdef CONFIG_SEC_PM_DEBUG
+		void *callback;
+
+		callback = pm_notifier_call_chain_get_callback(nr_calls - 1);
+
+		if (IS_ERR(callback)) {
+			pr_info("PM_SUSPEND_PREPARE failed: %d\n",
+					nr_calls);
+			log_suspend_abort_reason("PM_SUSPEND_PREPARE failed: "
+					"%d", nr_calls);
+		} else {
+			pr_info("PM_SUSPEND_PREPARE failed: %d (%ps)\n",
+					nr_calls, callback);
+			log_suspend_abort_reason("PM_SUSPEND_PREPARE failed: "
+					"%ps (%d)", callback, nr_calls);
+		}
+#endif /* CONFIG_SEC_PM_DEBUG */
 		nr_calls--;
 		goto Finish;
 	}
+
+#ifndef CONFIG_SUSPEND_SKIP_SYNC
+	trace_suspend_resume(TPS("sync_filesystems"), 0, true);
+	dbg_snapshot_suspend("sync_filesystems", sys_sync, NULL, state, DSS_FLAG_IN);
+	pr_info("Syncing filesystems ... ");
+	if (intr_sync(NULL)) {
+		printk("canceled.\n");
+		trace_suspend_resume(TPS("sync_filesystems"), 0, false);
+		error = -EBUSY;
+		goto Finish;
+	}
+	pr_cont("done.\n");
+	dbg_snapshot_suspend("sync_filesystems", sys_sync, NULL, state, DSS_FLAG_OUT);
+	trace_suspend_resume(TPS("sync_filesystems"), 0, false);
+#endif
 
 	trace_suspend_resume(TPS("freeze_processes"), 0, true);
 	dbg_snapshot_suspend("freeze_processes", suspend_freeze_processes,
@@ -372,6 +408,9 @@ static int suspend_prepare(suspend_state_t state)
 
 	suspend_stats.failed_freeze++;
 	dpm_save_failed_step(SUSPEND_FREEZE);
+#ifdef CONFIG_SEC_PM_DEBUG
+	log_suspend_abort_reason("Freezing processes failed: %d", error);
+#endif /* CONFIG_SEC_PM_DEBUG */
  Finish:
 	__pm_notifier_call_chain(PM_POST_SUSPEND, nr_calls, NULL);
 	pm_restore_console();
@@ -415,6 +454,9 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 			suspend_stats.failed_devs[last_dev]);
 		goto Platform_finish;
 	}
+#ifdef CONFIG_SEC_PM_DEBUG
+	regulator_show_enabled();
+#endif /* CONFIG_SEC_PM_DEBUG */
 	error = platform_suspend_prepare_late(state);
 	if (error)
 		goto Devices_early_resume;
@@ -590,16 +632,6 @@ static int enter_state(suspend_state_t state)
 	if (state == PM_SUSPEND_TO_IDLE)
 		s2idle_begin();
 
-#ifndef CONFIG_SUSPEND_SKIP_SYNC
-	trace_suspend_resume(TPS("sync_filesystems"), 0, true);
-	dbg_snapshot_suspend("sync_filesystems", sys_sync, NULL, state, DSS_FLAG_IN);
-	pr_info("Syncing filesystems ... ");
-	sys_sync();
-	pr_cont("done.\n");
-	dbg_snapshot_suspend("sync_filesystems", sys_sync, NULL, state, DSS_FLAG_OUT);
-	trace_suspend_resume(TPS("sync_filesystems"), 0, false);
-#endif
-
 	pm_pr_dbg("Preparing system for sleep (%s)\n", mem_sleep_labels[state]);
 	pm_suspend_clear_flags();
 	error = suspend_prepare(state);
@@ -625,6 +657,7 @@ static int enter_state(suspend_state_t state)
 	return error;
 }
 
+#ifdef CONFIG_SEC_PM_DEBUG
 static void pm_suspend_marker(char *annotation)
 {
 	struct timespec ts;
@@ -636,6 +669,7 @@ static void pm_suspend_marker(char *annotation)
 		annotation, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 		tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
 }
+#endif
 
 /**
  * pm_suspend - Externally visible function for suspending the system.
@@ -651,15 +685,26 @@ int pm_suspend(suspend_state_t state)
 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
 		return -EINVAL;
 
+#ifdef CONFIG_SEC_PM_DEBUG
 	pm_suspend_marker("entry");
+#else
+	pr_info("suspend entry (%s)\n", mem_sleep_labels[state]);
+#endif
+	sec_debug_set_task_in_pm_suspend((uint64_t)current);
 	error = enter_state(state);
+	sec_debug_set_task_in_pm_suspend(0);
+
 	if (error) {
 		suspend_stats.fail++;
 		dpm_save_failed_errno(error);
 	} else {
 		suspend_stats.success++;
 	}
+#ifdef CONFIG_SEC_PM_DEBUG
 	pm_suspend_marker("exit");
+#else
+	pr_info("suspend exit\n");
+#endif
 	return error;
 }
 EXPORT_SYMBOL(pm_suspend);

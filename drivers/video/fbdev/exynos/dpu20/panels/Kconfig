@@ -1,9 +1,6 @@
 config EXYNOS_DECON_LCD
 	depends on EXYNOS_DPU20
 	bool "Select LCD panel driver"
-config EXYNOS_DECON_LCD_MULTI
-	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
-	tristate "Support Muli panel drivers"
 
 config EXYNOS_DECON_LCD_S6E3HA2K
 	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
@@ -39,9 +36,9 @@ config EXYNOS_DECON_LCD_S6E3FA7
 	tristate "S6E3FA7 AMOLED FHD LCD driver(1080 x 2220)"
 	default n
 
-config EXYNOS_DECON_LCD_NT36672A
+config EXYNOS_DECON_LCD_EA8076
 	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
-	tristate "NT36672A TFT FHD+ LCD driver(1080 x 2246)"
+	tristate "EA8076 FHD+ LCD driver(1080 x 2340)"
 	default n
 
 config EXYNOS_DECON_LCD_EMUL_DISP

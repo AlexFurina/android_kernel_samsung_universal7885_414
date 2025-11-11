@@ -1,0 +1,48 @@
+config EXYNOS_DECON_LCD
+	depends on EXYNOS_DECON_7885
+	bool "Select LCD panel driver"
+
+config EXYNOS_DECON_LCD_S6E3FA0
+	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
+	tristate "S6E3FA0 AMOLED FHD LCD driver(1080 x 1920)"
+
+config EXYNOS_DECON_LCD_S6E3FA3
+	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
+	tristate "S6E3FA3 AMOLED FHD LCD driver(1080 x 1920)"
+
+config EXYNOS_DECON_LCD_S6E3HA2K
+	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
+	tristate "S6E3HA2K AMOLED WQHD LCD driver(1440 x 2560)"
+
+config EXYNOS_DECON_LCD_S6E3HF4
+	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
+	tristate "S6E3HF4 AMOLED WQHD LCD driver(1440 x 2560)"
+
+config EXYNOS_DECON_LCD_EMUL_DISP
+	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
+	depends on EXYNOS_ZEBU_EMUL_DISP
+	tristate "EMUL_DISP COMMAND/VIDEO MODE AMOLED FHD LCD driver(800 x 1280)"
+
+config EXYNOS_DECON_LCD_S6E3FA7
+	depends on EXYNOS_DECON_LCD && EXYNOS_MIPI_DSIM
+	tristate "S6E3FA7 AMOLED FHD+ LCD driver(1080 x 2220)"
+
+config SMCDSD_LCD_DEBUG
+	bool "SMCDSD_LCD_DEBUG"
+	default n
+
+config DISPLAY_USE_INFO
+	bool "Support display use info logging"
+	default n
+
+config EXYNOS_DECON_MDNIE
+	bool "Support MDNIE"
+	default n
+
+config SUPPORT_POC_FLASH
+	depends on EXYNOS_DECON_LCD
+	bool "Support display poc flash"
+	default n
+
+config EXYNOS_DECON_LCD_HX83102D_A10EU
+	bool "HX83102D_A10E LCD driver"

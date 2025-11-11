@@ -368,7 +368,18 @@ static struct pm_qos_object fsys0_throughput_pm_qos = {
 	.name = "fsys0_throughput",
 };
 #endif
-
+static BLOCKING_NOTIFIER_HEAD(fsys_throughput_notifier);
+static struct pm_qos_constraints fsys_tput_constraints = {
+	.list = PLIST_HEAD_INIT(fsys_tput_constraints.list),
+	.target_value = PM_QOS_FSYS_THROUGHPUT_DEFAULT_VALUE,
+	.default_value = PM_QOS_FSYS_THROUGHPUT_DEFAULT_VALUE,
+	.type = PM_QOS_MAX,
+	.notifiers = &fsys_throughput_notifier,
+};
+static struct pm_qos_object fsys_throughput_pm_qos = {
+	.constraints = &fsys_tput_constraints,
+	.name = "fsys_throughput",
+};
 static BLOCKING_NOTIFIER_HEAD(cam_throughput_max_notifier);
 static struct pm_qos_constraints cam_tput_max_constraints = {
 	.list = PLIST_HEAD_INIT(cam_tput_max_constraints.list),
@@ -435,7 +446,18 @@ static struct pm_qos_object fsys0_throughput_max_pm_qos = {
 	.name = "fsys0_throughput_max",
 };
 #endif
-
+static BLOCKING_NOTIFIER_HEAD(fsys_throughput_max_notifier);
+static struct pm_qos_constraints fsys_tput_max_constraints = {
+	.list = PLIST_HEAD_INIT(fsys_tput_max_constraints.list),
+	.target_value = PM_QOS_FSYS_THROUGHPUT_MAX_DEFAULT_VALUE,
+	.default_value = PM_QOS_FSYS_THROUGHPUT_MAX_DEFAULT_VALUE,
+	.type = PM_QOS_MIN,
+	.notifiers = &fsys_throughput_max_notifier,
+};
+static struct pm_qos_object fsys_throughput_max_pm_qos = {
+	.constraints = &fsys_tput_max_constraints,
+	.name = "fsys_throughput_max",
+};
 static BLOCKING_NOTIFIER_HEAD(mfc_throughput_notifier);
 static struct pm_qos_constraints mfc_tput_constraints = {
 	.list = PLIST_HEAD_INIT(mfc_tput_constraints.list),
@@ -484,12 +506,14 @@ static struct pm_qos_object *pm_qos_array[] = {
 	&display_throughput_max_pm_qos,
 	&cam_throughput_pm_qos,
 	&aud_throughput_pm_qos,
+	&fsys_throughput_pm_qos,
 #ifdef CONFIG_SOC_EXYNOS9810
 	&iva_throughput_pm_qos,
 	&score_throughput_pm_qos,
 	&fsys0_throughput_pm_qos,
 #endif
 	&cam_throughput_max_pm_qos,
+	&fsys_throughput_max_pm_qos,
 	&aud_throughput_max_pm_qos,
 #ifdef CONFIG_SOC_EXYNOS9810
 	&iva_throughput_max_pm_qos,

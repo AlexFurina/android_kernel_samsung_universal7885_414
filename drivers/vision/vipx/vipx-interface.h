@@ -20,7 +20,7 @@
 
 #define VIPX_WORK_MAX_COUNT		(20)
 #define VIPX_WORK_MAX_DATA		(24)
-#define VIPX_RESPONSE_TIMEOUT		(10000) /* msecs */
+#define VIPX_RESPONSE_TIMEOUT		(500) /* msecs */
 
 struct vipx_system;
 

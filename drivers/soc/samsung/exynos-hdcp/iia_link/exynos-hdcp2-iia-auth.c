@@ -127,7 +127,6 @@ int exchange_master_key(struct hdcp_link_data *lk, struct hdcp_msg_info *msg_inf
 		if (rval < 0) {
 			hdcp_err("send AKE_Transmitter_Info failed. rval(%d)\n", rval);
 		} else {
-			next_step++;
 			UPDATE_STEP_STATE(next_step, AKE_SEND_CERT);
 			msg_info->next_step = RECIEVE_MSG;
 		}

@@ -13,7 +13,6 @@
 #ifndef MEDIA_EXYNOS_SENSOR_H
 #define MEDIA_EXYNOS_SENSOR_H
 
-#include <dt-bindings/camera/fimc_is.h>
 #include <linux/platform_device.h>
 
 #define FIMC_IS_SENSOR_DEV_NAME "exynos-fimc-is-sensor"
@@ -25,7 +24,6 @@ enum exynos_csi_id {
 	CSI_ID_B = 1,
 	CSI_ID_C = 2,
 	CSI_ID_D = 3,
-	CSI_ID_E = 4,
 	CSI_ID_MAX
 };
 
@@ -43,28 +41,18 @@ enum exynos_sensor_channel {
 	SENSOR_CONTROL_I2C2	 = 2,
 	SENSOR_CONTROL_I2C3	 = 3,
 	SENSOR_CONTROL_I2C4	 = 4,
-	SENSOR_CONTROL_I2C5	 = 5,
-	SENSOR_CONTROL_I2C6	 = 6,
 	SENSOR_CONTROL_I2C_MAX
 };
 
 enum exynos_sensor_position {
-	/* for the position of real sensors */
-	SENSOR_POSITION_REAR		= SP_REAR,
-	SENSOR_POSITION_FRONT		= SP_FRONT,
-	SENSOR_POSITION_REAR2		= SP_REAR2,
-	SENSOR_POSITION_FRONT2		= SP_FRONT2,
-	SENSOR_POSITION_REAR3		= SP_REAR3,
-	SENSOR_POSITION_FRONT3		= SP_FRONT3,
-	SENSOR_POSITION_REAR4		= SP_REAR4,
-	SENSOR_POSITION_FRONT4		= SP_FRONT4,
-	SENSOR_POSITION_REAR_TOF	= SP_REAR_TOF,
-	SENSOR_POSITION_FRONT_TOF	= SP_FRONT_TOF,
+	SENSOR_POSITION_REAR = 0,
+	SENSOR_POSITION_FRONT = 1,
+	SENSOR_POSITION_REAR2 = 2,
+	SENSOR_POSITION_FRONT2 = 3,
+	SENSOR_POSITION_REAR3 = 4,
+	SENSOR_POSITION_FRONT3 = 5,
 	SENSOR_POSITION_MAX,
-
-	/* to characterize the sensor */
-	SENSOR_POSITION_SECURE		= SP_SECURE,
-	SENSOR_POSITION_VIRTUAL		= SP_VIRTUAL,
+	SENSOR_POSITION_SECURE = 100,
 };
 
 enum exynos_sensor_id {
@@ -108,18 +96,17 @@ enum exynos_sensor_id {
 	SENSOR_NAME_SAK2L3		 = 36,
 	SENSOR_NAME_SAK2L4		 = 37,
 	SENSOR_NAME_S5K3J1		 = 38,
-	SENSOR_NAME_S5K4HA               = 39,
+	SENSOR_NAME_S5K4HA		 = 39,
 	SENSOR_NAME_S5K3P9		 = 40,
 	SENSOR_NAME_S5K5E9		 = 41,
-	SENSOR_NAME_S5K2X5SP		 = 42,
-	SENSOR_NAME_S5KGM1SP		 = 43,
+	SENSOR_NAME_S5K2P7SQ		 = 43,
 	SENSOR_NAME_S5K3P8SP		 = 44,
 	SENSOR_NAME_S5K2P7SX		 = 45,
-	SENSOR_NAME_S5KRPB		 = 46,
-	SENSOR_NAME_S5K2P7SQ		 = 47,
-	SENSOR_NAME_S5K2T7SX		 = 48,
 	SENSOR_NAME_S5K4EC		 = 57,
-	SENSOR_NAME_S5K2P6		 = 58,
+	SENSOR_NAME_S5K2P6		 = 58, /* TODO */
+	SENSOR_NAME_S5K3L6		 = 59,
+	SENSOR_NAME_S5K2X5		 = 60,
+	SENSOR_NAME_S5KGM2		 = 61,
 
 	/* 101~200: SONY sensors */
 	SENSOR_NAME_IMX135		 = 101,
@@ -137,6 +124,11 @@ enum exynos_sensor_id {
 	SENSOR_NAME_IMX241		 = 113,
 	SENSOR_NAME_IMX345		 = 114,
 	SENSOR_NAME_IMX576		 = 115,
+	SENSOR_NAME_IMX316		 = 116,
+	SENSOR_NAME_IMX586		 = 117,
+	SENSOR_NAME_IMX471		 = 118,
+	SENSOR_NAME_IMX582		 = 120,
+	SENSOR_NAME_IMX616		 = 121,
 
 	/* 201~255: Other vendor sensors */
 	SENSOR_NAME_SR261		 = 201,
@@ -146,19 +138,19 @@ enum exynos_sensor_id {
 	SENSOR_NAME_DSIM		 = 205,
 	SENSOR_NAME_SR259		 = 206,
 	SENSOR_NAME_VIRTUAL		 = 207,
-	SENSOR_NAME_OV12A10		 = 208,
-	SENSOR_NAME_OV12A10FF		 = 209,
-	SENSOR_NAME_OV16885C		 = 210,
+	SENSOR_NAME_SR846		 = 208,
+	SENSOR_NAME_SR556		 = 209,
+	SENSOR_NAME_GC5035		 = 210,
+	SENSOR_NAME_HI1336		 = 211,
+	SENSOR_NAME_HI1631		 = 213,
+
+	SENSOR_NAME_S5K5E6		 = 254, // IRIS Camera Sensor
 
 	/* 256~: currently not used */
 	SENSOR_NAME_CUSTOM		 = 301,
 	SENSOR_NAME_SR200		 = 302, // SoC Module
 	SENSOR_NAME_SR352		 = 303,
 	SENSOR_NAME_SR130PC20	 = 304,
-
-	SENSOR_NAME_S5K5E6		 = 305, // IRIS Camera Sensor
-	SENSOR_NAME_S5K5F1		 = 306, // STAR IRIS Sensor
-
 	SENSOR_NAME_VIRTUAL_ZEBU = 901,
 	SENSOR_NAME_END,
 };
@@ -181,12 +173,12 @@ enum actuator_name {
 	ACTUATOR_NAME_BU63165	= 15,
 	ACTUATOR_NAME_AK7372 = 16,
 	ACTUATOR_NAME_AK7371_DUAL = 17,
-	ACTUATOR_NAME_AK737X = 18,
-	ACTUATOR_NAME_DW9780	= 19,
-	ACTUATOR_NAME_LC898217	= 20,
-	ACTUATOR_NAME_ZC569 = 21,
-	ACTUATOR_NAME_DW9823	= 22,
-	ACTUATOR_NAME_DW9839	= 23,
+	ACTUATOR_NAME_AK737X   = 18,
+	ACTUATOR_NAME_DW9808   = 19,
+	ACTUATOR_NAME_ZC535   = 20,
+	ACTUATOR_NAME_ZC569	= 21,
+	ACTUATOR_NAME_DW9823  = 22,
+
 	ACTUATOR_NAME_END,
 	ACTUATOR_NAME_NOTHING	= 100,
 };
@@ -206,6 +198,7 @@ enum flash_drv_name {
 	FLADRV_NAME_LM3644	= 12,
 	FLADRV_NAME_DRV_FLASH_I2C = 13, /* Common I2C type */
 	FLADRV_NAME_S2MU106	= 14,
+	FLADRV_NAME_RT8547	= 16,
 	FLADRV_NAME_END,
 	FLADRV_NAME_NOTHING	= 100,
 };
@@ -228,31 +221,14 @@ enum preprocessor_name {
 enum ois_name {
 	OIS_NAME_RUMBA_S4	= 1,
 	OIS_NAME_RUMBA_S6	= 2,
-	OIS_NAME_ROHM_BU24218GWL= 3,
 	OIS_NAME_END,
 	OIS_NAME_NOTHING	= 100,
 };
 
-enum mcu_name {
-	MCU_NAME_STM32	= 1,
-	MCU_NAME_END,
-	MCU_NAME_NOTHING	= 100,
-};
-
-enum aperture_name {
-	APERTURE_NAME_AK7372	= 1,
-	APERTURE_NAME_END,
-	APERTURE_NAME_NOTHING	= 100,
-};
-
-enum eeprom_name {
-	EEPROM_NAME_GM1		= 1,
-	EEPROM_NAME_5E9		= 2,
-	EEPROM_NAME_12A10 	= 3,
-	EEPROM_NAME_12A10FF	= 4,
-	EEPROM_NAME_16885C 	= 5,
-	EEPROM_NAME_END,
-	EEPROM_NAME_NOTHING	= 100,
+enum iris_name {
+	IRIS_NAME_AK7372	= 1,
+	IRIS_NAME_END,
+	IRIS_NAME_NOTHING	= 100,
 };
 
 enum sensor_peri_type {
@@ -271,9 +247,9 @@ enum sensor_dma_channel_type {
 
 enum sensor_retention_state
 {
-	SENSOR_RETENTION_UNSUPPORTED = 0,
-	SENSOR_RETENTION_INACTIVE = 1,
-	SENSOR_RETENTION_ACTIVATED = 2,
+	SENSOR_RETENTION_DISABLE = 0, /* disable */
+	SENSOR_RETENTION_READY  = 1,  /* cold boot */
+	SENSOR_RETENTION_USE = 2,     /* warm boot */
 };
 
 struct i2c_type {
@@ -336,15 +312,14 @@ struct sensor_open_extended {
 	struct sensor_protocol1 from_con;
 	struct sensor_protocol2 preprocessor_con;
 	struct sensor_protocol1 ois_con;
-	struct sensor_protocol1 aperture_con;
-	struct sensor_protocol1 mcu_con;
-	struct sensor_protocol1 eeprom_con;
+	struct sensor_protocol1 iris_con;
 	u32 mclk;
 	u32 mipi_lane_num;
 	u32 mipi_speed;
 	/* Use sensor retention mode */
 	u32 use_retention_mode;
-	struct sensor_protocol1 reserved[3];
+	struct sensor_protocol1 reserved[4];
+	u32 I2CSclk;
 };
 
 struct exynos_platform_fimc_is_sensor {
@@ -357,16 +332,9 @@ struct exynos_platform_fimc_is_sensor {
 	u32 id;
 	u32 scenario;
 	u32 csi_ch;
-	int num_of_ch_mode;
-	int *dma_ch;
-	int *vc_ch;
-	bool dma_abstract;
 	u32 flite_ch;
 	u32 is_bns;
 	unsigned long internal_state;
-	u32 csi_mux;
-	u32 multi_ch;
-	u32 camif_mux_val;
 };
 
 int exynos_fimc_is_sensor_iclk_cfg(struct device *dev,

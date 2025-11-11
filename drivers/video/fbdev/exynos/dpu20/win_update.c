@@ -14,9 +14,6 @@
 #include "decon.h"
 #include "dpp.h"
 #include "dsim.h"
-#if defined(CONFIG_EXYNOS_DECON_DQE)
-#include "dqe.h"
-#endif
 
 static void win_update_adjust_region(struct decon_device *decon,
 		struct decon_win_config *win_config,
@@ -85,8 +82,8 @@ static void win_update_adjust_region(struct decon_device *decon,
 		sd = decon->dpp_sd[0];
 		v4l2_subdev_call(sd, core, ioctl, DPP_GET_RESTRICTION, &res);
 
-		min_src_w = res.src_f_w.min * sz_align;
-		min_src_h = res.src_f_h.min * sz_align;
+		min_src_w = max((res.src_f_w.min * sz_align), decon->lcd_info->update_min_w);
+		min_src_h = max((res.src_f_h.min * sz_align), decon->lcd_info->update_min_h);
 
 		if (decon->lcd_info->xres - r2.left < min_src_w)
 			r2.left = ((r1.left - min_src_w) / decon->win_up.rect_w) *
@@ -524,9 +521,6 @@ static void win_update_set_partial_size(struct decon_device *decon,
 	decon_reg_set_partial_update(decon->id, decon->dt.dsi_mode,
 			decon->lcd_info, in_slice,
 			lcd_info.xres, lcd_info.yres);
-#if defined(CONFIG_EXYNOS_DECON_DQE)
-	dqe_reg_start(decon->id, &lcd_info);
-#endif
 	DPU_DEBUG_WIN("SET: vfp %d vbp %d vsa %d hfp %d hbp %d hsa %d w %d h %d\n",
 			lcd_info.vfp, lcd_info.vbp, lcd_info.vsa,
 			lcd_info.hfp, lcd_info.hbp, lcd_info.hsa,
@@ -615,8 +609,8 @@ void dpu_init_win_update(struct decon_device *decon)
 		decon->win_up.rect_w = lcd->xres / lcd->dsc_slice_num;
 		decon->win_up.rect_h = lcd->dsc_slice_h;
 	} else {
-		decon->win_up.rect_w = res.src_f_w.min * sz_align;
-		decon->win_up.rect_h = res.src_f_h.min * sz_align;
+		decon->win_up.rect_w = max((res.src_f_w.min * sz_align), decon->lcd_info->update_min_w);
+		decon->win_up.rect_h = max((res.src_f_h.min * sz_align), decon->lcd_info->update_min_h);
 	}
 
 	DPU_FULL_RECT(&decon->win_up.prev_up_region, lcd);

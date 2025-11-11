@@ -118,12 +118,11 @@ struct mfc_buf *mfc_get_del_if_consumed(struct mfc_ctx *ctx, struct mfc_buf_queu
 			exceed = true;
 	}
 
-	mfc_debug(2, "[MULTIFRAME] Total Size: %d, consumed: %ld, remained: %ld\n",
-		mfc_buf->vb.vb2_buf.planes[0].bytesused, consumed, remained);
 	if (exceed == true)
 		mfc_err_ctx("[MULTIFRAME] consumed size exceeded the total remained size\n");
 
-	if ((consumed > 0) && (remained > min_bytes) && (error == 0) && (exceed == false)) {
+	if ((consumed > 0) && (remained > min_bytes)
+			&& (IS_NO_ERROR(error)) && (exceed == false)) {
 		/* do not delete from queue */
 		*deleted = 0;
 	} else {
@@ -133,6 +132,9 @@ struct mfc_buf *mfc_get_del_if_consumed(struct mfc_ctx *ctx, struct mfc_buf_queu
 		*deleted = 1;
 	}
 
+	mfc_debug(2, "[MULTIFRAME] size %d, consumed %ld, remained %ld, deleted %d, error %d, exceed %d\n",
+			mfc_buf->vb.vb2_buf.planes[0].bytesused,
+			consumed, remained, *deleted, error, exceed);
 	spin_unlock_irqrestore(&ctx->buf_queue_lock, flags);
 	return mfc_buf;
 }
@@ -855,6 +857,7 @@ struct mfc_buf *mfc_search_move_dpb_nal_q(struct mfc_ctx *ctx, unsigned int dyna
 /* Add dst buffer in dst_buf_queue */
 void mfc_store_dpb(struct mfc_ctx *ctx, struct vb2_buffer *vb)
 {
+	struct mfc_dev *dev = ctx->dev;
 	unsigned long flags;
 	struct mfc_dec *dec;
 	struct mfc_buf *mfc_buf;
@@ -885,6 +888,44 @@ void mfc_store_dpb(struct mfc_ctx *ctx, struct vb2_buffer *vb)
 	ctx->dst_buf_queue.count++;
 
 	spin_unlock_irqrestore(&ctx->buf_queue_lock, flags);
+
+	mutex_lock(&dec->dpb_mutex);
+	if (!dec->assigned_refcnt[index]) {
+		mfc_debug(2, "[IOVMM] map the new DPB[%d] %#llx\n", index, mfc_buf->addr[0][0]);
+		mfc_get_iovmm(ctx, vb);
+	} else {
+		if (dec->assigned_refcnt[index] == 2) {
+			mfc_debug(2, "[IOVMM] remove spare DPB[%d] %#llx\n",
+					index, dec->assigned_addr[index][1][0]);
+			mfc_put_iovmm(ctx, ctx->dst_fmt->mem_planes, index, 1);
+		}
+
+		if (dec->assigned_addr[index][0][0] != mfc_buf->addr[0][0]) {
+			if (dec->dynamic_used & (1 << index)) {
+				mfc_debug(2, "[IOVMM] used DPB[%d] was changed %#llx->%#llx (used: %#x)\n",
+						index, dec->assigned_addr[index][0][0],
+						mfc_buf->addr[0][0], dec->dynamic_used);
+				MFC_TRACE_CTX("used DPB[%d] %#llx->%#llx (%#x)\n",
+						index, dec->assigned_addr[index][0][0],
+						mfc_buf->addr[0][0], dec->dynamic_used);
+				mfc_move_iovmm_to_spare(ctx, ctx->dst_fmt->mem_planes, index);
+				mfc_get_iovmm(ctx, vb);
+			} else {
+				mfc_debug(2, "[IOVMM] DPB[%d] was changed %#llx->%#llx (used: %#x)\n",
+						index, dec->assigned_addr[index][0][0],
+						mfc_buf->addr[0][0], dec->dynamic_used);
+				MFC_TRACE_CTX("DPB[%d] %#llx->%#llx (%#x)\n",
+						index, dec->assigned_addr[index][0][0],
+						mfc_buf->addr[0][0], dec->dynamic_used);
+				mfc_put_iovmm(ctx, ctx->dst_fmt->mem_planes, index, 0);
+				mfc_get_iovmm(ctx, vb);
+			}
+		} else {
+			mfc_debug(2, "[IOVMM] DPB[%d] has same address %#llx and already mapped\n",
+					index, mfc_buf->addr[0][0]);
+		}
+	}
+	mutex_unlock(&dec->dpb_mutex);
 }
 
 void mfc_cleanup_nal_queue(struct mfc_ctx *ctx)

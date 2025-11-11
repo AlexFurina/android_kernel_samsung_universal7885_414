@@ -208,7 +208,7 @@ static int gpu_get_asv_table(struct exynos_context *platform, char *buf, size_t 
 
 	cnt += snprintf(buf+cnt, buf_size-cnt, "GPU, vol, min, max, down_stay, mif, cpu0, cpu1\n");
 
-	for (i = gpu_dvfs_get_level(platform->gpu_max_clock); i <= gpu_dvfs_get_level(platform->gpu_min_clock); i++) {
+	for (i = gpu_dvfs_get_level(platform->gpu_max_clock_limit); i <= gpu_dvfs_get_level(platform->gpu_min_clock); i++) {
 		cnt += snprintf(buf+cnt, buf_size-cnt, "%d, %7d, %2d, %3d, %d, %7d, %7d, %7d\n",
 		platform->table[i].clock, platform->table[i].voltage, platform->table[i].min_threshold,
 		platform->table[i].max_threshold, platform->table[i].down_staycount, platform->table[i].mem_freq,
@@ -249,7 +249,7 @@ static int gpu_get_dvfs_table(struct exynos_context *platform, char *buf, size_t
 	if (buf == NULL)
 		return 0;
 
-	for (i = gpu_dvfs_get_level(platform->gpu_max_clock); i <= gpu_dvfs_get_level(platform->gpu_min_clock); i++)
+	for (i = gpu_dvfs_get_level(platform->gpu_max_clock_limit); i <= gpu_dvfs_get_level(platform->gpu_min_clock); i++)
 		cnt += snprintf(buf+cnt, buf_size-cnt, " %d", platform->table[i].clock);
 
 	cnt += snprintf(buf+cnt, buf_size-cnt, "\n");
@@ -1631,7 +1631,7 @@ static ssize_t show_kernel_sysfs_freq_table(struct kobject *kobj, struct kobj_at
 	if (!platform)
 		return -ENODEV;
 
-	for (i = gpu_dvfs_get_level(platform->gpu_min_clock); i >= gpu_dvfs_get_level(platform->gpu_max_clock); i--) {
+	for (i = gpu_dvfs_get_level(platform->gpu_min_clock); i >= gpu_dvfs_get_level(platform->gpu_max_clock_limit); i--) {
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d ", platform->table[i].clock);
 	}
 

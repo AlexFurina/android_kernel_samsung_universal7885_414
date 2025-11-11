@@ -57,6 +57,7 @@ static void ion_buffer_add(struct ion_device *dev,
 	struct rb_node **p = &dev->buffers.rb_node;
 	struct rb_node *parent = NULL;
 	struct ion_buffer *entry;
+	struct task_struct *task;
 
 	while (*p) {
 		parent = *p;
@@ -72,6 +73,12 @@ static void ion_buffer_add(struct ion_device *dev,
 		}
 	}
 
+	task = current;
+	get_task_comm(buffer->task_comm, task->group_leader);
+	get_task_comm(buffer->thread_comm, task);
+	buffer->pid = task_pid_nr(task->group_leader);
+	buffer->tid = task_pid_nr(task);
+
 	rb_link_node(&buffer->node, parent, p);
 	rb_insert_color(&buffer->node, &dev->buffers);
 }
@@ -84,6 +91,7 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 {
 	struct ion_buffer *buffer;
 	int ret;
+	long nr_alloc_cur, nr_alloc_peak;
 
 	buffer = kzalloc(sizeof(*buffer), GFP_KERNEL);
 	if (!buffer)
@@ -124,6 +132,11 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 
 	ion_buffer_add(dev, buffer);
 	mutex_unlock(&dev->buffer_lock);
+	nr_alloc_cur = atomic_long_add_return(len, &heap->total_allocated);
+	nr_alloc_peak = atomic_long_read(&heap->total_allocated_peak);
+	if (nr_alloc_cur > nr_alloc_peak)
+		atomic_long_set(&heap->total_allocated_peak, nr_alloc_cur);
+
 	return buffer;
 
 err1:
@@ -145,6 +158,7 @@ void ion_buffer_destroy(struct ion_buffer *buffer)
 			     __func__);
 		buffer->heap->ops->unmap_kernel(buffer->heap, buffer);
 	}
+	atomic_long_sub(buffer->size, &buffer->heap->total_allocated);
 	buffer->heap->ops->free(buffer);
 
 	ion_event_end(ION_EVENT_TYPE_FREE, buffer);
@@ -362,7 +376,6 @@ static void ion_dma_buf_kunmap(struct dma_buf *dmabuf, unsigned long offset,
 		ion_buffer_kmap_put(buffer);
 		mutex_unlock(&buffer->lock);
 	}
-
 }
 
 static void *ion_dma_buf_vmap(struct dma_buf *dmabuf)
@@ -453,6 +466,35 @@ const struct dma_buf_ops ion_dma_buf_ops = {
 	.vunmap = ion_dma_buf_vunmap,
 };
 
+#ifdef CONFIG_HPA_EXTRA
+static struct ion_buffer *ion_buffer_create_extra_heap(size_t len, unsigned int flags, unsigned int heap_id_mask)
+{
+	struct ion_device *dev = internal_dev;
+	struct ion_heap *heap, *extra_heap = NULL;
+	bool try_extra_heap = false;
+
+	down_read(&dev->lock);
+	plist_for_each_entry(heap, &dev->heaps, node) {
+		if (((1 << heap->id) & heap_id_mask) && !strcmp(heap->name, "vframe_heap"))
+			try_extra_heap = true;
+		else if (!strcmp(heap->name, "vframe_extra_heap"))
+			extra_heap = heap;
+	}
+	up_read(&dev->lock);
+
+	if (!try_extra_heap || !extra_heap)
+		return NULL;
+
+	pr_err("Retry to allocate extra heap...\n");
+	return ion_buffer_create(extra_heap, dev, len, flags);
+}
+#else
+static struct ion_buffer *ion_buffer_create_extra_heap(size_t len, unsigned int flags, unsigned int heap_id_mask)
+{
+	return NULL;
+}
+#endif
+
 #define ION_EXPNAME_LEN (4 + 4 + 1) /* strlen("ion-") + strlen("2048") + '\0' */
 
 struct dma_buf *__ion_alloc(size_t len, unsigned int heap_id_mask,
@@ -488,7 +530,10 @@ struct dma_buf *__ion_alloc(size_t len, unsigned int heap_id_mask,
 		/* if the caller didn't specify this heap id */
 		if (!((1 << heap->id) & heap_id_mask))
 			continue;
+		tracing_mark_begin("%s(%s, %zu, 0x%x, 0x%x)", "ion_alloc",
+				   heap->name, len, heap_id_mask, flags);
 		buffer = ion_buffer_create(heap, dev, len, flags);
+		tracing_mark_end();
 		if (!IS_ERR(buffer))
 			break;
 	}
@@ -497,6 +542,14 @@ struct dma_buf *__ion_alloc(size_t len, unsigned int heap_id_mask,
 	if (!buffer) {
 		perrfn("no matching heap found against heapmaks %#x", heap_id_mask);
 		return ERR_PTR(-ENODEV);
+	}
+
+	if (IS_ERR(buffer)) {
+		struct ion_buffer *extra_heap_buffer;
+
+		extra_heap_buffer = ion_buffer_create_extra_heap(len, flags, heap_id_mask);
+		if (extra_heap_buffer && !IS_ERR(extra_heap_buffer))
+			buffer = extra_heap_buffer;
 	}
 
 	if (IS_ERR(buffer))

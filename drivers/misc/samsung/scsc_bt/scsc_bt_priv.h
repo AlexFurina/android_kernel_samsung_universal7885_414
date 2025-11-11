@@ -9,6 +9,15 @@
 #ifndef __SCSC_BT_PRIV_H
 #define __SCSC_BT_PRIV_H
 
+#include <linux/pm_qos.h>
+#include <linux/poll.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#include <scsc/scsc_wakelock.h>
+#else
+#include <linux/wakelock.h>
+#endif
+#include <linux/cdev.h>
+
 #include <scsc/scsc_mx.h>
 #include <scsc/api/bsmhcp.h>
 #include <scsc/api/bhcs.h>
@@ -54,9 +63,6 @@
 #define SCSC_BT_ADDR_LEN  (3)
 #elif defined CONFIG_SCSC_BT_ADDRESS_IN_FILE
 #define SCSC_BT_ADDR      CONFIG_SCSC_BT_ADDRESS_FILENAME
-#define SCSC_BT_ADDR_LEN  (6)
-#else
-#define SCSC_BT_ADDR      "/proc/config/bt_mac/ascii"
 #define SCSC_BT_ADDR_LEN  (6)
 #endif
 
@@ -233,16 +239,22 @@ struct scsc_bt_service {
 	struct scsc_bt_connection_info connection_handle_list[SCSC_BT_CONNECTION_INFO_MAX];
 	bool                           hci_event_paused;
 	bool                           acldata_paused;
-
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	struct scsc_wake_lock	       read_wake_lock;
+        struct scsc_wake_lock	       write_wake_lock;
+        struct scsc_wake_lock	       service_wake_lock;
+#else
 	struct wake_lock               read_wake_lock;
 	struct wake_lock               write_wake_lock;
 	struct wake_lock               service_wake_lock;
+#endif
 	size_t                         write_wake_lock_count;
 	size_t                         write_wake_unlock_count;
 
 	size_t                         interrupt_count;
 	size_t                         interrupt_read_count;
 	size_t                         interrupt_write_count;
+	size_t                         last_suspend_interrupt_count;
 
 	u32                            mailbox_hci_evt_read;
 	u32                            mailbox_hci_evt_write;
@@ -257,6 +269,7 @@ struct scsc_bt_service {
 	struct scsc_bt_avdtp_detect    avdtp_detect;
 	struct completion              recovery_release_complete;
 	struct completion              recovery_probe_complete;
+	u8                             recovery_level;
 
 	bool                           iq_reports_enabled;
 
@@ -333,9 +346,15 @@ struct scsc_ant_service {
 	u32                            read_index;
 	wait_queue_head_t              read_wait;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	struct scsc_wake_lock               read_wake_lock;
+        struct scsc_wake_lock               write_wake_lock;
+        struct scsc_wake_lock               service_wake_lock;
+#else
 	struct wake_lock               read_wake_lock;
 	struct wake_lock               write_wake_lock;
 	struct wake_lock               service_wake_lock;
+#endif
 	size_t                         write_wake_lock_count;
 	size_t                         write_wake_unlock_count;
 
@@ -350,6 +369,8 @@ struct scsc_ant_service {
 
 	struct completion              recovery_release_complete;
 	struct completion              recovery_probe_complete;
+	struct completion              release_complete;
+	u8                             recovery_level;
 };
 
 extern struct scsc_ant_service ant_service;

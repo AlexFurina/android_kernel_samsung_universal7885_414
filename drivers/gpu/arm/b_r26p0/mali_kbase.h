@@ -365,16 +365,6 @@ static inline void kbase_free_user_buffer(
 	}
 }
 
-/**
- * kbase_mem_copy_from_extres() - Copy from external resources.
- *
- * @kctx:	kbase context within which the copying is to take place.
- * @buf_data:	Pointer to the information about external resources:
- *		pages pertaining to the external resource, number of
- *		pages to copy.
- */
-int kbase_mem_copy_from_extres(struct kbase_context *kctx,
-		struct kbase_debug_copy_buffer *buf_data);
 int kbase_process_soft_job(struct kbase_jd_atom *katom);
 int kbase_prepare_soft_job(struct kbase_jd_atom *katom);
 void kbase_finish_soft_job(struct kbase_jd_atom *katom);
@@ -388,11 +378,7 @@ int kbase_soft_event_update(struct kbase_context *kctx,
 			    u64 event,
 			    unsigned char new_status);
 
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
 void kbasep_soft_job_timeout_worker(struct timer_list *timer);
-#else
-void kbasep_soft_job_timeout_worker(unsigned long data);
-#endif
 void kbasep_complete_triggered_soft_events(struct kbase_context *kctx, u64 evt);
 
 /* MALI_SEC_INTEGRATION */

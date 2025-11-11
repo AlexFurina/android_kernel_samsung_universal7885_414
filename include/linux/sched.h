@@ -8,7 +8,6 @@
  */
 
 #include <uapi/linux/sched.h>
-#include <linux/mm_event.h>
 
 #include <asm/current.h>
 
@@ -28,6 +27,7 @@
 #include <linux/signal_types.h>
 #include <linux/mm_types_task.h>
 #include <linux/task_io_accounting.h>
+#include <linux/sec_debug_types.h>
 
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;
@@ -355,6 +355,52 @@ struct util_est {
 #define UTIL_EST_WEIGHT_SHIFT		2
 };
 
+struct multi_load {
+	u64				last_update_time;
+	u32				period_contrib;
+	u64				runnable_sum;
+	u64				runnable_sum_s;
+	unsigned long			runnable_avg;
+	unsigned long			runnable_avg_s;
+	u32				util_sum;
+	unsigned long			util_avg;
+	u32				util_sum_s;
+	unsigned long			util_avg_s;
+
+	/* for util_est */
+	struct util_est			util_est;
+	struct util_est			util_est_s;
+	int				util_est_applied;
+
+	int				hungry;
+};
+
+#define EMS_PART_ENQUEUE	0x1
+#define EMS_PART_DEQUEUE	0x2
+#define EMS_PART_UPDATE		0x4
+#define EMS_PART_WAKEUP_NEW	0x8
+
+struct part {
+	bool	running;
+
+	u64	period_start;
+	u64	last_updated;
+	u64	active_sum;
+
+#define PART_HIST_SIZE_MAX	20
+	int	hist_idx;
+	int	hist[PART_HIST_SIZE_MAX];
+	int	active_ratio_recent;
+	int	active_ratio_avg;
+	int	active_ratio_max;
+	int	active_ratio_est;
+	int	active_ratio_stdev;
+	int	active_ratio_limit;
+
+	u64	last_boost_time;
+	int	active_ratio_boost;
+};
+
 /*
  * The load_avg/util_avg accumulates an infinite geometric series
  * (see __update_load_avg() in kernel/sched/fair.c).
@@ -417,15 +463,7 @@ struct sched_avg {
 	struct util_est			util_est;
 };
 
-struct ontime_avg {
-	u64 ontime_migration_time;
-	u64 load_sum;
-	u32 period_contrib;
-	unsigned long load_avg;
-};
-
 struct ontime_entity {
-	struct ontime_avg avg;
 	int migrating;
 	int cpu;
 };
@@ -499,6 +537,7 @@ struct sched_entity {
 	 * collide with read-mostly values above.
 	 */
 	struct sched_avg		avg ____cacheline_aligned_in_smp;
+	struct multi_load		ml ____cacheline_aligned_in_smp;
 #endif
 	struct ontime_entity		ontime;
 };
@@ -646,6 +685,10 @@ union rcu_special {
 	u32 s; /* Set of bits. */
 };
 
+#ifdef CONFIG_FIVE
+struct task_integrity;
+#endif
+
 enum perf_event_task_context {
 	perf_invalid_context = -1,
 	perf_hw_context = 0,
@@ -715,12 +758,12 @@ struct task_struct {
 #ifdef CONFIG_SCHED_USE_FLUID_RT
 	int victim_flag;
 #endif
-
+#if 0
 #ifdef CONFIG_SCHED_EMS
 	struct task_band *band;
 	struct list_head band_members;
 #endif
-
+#endif
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group		*sched_task_group;
 #endif
@@ -761,6 +804,8 @@ struct task_struct {
 	struct plist_node		pushable_tasks;
 	struct rb_node			pushable_dl_tasks;
 #endif
+
+	unsigned int			sse;
 
 	struct mm_struct		*mm;
 	struct mm_struct		*active_mm;
@@ -966,8 +1011,8 @@ struct task_struct {
 	struct seccomp			seccomp;
 
 	/* Thread group tracking: */
-	u32				parent_exec_id;
-	u32				self_exec_id;
+	u64				parent_exec_id;
+	u64				self_exec_id;
 
 	/* Protection against (de-)allocation: mm, files, fs, tty, keyrings, mems_allowed, mempolicy: */
 	spinlock_t			alloc_lock;
@@ -986,10 +1031,6 @@ struct task_struct {
 	struct rt_mutex_waiter		*pi_blocked_on;
 #endif
 
-#ifdef CONFIG_MM_EVENT_STAT
-	struct mm_event_task	mm_event[MM_TYPE_NUM];
-	unsigned long		next_period;
-#endif
 #ifdef CONFIG_DEBUG_MUTEXES
 	/* Mutex deadlock detection: */
 	struct mutex_waiter		*blocked_on;
@@ -1094,6 +1135,8 @@ struct task_struct {
 #endif
 	struct list_head		pi_state_list;
 	struct futex_pi_state		*pi_state_cache;
+	struct mutex			futex_exit_mutex;
+	unsigned int			futex_state;
 #endif
 #ifdef CONFIG_PERF_EVENTS
 	struct perf_event_context	*perf_event_ctxp[perf_nr_task_contexts];
@@ -1251,8 +1294,14 @@ struct task_struct {
 	unsigned int			sequential_io;
 	unsigned int			sequential_io_avg;
 #endif
+#if defined(CONFIG_SDP)
+	unsigned int sensitive;
+#endif
 #ifdef CONFIG_DEBUG_ATOMIC_SLEEP
 	unsigned long			task_state_change;
+#endif
+#ifdef CONFIG_FIVE
+	struct task_integrity		*integrity;
 #endif
 	int				pagefault_disabled;
 #ifdef CONFIG_MMU
@@ -1271,6 +1320,9 @@ struct task_struct {
 #ifdef CONFIG_SECURITY
 	/* Used by LSM modules for access restriction: */
 	void				*security;
+#endif
+#ifdef CONFIG_SEC_DEBUG_DTASK
+	struct sec_debug_wait		ssdbg_wait;
 #endif
 
 	/*
@@ -1469,7 +1521,6 @@ extern struct pid *cad_pid;
  */
 #define PF_IDLE			0x00000002	/* I am an IDLE thread */
 #define PF_EXITING		0x00000004	/* Getting shut down */
-#define PF_EXITPIDONE		0x00000008	/* PI exit done on shut down */
 #define PF_VCPU			0x00000010	/* I'm a virtual CPU */
 #define PF_WQ_WORKER		0x00000020	/* I'm a workqueue worker */
 #define PF_FORKNOEXEC		0x00000040	/* Forked but didn't exec */

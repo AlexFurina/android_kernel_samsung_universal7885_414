@@ -29,9 +29,10 @@
 int fimc_is_sensor_runtime_suspend_pre(struct device *dev)
 {
 	int ret = 0;
+	struct platform_device *pdev = to_platform_device(dev);
 	struct fimc_is_device_sensor *device;
 
-	device = (struct fimc_is_device_sensor *)dev_get_drvdata(dev);
+	device = (struct fimc_is_device_sensor *)platform_get_drvdata(pdev);
 	if (!device) {
 		err("device is NULL");
 		goto p_err;
@@ -44,9 +45,10 @@ p_err:
 int fimc_is_sensor_runtime_resume_pre(struct device *dev)
 {
 	int ret = 0;
+	struct platform_device *pdev = to_platform_device(dev);
 	struct fimc_is_device_sensor *device;
 
-	device = (struct fimc_is_device_sensor *)dev_get_drvdata(dev);
+	device = (struct fimc_is_device_sensor *)platform_get_drvdata(pdev);
 	if (!device) {
 		err("device is NULL");
 		goto p_err;
@@ -61,6 +63,7 @@ int fimc_is_ischain_runtime_suspend_post(struct device *dev)
 	int ret = 0;
 #ifndef CONFIG_PM
 	{
+		struct platform_device *pdev = to_platform_device(dev);
 		struct fimc_is_device_ischain *device;
 		void __iomem *reg_mux_clkphy;
 		void __iomem *reg_isp_idleness_ch0;
@@ -69,7 +72,7 @@ int fimc_is_ischain_runtime_suspend_post(struct device *dev)
 		u32 try_count;
 		unsigned int state;
 
-		device = (struct fimc_is_device_ishcain *)dev_get_drvdata(dev);
+		device = (struct fimc_is_device_ischain *)platform_get_drvdata(pdev);
 		if (!device) {
 			err("device is NULL");
 			goto p_err;

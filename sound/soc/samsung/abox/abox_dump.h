@@ -1,6 +1,6 @@
 /* sound/soc/samsung/abox/abox_dump.h
  *
- * ALSA SoC Audio Layer - Samsung Abox Internal Buffer Dumping driver
+ * ALSA SoC - Samsung Abox Internal Buffer Dumping driver
  *
  * Copyright (c) 2016 Samsung Electronics Co. Ltd.
  *

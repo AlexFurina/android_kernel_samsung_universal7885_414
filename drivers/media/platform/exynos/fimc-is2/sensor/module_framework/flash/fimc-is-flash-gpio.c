@@ -29,11 +29,11 @@ static int flash_gpio_init(struct v4l2_subdev *subdev, u32 val)
 	int ret = 0;
 	struct fimc_is_flash *flash;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flash = (struct fimc_is_flash *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	/* TODO: init flash driver */
 	flash->flash_data.mode = CAM2_FLASH_MODE_OFF;
@@ -54,10 +54,10 @@ static int sensor_gpio_flash_control(struct v4l2_subdev *subdev, enum flash_mode
 	int ret = 0;
 	struct fimc_is_flash *flash = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flash = (struct fimc_is_flash *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	dbg_flash("%s : mode = %s, intensity = %d\n", __func__,
 		mode == CAM2_FLASH_MODE_OFF ? "OFF" :
@@ -94,10 +94,10 @@ int flash_gpio_s_ctrl(struct v4l2_subdev *subdev, struct v4l2_control *ctrl)
 	int ret = 0;
 	struct fimc_is_flash *flash = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flash = (struct fimc_is_flash *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	switch(ctrl->id) {
 	case V4L2_CID_FLASH_SET_INTENSITY:
@@ -145,7 +145,7 @@ static const struct v4l2_subdev_ops subdev_ops = {
 	.core = &core_ops,
 };
 
-static int __init flash_gpio_probe(struct device *dev, struct i2c_client *client)
+int flash_gpio_probe(struct device *dev, struct i2c_client *client)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -155,8 +155,8 @@ static int __init flash_gpio_probe(struct device *dev, struct i2c_client *client
 	u32 sensor_id = 0;
 	struct device_node *dnode;
 
-	FIMC_BUG(!fimc_is_dev);
-	FIMC_BUG(!dev);
+	BUG_ON(!fimc_is_dev);
+	BUG_ON(!dev);
 
 	dnode = dev->of_node;
 
@@ -227,12 +227,12 @@ p_err:
 	return ret;
 }
 
-static int __init flash_gpio_platform_probe(struct platform_device *pdev)
+int flash_gpio_platform_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct device *dev;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 
@@ -248,6 +248,15 @@ p_err:
 	return ret;
 }
 
+static int flash_gpio_platform_remove(struct platform_device *pdev)
+{
+        int ret = 0;
+
+        info("%s\n", __func__);
+
+        return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_flash_gpio_match[] = {
 	{
 		.compatible = "samsung,sensor-flash-gpio",
@@ -261,23 +270,12 @@ MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_flash_gpio_match);
 
 /* register platform driver */
 static struct platform_driver sensor_flash_gpio_platform_driver = {
+	.probe  = flash_gpio_platform_probe,
+	.remove = flash_gpio_platform_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-FLASH-GPIO-PLATFORM",
 		.owner  = THIS_MODULE,
 		.of_match_table = exynos_fimc_is_sensor_flash_gpio_match,
 	}
 };
-
-static int __init fimc_is_sensor_flash_gpio_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_flash_gpio_platform_driver,
-				flash_gpio_platform_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_flash_gpio_platform_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(fimc_is_sensor_flash_gpio_init);
+module_platform_driver(sensor_flash_gpio_platform_driver);

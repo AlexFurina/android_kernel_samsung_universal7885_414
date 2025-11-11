@@ -41,57 +41,48 @@
 #include "fimc-is-device-module-base.h"
 
 static struct fimc_is_sensor_cfg config_imx260[] = {
-			/* width, height, fps, settle, mode, lane, speed, interleave, pd_mode */
-	FIMC_IS_SENSOR_CFG(4032, 3024, 30, 0, 0, CSI_DATA_LANES_4, 1368, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 4032, 3024), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_RAW10, 0, 0), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_USER, 4032, 14), VC_OUT(HW_FORMAT_USER, VC_MIPISTAT, 4032, 14),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0,  0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(4032, 2268, 30, 0, 1, CSI_DATA_LANES_4, 1368, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 4032, 2268), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_RAW10, 0, 0), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_USER, 4032, 14), VC_OUT(HW_FORMAT_USER, VC_MIPISTAT, 4032, 14),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(3024, 3024, 30, 0, 2, CSI_DATA_LANES_4, 1368, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 3024, 3024), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_RAW10, 0, 0), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_USER, 3024, 19), VC_OUT(HW_FORMAT_USER, VC_MIPISTAT, 3024, 19),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(4032, 2268, 60, 0, 3, CSI_DATA_LANES_4, 2054, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 4032, 2268), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_RAW10, 0, 0), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_USER, 4032, 4), VC_OUT(HW_FORMAT_USER, VC_MIPISTAT, 4032, 4),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(2016, 1134, 120, 0, 4, CSI_DATA_LANES_4, 2054, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 2016, 1134), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_RAW10, 0, 0), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_USER, 2016, 8), VC_OUT(HW_FORMAT_USER, VC_MIPISTAT, 2016, 8),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(2016, 1134, 240, 0, 5, CSI_DATA_LANES_4, 2054, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 2016, 1134), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_RAW10, 0, 0), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_USER, 2016, 8), VC_OUT(HW_FORMAT_USER, VC_MIPISTAT, 2016, 8),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(1008,  756, 120, 0, 6, CSI_DATA_LANES_4, 2054, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 1008,  756), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_RAW10, 0, 0), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_USER, 1008, 1), VC_OUT(HW_FORMAT_USER, VC_MIPISTAT, 1008, 1),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(2016, 1512, 30, 0, 7, CSI_DATA_LANES_4, 1368, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 2016, 1512), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_RAW10, 0, 0), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_USER, 2016, 8), VC_OUT(HW_FORMAT_USER, VC_MIPISTAT, 2016, 8),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(1504, 1504, 30, 0, 8, CSI_DATA_LANES_4, 1368, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 1504, 1504), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_RAW10, 0, 0), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_USER, 1504, 11), VC_OUT(HW_FORMAT_USER, VC_MIPISTAT, 1504, 11),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
-	FIMC_IS_SENSOR_CFG(2016, 1134, 30, 0, 9, CSI_DATA_LANES_4, 1368, CSI_MODE_VC_DT, PD_NONE,
-		VC_IN(0, HW_FORMAT_RAW10, 2016, 1134), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(1, HW_FORMAT_RAW10, 0, 0), VC_OUT(HW_FORMAT_RAW10, VC_NOTHING, 0, 0),
-		VC_IN(0, HW_FORMAT_USER, 2016, 8), VC_OUT(HW_FORMAT_USER, VC_MIPISTAT, 2016, 8),
-		VC_IN(3, HW_FORMAT_UNKNOWN, 0, 0), VC_OUT(HW_FORMAT_UNKNOWN, VC_NOTHING, 0, 0)),
+	/* 4032x3024@30fps */
+	FIMC_IS_SENSOR_CFG_EXT(4032, 3024,  30, 30, 0, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 4032, 14), 0),
+	/* 4032x2268@30fps */
+	FIMC_IS_SENSOR_CFG_EXT(4032, 2268,  30, 30, 1, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 4032, 14), 0),
+	/* 3024x3024@30fps */
+	FIMC_IS_SENSOR_CFG_EXT(3024, 3024,  30, 30, 2, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 3024, 19), 0),
+	/* 4032x2268@60fps */
+	FIMC_IS_SENSOR_CFG_EXT(4032, 2268,  60, 45, 3, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 4032, 4), 0),
+	/* 2016x1134@120fps */
+	FIMC_IS_SENSOR_CFG_EXT(2016, 1134, 120, 45, 4, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 2016, 8), 0),
+	/* 2016x1134@240fps */
+	FIMC_IS_SENSOR_CFG_EXT(2016, 1134, 240, 45, 5, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 2016, 8), 0),
+	/* 1008x 756@120fps */
+	FIMC_IS_SENSOR_CFG_EXT(1008,  756, 120, 45, 6, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 1008, 1), 0),
+	/* 2016x 1512@30fps */
+	FIMC_IS_SENSOR_CFG_EXT(2016, 1512,  30, 30, 7, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 2016, 8), 0), 
+	/* 1504x 1504@30fps */
+	FIMC_IS_SENSOR_CFG_EXT(1504, 1504,  30, 30, 8, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 1504, 11), 0),
+	/* 2016x 1134@30fps */
+	FIMC_IS_SENSOR_CFG_EXT(2016, 1134,  30, 30, 9, CSI_DATA_LANES_4, 2145, 0, SET_VC(VC_MIPI_STAT, 2016, 8), 0),
+};
+
+static struct fimc_is_vci vci_imx260[] = {
+	{
+		.pixelformat = V4L2_PIX_FMT_SBGGR10,
+		.config = {{0, HW_FORMAT_RAW10, VCI_DMA_NORMAL},
+                           {1, HW_FORMAT_RAW10, VCI_DMA_NORMAL},
+                           {0, HW_FORMAT_USER, VCI_DMA_INTERNAL},
+                           {3, 0, VCI_DMA_NORMAL}}
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR12,
+		.config = {{0, HW_FORMAT_RAW10, VCI_DMA_NORMAL},
+                           {1, HW_FORMAT_RAW10, VCI_DMA_NORMAL},
+                           {0, HW_FORMAT_USER, VCI_DMA_INTERNAL},
+                           {3, 0, VCI_DMA_NORMAL}}
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR16,
+		.config = {{0, HW_FORMAT_RAW10, VCI_DMA_NORMAL},
+                           {1, HW_FORMAT_RAW10, VCI_DMA_NORMAL},
+                           {0, HW_FORMAT_USER, VCI_DMA_INTERNAL},
+                           {3, 0, VCI_DMA_NORMAL}}
+	}
 };
 
 static const struct v4l2_subdev_core_ops core_ops = {
@@ -105,7 +96,6 @@ static const struct v4l2_subdev_core_ops core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_routing = sensor_module_s_routing,
 	.s_stream = sensor_module_s_stream,
 	.s_parm = sensor_module_s_param
 	//.s_mbus_fmt = sensor_module_s_format,
@@ -133,7 +123,7 @@ static int sensor_imx260_power_setpin(struct platform_device *pdev,
 	int gpio_none = 0;
 	int gpio_camio_1p8_en = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -374,7 +364,7 @@ static int sensor_imx260_power_setpin(struct platform_device *pdev,
 }
 #endif /* CONFIG_OF */
 
-static int __init sensor_module_imx260_probe(struct platform_device *pdev)
+int sensor_module_imx260_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -384,9 +374,9 @@ static int __init sensor_module_imx260_probe(struct platform_device *pdev)
 	struct sensor_open_extended *ext;
 	struct exynos_platform_fimc_is_module *pdata;
 	struct device *dev;
-	int ch;
+    int ch;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -429,7 +419,11 @@ static int __init sensor_module_imx260_probe(struct platform_device *pdev)
 	module->pixel_height = module->active_height + 0;
 	module->max_framerate = 300;
 	module->position = pdata->position;
+	module->mode = CSI_MODE_VC_DT;
+	module->lanes = CSI_DATA_LANES_4;
 	module->bitwidth = 10;
+	module->vcis = ARRAY_SIZE(vci_imx260);
+	module->vci = vci_imx260;
 	module->sensor_maker = "SONY";
 	module->sensor_name = "IMX260";
 	module->setfile_name = "setfile_imx260.bin";
@@ -437,8 +431,8 @@ static int __init sensor_module_imx260_probe(struct platform_device *pdev)
 	module->cfg = config_imx260;
 	module->ops = NULL;
 
-	for (ch = 1; ch < CSI_VIRTUAL_CH_MAX; ch++)
-		module->vc_buffer_offset[ch] = pdata->vc_buffer_offset[ch];
+    for (ch = 1; ch < CSI_VIRTUAL_CH_MAX; ch++)
+        module->internal_vc[ch] = pdata->internal_vc[ch];
 
 	/* Sensor peri */
 	module->private_data = kzalloc(sizeof(struct fimc_is_device_sensor_peri), GFP_KERNEL);
@@ -451,6 +445,7 @@ static int __init sensor_module_imx260_probe(struct platform_device *pdev)
 	PERI_SET_MODULE(module);
 
 	ext = &module->ext;
+	ext->mipi_lane_num = module->lanes;
 #ifdef CONFIG_SENSOR_RETENTION_USE
 	ext->use_retention_mode = SENSOR_RETENTION_DISABLE;
 #endif
@@ -525,6 +520,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_imx260_remove(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	info("%s\n", __func__);
+
+	return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_imx260_match[] = {
 	{
 		.compatible = "samsung,sensor-module-imx260",
@@ -534,6 +538,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_imx260_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_imx260_match);
 
 static struct platform_driver sensor_module_imx260_driver = {
+	.probe  = sensor_module_imx260_probe,
+	.remove = sensor_module_imx260_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-IMX260",
 		.owner  = THIS_MODULE,
@@ -541,16 +547,4 @@ static struct platform_driver sensor_module_imx260_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_imx260_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_module_imx260_driver,
-				sensor_module_imx260_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_imx260_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_imx260_init);
+module_platform_driver(sensor_module_imx260_driver);

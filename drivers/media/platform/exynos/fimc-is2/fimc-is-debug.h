@@ -25,23 +25,20 @@
 #define DBG_DIGIT_MARGIN_H_INIT	64
 #define DBG_DIGIT_MARGIN_W	8
 #define DBG_DIGIT_MARGIN_H	2
-#define DBG_DIGIT_TAG(row, col, queue, frame, digit, increase_unit)	\
-	do {			\
-		int i, j;   \
-		for (i = 0, j = digit; i < frame->num_buffers; i++, j += increase_unit) {   \
-			ulong addr;	\
-			u32 width, height, pixelformat, bitwidth;		\
-			addr = queue->buf_kva[frame->index][i];			\
-			width = (frame->width) ? frame->width : queue->framecfg.width;	\
-			height = (frame->height) ? frame->height : queue->framecfg.height;	\
-			pixelformat = queue->framecfg.format->pixelformat;	\
-			bitwidth = queue->framecfg.format->hw_bitwidth;		\
-			fimc_is_draw_digit(addr, width, height, pixelformat, bitwidth,	\
-					row, col, j);			\
-		}   \
+#define DBG_DIGIT_TAG(row, col, queue, frame, digit, i)	\
+	do {		\
+		ulong addr;	\
+		u32 width, height, pixelformat, bitwidth;		\
+		addr = queue->buf_kva[frame->index][i];			\
+		width = (frame->width) ? frame->width : queue->framecfg.width;	\
+		height = (frame->height) ? frame->height : queue->framecfg.height;	\
+		pixelformat = queue->framecfg.format->pixelformat;	\
+		bitwidth = queue->framecfg.format->bitwidth;		\
+		fimc_is_draw_digit(addr, width, height, pixelformat, bitwidth,	\
+				row, col, digit);			\
 	} while(0)
 #else
-#define DBG_DIGIT_TAG(row, col, queue, frame, digit, increase_unit)
+#define DBG_DIGIT_TAG(row, col, queue, frame, digit, i)
 #endif
 
 enum fimc_is_debug_state {

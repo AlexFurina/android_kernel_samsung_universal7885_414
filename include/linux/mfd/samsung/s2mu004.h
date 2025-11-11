@@ -34,8 +34,7 @@
 		((m) & 0x30 ? ((m) & 0x10 ? 4 : 5) : ((m) & 0x40 ? 6 : 7)))
 
 #ifdef CONFIG_VIBETONZ
-#if false
-struct s2mu004_haptic_platform_data {
+/*struct s2mu004_haptic_platform_data {
 	u16 max_timeout;
 	u16 duty;
 	u16 period;
@@ -43,10 +42,9 @@ struct s2mu004_haptic_platform_data {
 	char *regulator_name;
 	unsigned int pwm_id;
 
-	void (*init_hw)(void);
-	void (*motor_en)(bool);
-};
-#endif
+	void (*init_hw) (void);
+	void (*motor_en) (bool);
+};*/
 #endif
 
 struct s2mu004_regulator_data {
@@ -64,7 +62,7 @@ struct s2mu004_platform_data {
 	struct s2mu004_regulator_data *regulators;
 #ifdef CONFIG_VIBETONZ
 	/* haptic motor data */
-	/* struct s2mu004_haptic_platform_data *haptic_data; */
+//	struct s2mu004_haptic_platform_data *haptic_data;
 #endif
 	struct mfd_cell *sub_devices;
 	int num_subdevs;

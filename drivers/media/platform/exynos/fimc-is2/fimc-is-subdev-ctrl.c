@@ -76,14 +76,6 @@ struct fimc_is_subdev * video2subdev(enum fimc_is_subdev_device_type device_type
 	case FIMC_IS_VIDEO_31P_NUM:
 		subdev = &ischain->txp;
 		break;
-	case FIMC_IS_VIDEO_30F_NUM:
-	case FIMC_IS_VIDEO_31F_NUM:
-		subdev = &ischain->txf;
-		break;
-	case FIMC_IS_VIDEO_30G_NUM:
-	case FIMC_IS_VIDEO_31G_NUM:
-		subdev = &ischain->txg;
-		break;
 	case FIMC_IS_VIDEO_I0S_NUM:
 	case FIMC_IS_VIDEO_I1S_NUM:
 		subdev = &ischain->group_isp.leader;
@@ -96,10 +88,7 @@ struct fimc_is_subdev * video2subdev(enum fimc_is_subdev_device_type device_type
 	case FIMC_IS_VIDEO_I1P_NUM:
 		subdev = &ischain->ixp;
 		break;
-	case FIMC_IS_VIDEO_ME0C_NUM:
-	case FIMC_IS_VIDEO_ME1C_NUM:
-		subdev = &ischain->mexc;
-		break;
+	case FIMC_IS_VIDEO_DIS_NUM:
 	case FIMC_IS_VIDEO_D0S_NUM:
 	case FIMC_IS_VIDEO_D1S_NUM:
 		subdev = &ischain->group_dis.leader;
@@ -108,26 +97,11 @@ struct fimc_is_subdev * video2subdev(enum fimc_is_subdev_device_type device_type
 	case FIMC_IS_VIDEO_D1C_NUM:
 		subdev = &ischain->dxc;
 		break;
-	case FIMC_IS_VIDEO_DCP0S_NUM:
-		subdev = &ischain->group_dcp.leader;
+	case FIMC_IS_VIDEO_SCC_NUM:
+		subdev = &ischain->scc;
 		break;
-	case FIMC_IS_VIDEO_DCP1S_NUM:
-		subdev = &ischain->dc1s;
-		break;
-	case FIMC_IS_VIDEO_DCP0C_NUM:
-		subdev = &ischain->dc0c;
-		break;
-	case FIMC_IS_VIDEO_DCP1C_NUM:
-		subdev = &ischain->dc1c;
-		break;
-	case FIMC_IS_VIDEO_DCP2C_NUM:
-		subdev = &ischain->dc2c;
-		break;
-	case FIMC_IS_VIDEO_DCP3C_NUM:
-		subdev = &ischain->dc3c;
-		break;
-	case FIMC_IS_VIDEO_DCP4C_NUM:
-		subdev = &ischain->dc4c;
+	case FIMC_IS_VIDEO_SCP_NUM:
+		subdev = &ischain->scp;
 		break;
 	case FIMC_IS_VIDEO_M0S_NUM:
 	case FIMC_IS_VIDEO_M1S_NUM:
@@ -169,8 +143,8 @@ int fimc_is_subdev_probe(struct fimc_is_subdev *subdev,
 	char *name,
 	const struct fimc_is_subdev_ops *sops)
 {
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!name);
+	BUG_ON(!subdev);
+	BUG_ON(!name);
 
 	subdev->id = id;
 	subdev->instance = instance;
@@ -195,7 +169,7 @@ int fimc_is_subdev_open(struct fimc_is_subdev *subdev,
 	struct fimc_is_video *video = GET_VIDEO(vctx);
 	const struct param_control *init_ctl = (const struct param_control *)ctl_data;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	if (test_bit(FIMC_IS_SUBDEV_OPEN, &subdev->state)) {
 		mserr("already open", subdev, subdev);
@@ -245,91 +219,15 @@ p_err:
 	return ret;
 }
 
-/*
- * DMA abstraction:
- * A overlapped use case of DMA should be detected.
- */
-static int fimc_is_sensor_check_subdev_open(struct fimc_is_device_sensor *device,
-	struct fimc_is_subdev *subdev,
-	struct fimc_is_video_ctx *vctx)
-{
-	int ret = 0;
-	int i;
-	struct fimc_is_core *core;
-	struct fimc_is_device_sensor *all_sensor;
-	struct fimc_is_device_sensor *each_sensor;
-
-	FIMC_BUG(!device);
-	FIMC_BUG(!subdev);
-
-	core = device->private_data;
-	all_sensor = fimc_is_get_sensor_device(core);
-	for (i = 0; i < FIMC_IS_SENSOR_COUNT; i++) {
-		each_sensor = &all_sensor[i];
-		if (each_sensor == device)
-			continue;
-
-		if (each_sensor->dma_abstract == false)
-			continue;
-
-		if (test_bit(FIMC_IS_SENSOR_OPEN, &each_sensor->state)) {
-			if (test_bit(FIMC_IS_SUBDEV_OPEN, &each_sensor->ssvc0.state)) {
-				if (each_sensor->ssvc0.dma_ch[0] == subdev->dma_ch[0]) {
-					merr("vc0 dma(%d) is overlapped with another sensor(I:%d).\n",
-						device, subdev->dma_ch[0], i);
-					goto err_check_vc_open;
-				}
-			}
-
-			if (test_bit(FIMC_IS_SUBDEV_OPEN, &each_sensor->ssvc1.state)) {
-				if (each_sensor->ssvc1.dma_ch[0] == subdev->dma_ch[0]) {
-					merr("vc1 dma(%d) is overlapped with another sensor(I:%d).\n",
-						device, subdev->dma_ch[0], i);
-					goto err_check_vc_open;
-				}
-			}
-
-			if (test_bit(FIMC_IS_SUBDEV_OPEN, &each_sensor->ssvc2.state)) {
-				if (each_sensor->ssvc2.dma_ch[0] == subdev->dma_ch[0]) {
-					merr("vc2 dma(%d) is overlapped with another sensor(I:%d).\n",
-						device, subdev->dma_ch[0], i);
-					goto err_check_vc_open;
-				}
-			}
-
-			if (test_bit(FIMC_IS_SUBDEV_OPEN, &each_sensor->ssvc3.state)) {
-				if (each_sensor->ssvc3.dma_ch[0] == subdev->dma_ch[0]) {
-					merr("vc3 dma(%d) is overlapped with another sensor(I:%d).\n",
-						device, subdev->dma_ch[0], i);
-					goto err_check_vc_open;
-				}
-			}
-		}
-	}
-
-	ret = fimc_is_subdev_open(subdev, vctx, NULL);
-	if (ret) {
-		merr("fimc_is_subdev_open is fail(%d)", device, ret);
-		goto err_subdev_open;
-	}
-	fimc_is_put_sensor_device(core);
-
-	return 0;
-
-err_subdev_open:
-err_check_vc_open:
-	fimc_is_put_sensor_device(core);
-	return ret;
-}
 int fimc_is_sensor_subdev_open(struct fimc_is_device_sensor *device,
 	struct fimc_is_video_ctx *vctx)
 {
 	int ret = 0;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_VIDEO(vctx));
+	BUG_ON(!device);
+	BUG_ON(!vctx);
+	BUG_ON(!GET_VIDEO(vctx));
 
 	subdev = video2subdev(FIMC_IS_SENSOR_SUBDEV, (void *)device, GET_VIDEO(vctx)->id);
 	if (!subdev) {
@@ -338,18 +236,17 @@ int fimc_is_sensor_subdev_open(struct fimc_is_device_sensor *device,
 		goto err_video2subdev;
 	}
 
-	ret = fimc_is_sensor_check_subdev_open(device, subdev, vctx);
-	if (ret) {
-		merr("fimc_is_sensor_check_subdev_open is fail", device);
-		ret = -EINVAL;
-		goto err_check_subdev_open;
-	}
-
 	vctx->subdev = subdev;
+
+	ret = fimc_is_subdev_open(subdev, vctx, NULL);
+	if (ret) {
+		merr("fimc_is_subdev_open is fail(%d)", device, ret);
+		goto err_subdev_open;
+	}
 
 	return 0;
 
-err_check_subdev_open:
+err_subdev_open:
 err_video2subdev:
 	return ret;
 }
@@ -361,9 +258,9 @@ int fimc_is_ischain_subdev_open(struct fimc_is_device_ischain *device,
 	int ret_err = 0;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!vctx);
-	FIMC_BUG(!GET_VIDEO(vctx));
+	BUG_ON(!device);
+	BUG_ON(!vctx);
+	BUG_ON(!GET_VIDEO(vctx));
 
 	subdev = video2subdev(FIMC_IS_ISCHAIN_SUBDEV, (void *)device, GET_VIDEO(vctx)->id);
 	if (!subdev) {
@@ -430,8 +327,8 @@ int fimc_is_sensor_subdev_close(struct fimc_is_device_sensor *device,
 	int ret = 0;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!vctx);
+	BUG_ON(!device);
+	BUG_ON(!vctx);
 
 	subdev = vctx->subdev;
 	if (!subdev) {
@@ -466,8 +363,8 @@ int fimc_is_ischain_subdev_close(struct fimc_is_device_ischain *device,
 	int ret = 0;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!vctx);
+	BUG_ON(!device);
+	BUG_ON(!vctx);
 
 	subdev = vctx->subdev;
 	if (!subdev) {
@@ -499,8 +396,8 @@ static int fimc_is_subdev_start(struct fimc_is_subdev *subdev)
 	int ret = 0;
 	struct fimc_is_subdev *leader;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!subdev->leader);
+	BUG_ON(!subdev);
+	BUG_ON(!subdev->leader);
 
 	leader = subdev->leader;
 
@@ -528,8 +425,8 @@ static int fimc_is_sensor_subdev_start(void *qdevice,
 	struct fimc_is_video_ctx *vctx;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!queue);
+	BUG_ON(!device);
+	BUG_ON(!queue);
 
 	vctx = container_of(queue, struct fimc_is_video_ctx, queue);
 	subdev = vctx->subdev;
@@ -564,8 +461,8 @@ static int fimc_is_ischain_subdev_start(void *qdevice,
 	struct fimc_is_video_ctx *vctx;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!queue);
+	BUG_ON(!device);
+	BUG_ON(!queue);
 
 	vctx = container_of(queue, struct fimc_is_video_ctx, queue);
 	subdev = vctx->subdev;
@@ -599,12 +496,12 @@ static int fimc_is_subdev_stop(struct fimc_is_subdev *subdev)
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_frame *frame;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!subdev->leader);
+	BUG_ON(!subdev);
+	BUG_ON(!subdev->leader);
 
 	leader = subdev->leader;
 	framemgr = GET_SUBDEV_FRAMEMGR(subdev);
-	FIMC_BUG(!framemgr);
+	BUG_ON(!framemgr);
 
 	if (!test_bit(FIMC_IS_SUBDEV_START, &subdev->state)) {
 		merr("already stop", subdev);
@@ -652,8 +549,8 @@ static int fimc_is_sensor_subdev_stop(void *qdevice,
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_frame *frame;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!queue);
+	BUG_ON(!device);
+	BUG_ON(!queue);
 
 	vctx = container_of(queue, struct fimc_is_video_ctx, queue);
 	subdev = vctx->subdev;
@@ -707,8 +604,8 @@ static int fimc_is_ischain_subdev_stop(void *qdevice,
 	struct fimc_is_video_ctx *vctx;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!queue);
+	BUG_ON(!device);
+	BUG_ON(!queue);
 
 	vctx = container_of(queue, struct fimc_is_video_ctx, queue);
 	subdev = vctx->subdev;
@@ -734,9 +631,9 @@ static int fimc_is_subdev_s_format(struct fimc_is_subdev *subdev,
 	int ret = 0;
 	u32 pixelformat = 0, width, height;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!queue);
-	FIMC_BUG(!queue->framecfg.format);
+	BUG_ON(!subdev);
+	BUG_ON(!queue);
+	BUG_ON(!queue->framecfg.format);
 
 	pixelformat = queue->framecfg.format->pixelformat;
 
@@ -744,14 +641,51 @@ static int fimc_is_subdev_s_format(struct fimc_is_subdev *subdev,
 	height = queue->framecfg.height;
 
 	switch (subdev->id) {
-	case ENTRY_M0P:
-	case ENTRY_M1P:
-	case ENTRY_M2P:
-	case ENTRY_M3P:
-	case ENTRY_M4P:
-		if (width % 8) {
-			merr("width(%d) of format(%d) is not multiple of 8: need to check size",
-				subdev, width, pixelformat);
+	case ENTRY_SCC:
+	case ENTRY_SCP:
+		switch(pixelformat) {
+		/*
+		 * YUV422 1P, YUV422 2P : x8
+		 * YUV422 3P : x16
+		 */
+		case V4L2_PIX_FMT_YUV422P:
+			if (width % 8) {
+				merr("width(%d) of format(%d) is not supported size",
+					subdev, width, pixelformat);
+				ret = -EINVAL;
+				goto p_err;
+			}
+			break;
+		/*
+		 * YUV420 2P : x8
+		 * YUV420 3P : x16
+		 */
+		case V4L2_PIX_FMT_NV12M:
+		case V4L2_PIX_FMT_NV21M:
+			if (width % 8) {
+				merr("width(%d) of format(%d) is not supported size",
+					subdev, width, pixelformat);
+				ret = -EINVAL;
+				goto p_err;
+			}
+			break;
+		case V4L2_PIX_FMT_YUV420M:
+		case V4L2_PIX_FMT_YVU420M:
+			if (width % 16) {
+				merr("width(%d) of format(%d) is not supported size",
+					subdev, width, pixelformat);
+				ret = -EINVAL;
+				goto p_err;
+			}
+			break;
+		case V4L2_PIX_FMT_NV12:
+		case V4L2_PIX_FMT_NV21:
+			break;
+		default:
+			merr("format(%d) is not supported", subdev, pixelformat);
+			ret = -EINVAL;
+			goto p_err;
+			break;
 		}
 		break;
 	default:
@@ -766,6 +700,7 @@ static int fimc_is_subdev_s_format(struct fimc_is_subdev *subdev,
 	subdev->output.crop.w = subdev->output.width;
 	subdev->output.crop.h = subdev->output.height;
 
+p_err:
 	return ret;
 }
 
@@ -777,8 +712,8 @@ static int fimc_is_sensor_subdev_s_format(void *qdevice,
 	struct fimc_is_video_ctx *vctx;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!queue);
+	BUG_ON(!device);
+	BUG_ON(!queue);
 
 	vctx = container_of(queue, struct fimc_is_video_ctx, queue);
 	subdev = vctx->subdev;
@@ -806,8 +741,8 @@ static int fimc_is_ischain_subdev_s_format(void *qdevice,
 	struct fimc_is_video_ctx *vctx;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!queue);
+	BUG_ON(!device);
+	BUG_ON(!queue);
 
 	vctx = container_of(queue, struct fimc_is_video_ctx, queue);
 	subdev = vctx->subdev;
@@ -838,8 +773,8 @@ int fimc_is_sensor_subdev_reqbuf(void *qdevice,
 	struct fimc_is_framemgr *framemgr;
 	struct fimc_is_frame *frame;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!queue);
+	BUG_ON(!device);
+	BUG_ON(!queue);
 
 	if (!count)
 		goto p_err;
@@ -877,9 +812,9 @@ int fimc_is_subdev_buffer_queue(struct fimc_is_subdev *subdev,
 	struct fimc_is_frame *frame;
 	unsigned int index = vb->index;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!framemgr);
-	FIMC_BUG(index >= framemgr->num_frames);
+	BUG_ON(!subdev);
+	BUG_ON(!framemgr);
+	BUG_ON(index >= framemgr->num_frames);
 
 	frame = &framemgr->frames[index];
 
@@ -934,7 +869,7 @@ int fimc_is_subdev_buffer_finish(struct fimc_is_subdev *subdev,
 		return ret;
 	}
 
-	FIMC_BUG(index >= framemgr->num_frames);
+	BUG_ON(index >= framemgr->num_frames);
 
 	frame = &framemgr->frames[index];
 	framemgr_e_barrier_irq(framemgr, FMGR_IDX_18);
@@ -983,10 +918,10 @@ void fimc_is_subdev_dis_bypass(struct fimc_is_device_ischain *device,
 {
 	struct param_tpu_config *config_param;
 
-	FIMC_BUG_VOID(!device);
-	FIMC_BUG_VOID(!lindex);
-	FIMC_BUG_VOID(!hindex);
-	FIMC_BUG_VOID(!indexes);
+	BUG_ON(!device);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
 	config_param = fimc_is_itf_g_param(device, frame, PARAM_TPU_CONFIG);
 	config_param->dis_bypass = bypass ? CONTROL_BYPASS_ENABLE : CONTROL_BYPASS_DISABLE;
@@ -1012,10 +947,10 @@ void fimc_is_subdev_dnr_bypass(struct fimc_is_device_ischain *device,
 {
 	struct param_tpu_config *config_param;
 
-	FIMC_BUG_VOID(!device);
-	FIMC_BUG_VOID(!lindex);
-	FIMC_BUG_VOID(!hindex);
-	FIMC_BUG_VOID(!indexes);
+	BUG_ON(!device);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
 	config_param = fimc_is_itf_g_param(device, frame, PARAM_TPU_CONFIG);
 	config_param->tdnr_bypass = bypass ? CONTROL_BYPASS_ENABLE : CONTROL_BYPASS_DISABLE;
@@ -1030,10 +965,10 @@ void fimc_is_subdev_drc_start(struct fimc_is_device_ischain *device,
 #ifdef SOC_DRC
 	struct param_control *ctl_param;
 
-	FIMC_BUG_VOID(!device);
-	FIMC_BUG_VOID(!lindex);
-	FIMC_BUG_VOID(!hindex);
-	FIMC_BUG_VOID(!indexes);
+	BUG_ON(!device);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
 	ctl_param = fimc_is_itf_g_param(device, frame, PARAM_DRC_CONTROL);
 	ctl_param->cmd = CONTROL_COMMAND_START;
@@ -1050,10 +985,10 @@ void fimc_is_subdev_drc_stop(struct fimc_is_device_ischain *device,
 #ifdef SOC_DRC
 	struct param_control *ctl_param;
 
-	FIMC_BUG_VOID(!device);
-	FIMC_BUG_VOID(!lindex);
-	FIMC_BUG_VOID(!hindex);
-	FIMC_BUG_VOID(!indexes);
+	BUG_ON(!device);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
 	ctl_param = fimc_is_itf_g_param(device, frame, PARAM_DRC_CONTROL);
 	ctl_param->cmd = CONTROL_COMMAND_STOP;
@@ -1070,10 +1005,10 @@ void fimc_is_subdev_drc_bypass(struct fimc_is_device_ischain *device,
 #ifdef SOC_DRC
 	struct param_control *ctl_param;
 
-	FIMC_BUG_VOID(!device);
-	FIMC_BUG_VOID(!lindex);
-	FIMC_BUG_VOID(!hindex);
-	FIMC_BUG_VOID(!indexes);
+	BUG_ON(!device);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
 	ctl_param = fimc_is_itf_g_param(device, frame, PARAM_DRC_CONTROL);
 	ctl_param->cmd = CONTROL_COMMAND_START;
@@ -1101,10 +1036,10 @@ void fimc_is_subdev_odc_bypass(struct fimc_is_device_ischain *device,
 {
 	struct param_tpu_config *config_param;
 
-	FIMC_BUG_VOID(!device);
-	FIMC_BUG_VOID(!lindex);
-	FIMC_BUG_VOID(!hindex);
-	FIMC_BUG_VOID(!indexes);
+	BUG_ON(!device);
+	BUG_ON(!lindex);
+	BUG_ON(!hindex);
+	BUG_ON(!indexes);
 
 	config_param = fimc_is_itf_g_param(device, frame, PARAM_TPU_CONFIG);
 	config_param->odc_bypass = bypass ? CONTROL_BYPASS_ENABLE : CONTROL_BYPASS_DISABLE;
@@ -1124,9 +1059,9 @@ int fimc_is_vra_trigger(struct fimc_is_device_ischain *device,
 	struct camera2_stats_dm *fdstats;
 	u32 detect_num = 0;
 
-	FIMC_BUG(!device);
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!frame);
+	BUG_ON(!device);
+	BUG_ON(!subdev);
+	BUG_ON(!frame);
 
 	/* Parameter memset */
 	fdstats = &frame->shot->dm.stats;
@@ -1220,12 +1155,12 @@ vra_pass:
 static int fimc_is_subdev_internal_alloc_buffer(struct fimc_is_subdev *subdev,
 	struct fimc_is_mem *mem)
 {
-	int ret;
+	int ret = 0;
 	int i;
-	int buffer_size;
+	int buffer_size = 0;
 	struct fimc_is_frame *frame;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	if (subdev->buffer_num > SUBDEV_INTERNAL_BUF_MAX) {
 		err("invalid internal buffer num size(%d)", subdev->buffer_num);
@@ -1233,27 +1168,28 @@ static int fimc_is_subdev_internal_alloc_buffer(struct fimc_is_subdev *subdev,
 	}
 
 	for (i = 0; i < subdev->buffer_num; i++) {
-		buffer_size = subdev->output.width * subdev->output.height
-					* subdev->bytes_per_pixel;
+		/* TODO : buffer alloc format change */
+		buffer_size = subdev->output.width * subdev->output.height * 2;
 
 		if (buffer_size <= 0) {
 			err("wrong internal subdev buffer size(%d)", buffer_size);
 			return -EINVAL;
 		}
 
-		subdev->pb_subdev[i] = CALL_PTR_MEMOP(mem, alloc, mem->default_ctx, buffer_size, 0, NULL);
+		subdev->pb_subdev[i] = CALL_PTR_MEMOP(mem, alloc, mem->default_ctx, buffer_size, 16);
 		if (IS_ERR_OR_NULL(subdev->pb_subdev[i])) {
 			err("failed to allocate buffer for internal subdev");
-			ret = -ENOMEM;
-			goto err_allocate_pb_subdev;
+			return -ENOMEM;
 		}
+
+		subdev->dvaddr_subdev[i] = CALL_BUFOP(subdev->pb_subdev[i], dvaddr, subdev->pb_subdev[i]);
+		subdev->kvaddr_subdev[i] = CALL_BUFOP(subdev->pb_subdev[i], kvaddr, subdev->pb_subdev[i]);
 	}
 
 	ret = frame_manager_open(&subdev->internal_framemgr, subdev->buffer_num);
 	if (ret) {
 		err("fimc_is_frame_open is fail(%d)", ret);
-		ret = -EINVAL;
-		goto err_open_framemgr;
+		goto p_err;
 	}
 
 	for (i = 0; i < subdev->buffer_num; i++) {
@@ -1262,8 +1198,8 @@ static int fimc_is_subdev_internal_alloc_buffer(struct fimc_is_subdev *subdev,
 
 		/* TODO : support multi-plane */
 		frame->planes = 1;
-		frame->dvaddr_buffer[0] = CALL_BUFOP(subdev->pb_subdev[i], dvaddr, subdev->pb_subdev[i]);
-		frame->kvaddr_buffer[0] = CALL_BUFOP(subdev->pb_subdev[i], kvaddr, subdev->pb_subdev[i]);
+		frame->dvaddr_buffer[0] = subdev->dvaddr_subdev[i];
+		frame->kvaddr_buffer[0] = subdev->kvaddr_subdev[i];
 
 		set_bit(FRAME_MEM_INIT, &frame->mem_state);
 	}
@@ -1271,13 +1207,7 @@ static int fimc_is_subdev_internal_alloc_buffer(struct fimc_is_subdev *subdev,
 	info("[%d] %s (subdev_id: %d, size: %d, buffernum: %d)",
 		subdev->instance, __func__, subdev->id, buffer_size, subdev->buffer_num);
 
-	return 0;
-
-err_open_framemgr:
-err_allocate_pb_subdev:
-	while (i-- > 0)
-		CALL_VOID_BUFOP(subdev->pb_subdev[i], free, subdev->pb_subdev[i]);
-
+p_err:
 	return ret;
 };
 
@@ -1286,7 +1216,7 @@ static int fimc_is_subdev_internal_free_buffer(struct fimc_is_subdev *subdev)
 	int ret = 0;
 	int i;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	frame_manager_close(&subdev->internal_framemgr);
 
@@ -1327,18 +1257,6 @@ static int fimc_is_sensor_subdev_internal_alloc_buffer(struct fimc_is_device_sen
 		if (!test_bit(FIMC_IS_SUBDEV_INTERNAL_S_FMT, &dma_subdev->state))
 			continue;
 
-		if (dma_subdev->internal_framemgr.num_frames > 0) {
-			mwarn("%s: [VC%d] already internal buffer alloced, re-alloc after free",
-				device, __func__, i);
-
-			ret = fimc_is_subdev_internal_free_buffer(dma_subdev);
-			if (ret) {
-				merr("subdev internal free buffer is fail", device);
-				ret = -EINVAL;
-				goto p_err;
-			}
-		}
-
 		ret = fimc_is_subdev_internal_alloc_buffer(dma_subdev, mem);
 		if (ret) {
 			merr("subdev internal alloc buffer is fail", device);
@@ -1364,11 +1282,6 @@ static int fimc_is_sensor_subdev_internal_free_buffer(struct fimc_is_device_sens
 		return -EINVAL;
 	}
 
-	if (test_bit(FIMC_IS_SENSOR_FRONT_START, &device->state)) {
-		mwarn("sensor is not stopped, skip internal buffer free", device);
-		goto p_err;
-	}
-
 	for (i = CSI_VIRTUAL_CH_1; i < CSI_VIRTUAL_CH_MAX; i++) {
 		dma_subdev = csi->dma_subdev[i];
 
@@ -1384,17 +1297,14 @@ static int fimc_is_sensor_subdev_internal_free_buffer(struct fimc_is_device_sens
 		if (!test_bit(FIMC_IS_SUBDEV_INTERNAL_S_FMT, &dma_subdev->state))
 			continue;
 
-		if (dma_subdev->internal_framemgr.num_frames == 0) {
-			mwarn("[VC%d] already free internal buffer", device, i);
-			continue;
-		}
-
 		ret = fimc_is_subdev_internal_free_buffer(dma_subdev);
 		if (ret) {
 			merr("subdev internal free buffer is fail", device);
 			ret = -EINVAL;
 			goto p_err;
 		}
+
+		csi->dma_subdev[i] = NULL;
 	}
 
 p_err:
@@ -1561,7 +1471,7 @@ int fimc_is_subdev_internal_start(void *device, enum fimc_is_device_type type)
 	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_device_ischain *ischain;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	switch (type) {
 	case FIMC_IS_DEVICE_SENSOR:
@@ -1597,7 +1507,7 @@ int fimc_is_subdev_internal_stop(void *device, enum fimc_is_device_type type)
 	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_device_ischain *ischain;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	switch (type) {
 	case FIMC_IS_DEVICE_SENSOR:
@@ -1635,9 +1545,9 @@ static int fimc_is_sensor_subdev_internal_s_format(struct fimc_is_device_sensor 
 	struct fimc_is_device_csi *csi;
 	struct fimc_is_module_enum *module = NULL;
 	struct fimc_is_subdev *subdev = NULL;
-	struct fimc_is_vci_config *vci_cfg = NULL;
+	u32 vc_cfg = 0;
 
-	FIMC_BUG(!sensor);
+	BUG_ON(!sensor);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(sensor->subdev_module);
 	if (!module) {
@@ -1676,39 +1586,37 @@ static int fimc_is_sensor_subdev_internal_s_format(struct fimc_is_device_sensor 
 		if (!test_bit(FIMC_IS_SUBDEV_OPEN, &subdev->state))
 			continue;
 
-		vci_cfg = &sensor->cfg->output[ch];
-		if (vci_cfg->type == VC_NOTHING)
+		if (csi->internal_vc[ch] == VC_NOTHING)
+			continue;
+
+		vc_cfg = sensor->cfg->internal_vc[ch];
+		if (!vc_cfg)
+			continue;
+
+		if (csi->internal_vc[ch] != GET_VC_TYPE(vc_cfg))
 			continue;
 
 		/* VC type dependent value setting */
-		switch (vci_cfg->type) {
-		case VC_TAILPDAF:
-			subdev->buffer_num = SUBDEV_INTERNAL_BUF_MAX;
+		switch (csi->internal_vc[ch]) {
+		case VC_TAIL_MODE_PDAF:
+			subdev->pixelformat = V4L2_PIX_FMT_SBGGR16;
+			subdev->buffer_num = 8;
 			subdev->vc_buffer_offset = module->vc_buffer_offset[ch];
-			snprintf(subdev->data_type, sizeof(subdev->data_type), "VC_TAILPDAF");
+			snprintf(subdev->data_type, sizeof(subdev->data_type), "TAIL_MODE_PDAF");
 			break;
-		case VC_MIPISTAT:
-			subdev->buffer_num = SUBDEV_INTERNAL_BUF_MAX;
+		case VC_MIPI_STAT:
+			subdev->pixelformat = V4L2_PIX_FMT_SBGGR16;
+			subdev->buffer_num = 8;
 			subdev->vc_buffer_offset = module->vc_buffer_offset[ch];
-			snprintf(subdev->data_type, sizeof(subdev->data_type), "VC_MIPISTAT");
-			break;
-		case VC_EMBEDDED:
-			subdev->buffer_num = SUBDEV_INTERNAL_BUF_MAX;
-			subdev->vc_buffer_offset = module->vc_buffer_offset[ch];
-			snprintf(subdev->data_type, sizeof(subdev->data_type), "VC_EMBEDDED");
-			break;
-		case VC_PRIVATE:
-			subdev->buffer_num = SUBDEV_INTERNAL_BUF_MAX;
-			subdev->vc_buffer_offset = module->vc_buffer_offset[ch];
-			snprintf(subdev->data_type, sizeof(subdev->data_type), "VC_PRIVATE");
+			snprintf(subdev->data_type, sizeof(subdev->data_type), "VC_MIPI_STAT");
 			break;
 		default:
-			err("wrong internal vc ch(%d) type(%d)", ch, vci_cfg->type);
+			err("wrong internal vc type(%d)", csi->internal_vc[ch]);
 			return -EINVAL;
 		}
 
-		subdev->output.width = vci_cfg->width;
-		subdev->output.height = vci_cfg->height;
+		subdev->output.width = GET_VC_WIDTH(vc_cfg);
+		subdev->output.height = GET_VC_HEIGHT(vc_cfg);
 
 		if (subdev->output.width == 0 || subdev->output.height == 0) {
 			err("wrong internal vc size(%d x %d)",
@@ -1721,10 +1629,7 @@ static int fimc_is_sensor_subdev_internal_s_format(struct fimc_is_device_sensor 
 		subdev->output.crop.w = subdev->output.width;
 		subdev->output.crop.h = subdev->output.height;
 
-		if (vci_cfg->type == VC_TAILPDAF)
-			subdev->bytes_per_pixel = 2;
-		else
-			subdev->bytes_per_pixel = 1;
+		csi->dma_subdev[ch] = subdev;
 
 		set_bit(FIMC_IS_SUBDEV_INTERNAL_S_FMT, &subdev->state);
 	}
@@ -1738,7 +1643,7 @@ int fimc_is_subdev_internal_s_format(void *device, enum fimc_is_device_type type
 	struct fimc_is_device_sensor *sensor;
 	struct fimc_is_device_ischain *ischain;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	switch (type) {
 	case FIMC_IS_DEVICE_SENSOR:
@@ -1770,7 +1675,7 @@ int fimc_is_subdev_internal_open(void *device, enum fimc_is_device_type type)
 	struct fimc_is_subdev *subdev;
 	char name[FIMC_IS_STR_LEN];
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	switch (type) {
 	case FIMC_IS_DEVICE_SENSOR:
@@ -1782,9 +1687,9 @@ int fimc_is_subdev_internal_open(void *device, enum fimc_is_device_type type)
 			snprintf(name, sizeof(name), "SS%dVC1", sensor->instance);
 			frame_manager_probe(&subdev->internal_framemgr, FRAMEMGR_ID_SSXVC1, name);
 
-			ret = fimc_is_sensor_check_subdev_open(sensor, subdev, NULL);
+			ret = fimc_is_subdev_open(subdev, NULL, NULL);
 			if (ret) {
-				err("fimc_is_sensor_check_subdev_open is fail(%d)", ret);
+				err("fimc_is_subdev_open is fail(%d)", ret);
 				goto p_err;
 			}
 		}
@@ -1795,9 +1700,9 @@ int fimc_is_subdev_internal_open(void *device, enum fimc_is_device_type type)
 			snprintf(name, sizeof(name), "SS%dVC2", sensor->instance);
 			frame_manager_probe(&subdev->internal_framemgr, FRAMEMGR_ID_SSXVC2, name);
 
-			ret = fimc_is_sensor_check_subdev_open(sensor, subdev, NULL);
+			ret = fimc_is_subdev_open(subdev, NULL, NULL);
 			if (ret) {
-				err("fimc_is_sensor_check_subdev_open is fail(%d)", ret);
+				err("fimc_is_subdev_open is fail(%d)", ret);
 				goto p_err;
 			}
 		}
@@ -1808,9 +1713,9 @@ int fimc_is_subdev_internal_open(void *device, enum fimc_is_device_type type)
 			snprintf(name, sizeof(name), "SS%dVC3", sensor->instance);
 			frame_manager_probe(&subdev->internal_framemgr, FRAMEMGR_ID_SSXVC3, name);
 
-			ret = fimc_is_sensor_check_subdev_open(sensor, subdev, NULL);
+			ret = fimc_is_subdev_open(subdev, NULL, NULL);
 			if (ret) {
-				err("fimc_is_sensor_check_subdev_open is fail(%d)", ret);
+				err("fimc_is_subdev_open is fail(%d)", ret);
 				goto p_err;
 			}
 		}
@@ -1837,16 +1742,11 @@ int fimc_is_subdev_internal_close(void *device, enum fimc_is_device_type type)
 	struct fimc_is_device_ischain *ischain = NULL;
 	struct fimc_is_subdev *subdev;
 
-	FIMC_BUG(!device);
+	BUG_ON(!device);
 
 	switch (type) {
 	case FIMC_IS_DEVICE_SENSOR:
 		sensor = (struct fimc_is_device_sensor *)device;
-
-		/* for free buffer check */
-		ret = fimc_is_sensor_subdev_internal_free_buffer(sensor);
-		if (ret)
-			merr("fimc_is_sensor_subdev_internal_free_buffer fail", sensor);
 
 		/* SSVC1 */
 		subdev = &sensor->ssvc1;

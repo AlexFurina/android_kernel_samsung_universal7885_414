@@ -180,59 +180,6 @@ void samsung_exynos_cal_usb3phy_tune_fix_rxeq(
 		samsung_exynos_cal_cr_read(usbphy_info, 0x101c));
 }
 
-static void set_ss_tx_impedance(struct exynos_usbphy_info *usbphy_info)
-{
-	u16 rtune_debug, tx_ovrd_in_hi;
-	u8 tx_imp;
-
-	/* obtain calibration code for 45Ohm impedance */
-	rtune_debug = samsung_exynos_cal_cr_read(usbphy_info, 0x3);
-	/* set SUP.DIG.RTUNE_DEBUG.TYPE = 2 */
-	rtune_debug &= ~(0x3 << 3);
-	rtune_debug |= (0x2 << 3);
-	samsung_exynos_cal_cr_write(usbphy_info, 0x3, rtune_debug);
-
-	/* read SUP.DIG.RTUNE_STAT (0x0004[9:0]) */
-	tx_imp = samsung_exynos_cal_cr_read(usbphy_info, 0x4);
-	/* current_tx_cal_code[9:0] = SUP.DIG.RTUNE_STAT (0x0004[9:0]) */
-	tx_imp += 8;
-	/* tx_cal_code[9:0] = current_tx_cal_code[9:0] + 8(decimal)
-	 * NOTE, max value is 63;
-	 * i.e. if tx_cal_code[9:0] > 63, tx_cal_code[9:0]==63; */
-	if (tx_imp > 63)
-		tx_imp = 63;
-
-	/* set LANEX_DIG_TX_OVRD_IN_HI.TX_RESET_OVRD = 1 */
-	tx_ovrd_in_hi = samsung_exynos_cal_cr_read(usbphy_info, 0x1001);
-	tx_ovrd_in_hi |= (1 << 7);
-	samsung_exynos_cal_cr_write(usbphy_info, 0x1001, tx_ovrd_in_hi);
-
-	/* SUP.DIG.RTUNE_DEBUG.MAN_TUNE = 0 */
-	rtune_debug &= ~(1 << 1);
-	samsung_exynos_cal_cr_write(usbphy_info, 0x3, rtune_debug);
-
-	/* set SUP.DIG.RTUNE_DEBUG.VALUE = tx_cal_code[9:0] */
-	rtune_debug &= ~(0x1ff << 5);
-	rtune_debug |= (tx_imp << 5);
-	samsung_exynos_cal_cr_write(usbphy_info, 0x3, rtune_debug);
-
-	/* set SUP.DIG.RTUNE_DEBUG.SET_VAL = 1 */
-	rtune_debug |= (1 << 2);
-	samsung_exynos_cal_cr_write(usbphy_info, 0x3, rtune_debug);
-
-	/* set SUP.DIG.RTUNE_DEBUG.SET_VAL = 0 */
-	rtune_debug &= ~(1 << 2);
-	samsung_exynos_cal_cr_write(usbphy_info, 0x3, rtune_debug);
-
-	/* set LANEX_DIG_TX_OVRD_IN_HI.TX_RESET = 1 */
-	tx_ovrd_in_hi |= (1 << 6);
-	samsung_exynos_cal_cr_write(usbphy_info, 0x1001, tx_ovrd_in_hi);
-
-	/* set LANEX_DIG_TX_OVRD_IN_HI.TX_RESET = 0 */
-	tx_ovrd_in_hi &= ~(1 << 6);
-	samsung_exynos_cal_cr_write(usbphy_info, 0x1001, tx_ovrd_in_hi);
-}
-
 void samsung_exynos_cal_usb3phy_tune_adaptive_eq(
 	struct exynos_usbphy_info *usbphy_info, u8 eq_fix)
 {
@@ -261,6 +208,253 @@ void samsung_exynos_cal_usb3phy_tune_chg_rxeq(
 	samsung_exynos_cal_cr_write(usbphy_info, 0x1006, reg);
 }
 
+void samsung_exynos_cal_usb3phy_dp_altmode_set_phy_enable(
+		struct exynos_usbphy_info *usbphy_info, int dp_phy_port)
+{
+	void __iomem *base;
+	u32 reg;
+	u32 powerdown_ssp;
+
+	if (dp_phy_port != -1) {
+		if (dp_phy_port == 0)
+			base = usbphy_info->regs_base;
+		else
+			base = usbphy_info->regs_base_2nd;
+
+	} else
+		base = usbphy_info->regs_base;
+
+	/* powerdown_ssp -> disable */
+	reg = readl(base + EXYNOS_USBCON_PHYTEST);
+	powerdown_ssp = PHYTEST_POWERDOWN_SSP_EXT(reg);
+
+	/* when reverse connection as DP Alt mode, usb hs of phy0 should not be reset. */
+	if (dp_phy_port == 0 && powerdown_ssp == 0)
+		return;
+
+	reg &= ~PHYTEST_POWERDOWN_SSP;
+	writel(reg, base + EXYNOS_USBCON_PHYTEST);
+
+	/* PHY_RESET_SEL -> 1 */
+	reg = readl(base + EXYNOS_USBCON_PHYPARAM1);
+	reg |= PHYPARAM1_PHY_RESET_SEL;
+	writel(reg, base + EXYNOS_USBCON_PHYPARAM1);
+
+	/* phy_sw_rst -> 1 */
+	reg = readl(base + EXYNOS_USBCON_LINKSYSTEM);
+	reg |= LINKSYSTEM_PHY_SW_RESET;
+	writel(reg, base + EXYNOS_USBCON_LINKSYSTEM);
+
+	udelay(10);
+
+	/* phy_sw_rst -> 0 */
+	reg = readl(base + EXYNOS_USBCON_LINKSYSTEM);
+	reg &= ~LINKSYSTEM_PHY_SW_RESET;
+	writel(reg, base + EXYNOS_USBCON_LINKSYSTEM);
+
+	udelay(10);
+
+	/* PHY_RESET_SEL -> 0 */
+	reg = readl(base + EXYNOS_USBCON_PHYPARAM1);
+	reg &= ~PHYPARAM1_PHY_RESET_SEL;
+	writel(reg, base + EXYNOS_USBCON_PHYPARAM1);
+
+	udelay(75);
+}
+
+void samsung_exynos_cal_usb3phy_dp_altmode_clear_phy_enable(
+		struct exynos_usbphy_info *usbphy_info, int dp_phy_port)
+{
+	void __iomem *base;
+	u32 reg;
+
+	if (dp_phy_port != -1) {
+		if (dp_phy_port == 0)
+			base = usbphy_info->regs_base;
+		else
+			base = usbphy_info->regs_base_2nd;
+
+	} else
+		base = usbphy_info->regs_base;
+
+	/* powerdown_ssp -> enable */
+	reg = readl(base + EXYNOS_USBCON_PHYTEST);
+	reg |= PHYTEST_POWERDOWN_SSP;
+	writel(reg, base + EXYNOS_USBCON_PHYTEST);
+
+	/* PHY_RESET_SEL -> 1 */
+	reg = readl(base + EXYNOS_USBCON_PHYPARAM1);
+	reg |= PHYPARAM1_PHY_RESET_SEL;
+	writel(reg, base + EXYNOS_USBCON_PHYPARAM1);
+
+	/* phy_sw_rst -> 1 */
+	reg = readl(base + EXYNOS_USBCON_LINKSYSTEM);
+	reg |= LINKSYSTEM_PHY_SW_RESET;
+	writel(reg, base + EXYNOS_USBCON_LINKSYSTEM);
+
+	udelay(10);
+
+	/* phy_sw_rst -> 0 */
+	reg = readl(base + EXYNOS_USBCON_LINKSYSTEM);
+	reg &= ~LINKSYSTEM_PHY_SW_RESET;
+	writel(reg, base + EXYNOS_USBCON_LINKSYSTEM);
+
+	udelay(10);
+
+	/* PHY_RESET_SEL -> 0 */
+	reg = readl(base + EXYNOS_USBCON_PHYPARAM1);
+	reg &= ~PHYPARAM1_PHY_RESET_SEL;
+	writel(reg, base + EXYNOS_USBCON_PHYPARAM1);
+
+	udelay(75);
+}
+
+void samsung_exynos_cal_usb3phy_dp_altmode_set_ss_disable(
+		struct exynos_usbphy_info *usbphy_info, int dp_phy_port)
+{
+	u32 addr, reg;
+
+	/* backup used_phy_port */
+	int used_phy_port_org = usbphy_info->used_phy_port;
+	usbphy_info->used_phy_port = dp_phy_port;
+
+	/* SUP.MPLL_OVRD_IN_LO    16��h11
+	   [1] MPLL_EN_OVRD = 1
+	   [0] MPLL_EN = 0 */
+	addr = 0x0011;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg =  (reg & ~(0x3<<0)) | 0x2<<0;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* LANEN.TX_OVRD_IN_LO    16'h1N00
+	   [9] TX_CM_EN_OVRD = 1
+	   [8] TX_CM_EN = 0 */
+	addr = 0x1000;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg = (reg & ~(0x3<<8)) | 0x2<<8;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* LANEN.RX_OVRD_IN_LO    16'h1N05
+	   [13] RX_LOS_EN_OVRD = 1
+	   [12] RX_LOS_EN = 1 */
+	addr = 0x1005;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg = (reg & ~(0x3<<12)) | 0x3<<12;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* LANEN.TX_OVRD_IN_LO    16'h1N00
+	   [7] TX_EN_OVRD = 1
+	   [6] TX_EN = 0
+	   [5] TX_DATA_EN_OVRD = 1
+	   [4] TX_DATA_EN = 0 */
+	addr = 0x1000;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg = (reg & ~(0xf<<4)) | 0xa<<4;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* LANEN.RX_OVRD_IN_LO    16'h1N05
+	   [5] RX_DATA_EN_OVRD = 1
+	   [4] RX_DATA_EN = 0
+	   [3] RX_PLL_EN_OVRD = 1
+	   [2] RX_PLL_EN = 0*/
+	addr = 0x1005;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg = (reg & ~(0xf<<2)) | 0xa<<2;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* LANEN.RX_OVRD_IN_LO    16'h1N05
+	   [11] RX_TERM_EN_OVRD = 1
+	   [10] RX_TERM_EN = 0*/
+	addr = 0x1005;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg = (reg & ~(0x2<<10)) | 0x2<<10;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* LANEN.RX_OVRD_IN_HI    16'h1N06
+	   [13] RX_RESET_OVRD = 1
+	   [12] RX_RESET = 1*/
+	addr = 0x1006;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg = (reg & ~(0x3<<12)) | 0x3<<12;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* restore used_phy_port */
+	usbphy_info->used_phy_port = used_phy_port_org;
+}
+
+void samsung_exynos_cal_usb3phy_dp_altmode_clear_ss_disable(
+		struct exynos_usbphy_info *usbphy_info, int dp_phy_port)
+{
+	u32 addr, reg;
+
+	/* backup used_phy_port */
+	int used_phy_port_org = usbphy_info->used_phy_port;
+	usbphy_info->used_phy_port = dp_phy_port;
+
+	/* SUP.MPLL_OVRD_IN_LO    16��h11
+	   [1] MPLL_EN_OVRD = 0
+	   [0] MPLL_EN = 0*/
+	addr = 0x0011;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg =  (reg & ~(0x3<<0)) | 0x0<<0;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* LANEN.TX_OVRD_IN_LO    16'h1N00
+	   [9] TX_CM_EN_OVRD = 0
+	   [8] TX_CM_EN = 0 */
+	addr = 0x1000;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg = (reg & ~(0x3<<8)) | 0x0<<8;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* LANEN.RX_OVRD_IN_LO    16'h1N05
+	   [13] RX_LOS_EN_OVRD = 0
+	   [12] RX_LOS_EN = 0 */
+	addr = 0x1005;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg = (reg & ~(0x3<<12)) | 0x0<<12;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* LANEN.TX_OVRD_IN_LO    16'h1N00
+	   [7] TX_EN_OVRD = 0
+	   [6] TX_EN = 0
+	   [5] TX_DATA_EN_OVRD = 0
+	   [4] TX_DATA_EN = 0 */
+	addr = 0x1000;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg = (reg & ~(0xf<<4)) | 0x0<<4;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* LANEN.RX_OVRD_IN_LO    16'h1N05
+	   [5] RX_DATA_EN_OVRD = 0
+	   [4] RX_DATA_EN = 0
+	   [3] RX_PLL_EN_OVRD = 0
+	   [2] RX_PLL_EN = 0 */
+	addr = 0x1005;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg = (reg & ~(0xf<<2)) | 0x0<<2;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* LANEN.RX_OVRD_IN_LO    16'h1N05
+	   [11] RX_TERM_EN_OVRD = 0
+	   [10] RX_TERM_EN = 0*/
+	addr = 0x1005;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg = (reg & ~(0x2<<10)) | 0x0<<10;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* LANEN.RX_OVRD_IN_HI    16'h1N06
+	   [13] RX_RESET_OVRD = 0
+	   [12] RX_RESET = 0*/
+	addr = 0x1006;
+	reg = samsung_exynos_cal_cr_read(usbphy_info, addr);
+	reg = (reg & ~(0x3<<12)) | 0x0<<12;
+	samsung_exynos_cal_cr_write(usbphy_info, addr, reg);
+
+	/* restore used_phy_port */
+	usbphy_info->used_phy_port = used_phy_port_org;
+}
+
 static void exynos_cal_ss_enable(struct exynos_usbphy_info *info,
 	u32 *arg_phyclkrst, u8 port_num)
 {
@@ -275,9 +469,19 @@ static void exynos_cal_ss_enable(struct exynos_usbphy_info *info,
 	else
 		reg_base = info->regs_base_2nd;
 
-	if (info->version < EXYNOS_USBCON_VER_01_0_1)
-		phyclkrst |= PHYCLKRST_COMMONONN;
-
+	if (info->common_block_disable) {
+		/* Disable Common Block in suspend/sleep mode */
+		if (info->version < EXYNOS_USBCON_VER_01_0_1)
+			phyclkrst &= ~PHYCLKRST_COMMONONN;
+		else
+			phyclkrst |= PHYCLKRST_COMMONONN;
+	} else {
+		/* Enable Common Block in suspend/sleep mode */
+		if (info->version < EXYNOS_USBCON_VER_01_0_1)
+			phyclkrst |= PHYCLKRST_COMMONONN;
+		else
+			phyclkrst &= ~PHYCLKRST_COMMONONN;
+	}
 	/* Disable Common block control by link */
 	phyclkrst &= ~PHYCLKRST_EN_UTMISUSPEND;
 
@@ -381,7 +585,7 @@ static void exynos_cal_ss_enable(struct exynos_usbphy_info *info,
 
 	/* Select UTMI CLOCK 0 : PHY CLOCK, 1 : FREE CLOCK */
 	phypipe = readl(reg_base + EXYNOS_USBCON_PHYPIPE);
-	phypipe |= PHY_CLOCK_SEL;
+	phypipe |= PHYPIPE_PHY_CLOCK_SEL;
 	writel(phypipe, reg_base + EXYNOS_USBCON_PHYPIPE);
 
 	if (info->version >= EXYNOS_USBCON_VER_01_0_1)
@@ -393,6 +597,7 @@ static void exynos_cal_ss_enable(struct exynos_usbphy_info *info,
 static void exynos_cal_ss_power_down(struct exynos_usbphy_info *info, bool en)
 {
 	u32 phytest;
+	u32 phyutmi;
 
 	phytest = readl(info->regs_base + EXYNOS_USBCON_PHYTEST);
 	if (en == 1) {
@@ -401,14 +606,20 @@ static void exynos_cal_ss_power_down(struct exynos_usbphy_info *info, bool en)
 		writel(phytest, info->regs_base + EXYNOS_USBCON_PHYTEST);
 		if (info->used_phy_port == 1) {
 			void *reg_base = info->regs_base_2nd;
-
+#if 0		/* when reverse connection as DP Alt mode, early set powerdown_ssp of phy0 to 0. */
 			phytest |= PHYTEST_POWERDOWN_SSP;
 			writel(phytest, info->regs_base + EXYNOS_USBCON_PHYTEST);
+#endif
 
 			phytest = readl(reg_base + EXYNOS_USBCON_PHYTEST);
-			phytest &= ~PHYTEST_POWERDOWN_HSP;
 			phytest &= ~PHYTEST_POWERDOWN_SSP;
 			writel(phytest, reg_base + EXYNOS_USBCON_PHYTEST);
+
+			/* force suspend phy1 hs */
+			phyutmi = readl(reg_base + EXYNOS_USBCON_PHYUTMI);
+			phyutmi |= PHYUTMI_FORCESLEEP;
+			phyutmi |= PHYUTMI_FORCESUSPEND;
+			writel(phyutmi, reg_base + EXYNOS_USBCON_PHYUTMI);
 		}
 	} else {
 		phytest |= PHYTEST_POWERDOWN_HSP;
@@ -429,8 +640,12 @@ static void exynos_cal_hs_enable(struct exynos_usbphy_info *info,
 	u32 *arg_phyclkrst)
 {
 	u32 phyclkrst = *arg_phyclkrst;
+	u32 hsphyplltune;
 
-	u32 hsphyplltune = readl(info->regs_base + EXYNOS_USBCON_HSPHYPLLTUNE);
+	if(info->version == EXYNOS_USBCON_VER_02_1_2)
+		hsphyplltune = readl(info->regs_base + EXYNOS_USBCON_HSPHYPLLTUNE_K1);
+	else
+		hsphyplltune = readl(info->regs_base + EXYNOS_USBCON_HSPHYPLLTUNE);
 
 	if ((info->version & 0xf0) >= 0x10) {
 		/* Disable Common block control by link */
@@ -447,7 +662,11 @@ static void exynos_cal_hs_enable(struct exynos_usbphy_info *info,
 	else
 		hsphyplltune &= ~HSPHYPLLTUNE_PLL_B_TUNE;
 	hsphyplltune |= HSPHYPLLTUNE_PLL_P_TUNE(0xe);
-	writel(hsphyplltune, info->regs_base + EXYNOS_USBCON_HSPHYPLLTUNE);
+
+	if(info->version == EXYNOS_USBCON_VER_02_1_2)
+		writel(hsphyplltune, info->regs_base + EXYNOS_USBCON_HSPHYPLLTUNE_K1);
+	else
+		writel(hsphyplltune, info->regs_base + EXYNOS_USBCON_HSPHYPLLTUNE);
 
 	*arg_phyclkrst = phyclkrst;
 }
@@ -458,11 +677,17 @@ static void exynos_cal_hs_power_down(struct exynos_usbphy_info *info, bool en)
 
 	hsphyctrl = readl(info->regs_base + EXYNOS_USBCON_HSPHYCTRL);
 	if (en) {
-		hsphyctrl &= ~HSPHYCTRL_SIDDQ;
+		if(info->version == EXYNOS_USBCON_VER_02_1_2)
+			hsphyctrl &= ~HSPHYCTRL_SIDDQ_K1;
+		else
+			hsphyctrl &= ~HSPHYCTRL_SIDDQ;
 		hsphyctrl &= ~HSPHYCTRL_PHYSWRST;
 		hsphyctrl &= ~HSPHYCTRL_PHYSWRSTALL;
 	} else {
-		hsphyctrl |= HSPHYCTRL_SIDDQ;
+		if(info->version == EXYNOS_USBCON_VER_02_1_2)
+			hsphyctrl |= HSPHYCTRL_SIDDQ_K1;
+		else
+			hsphyctrl |= HSPHYCTRL_SIDDQ;
 	}
 	writel(hsphyctrl, info->regs_base + EXYNOS_USBCON_HSPHYCTRL);
 }
@@ -569,9 +794,6 @@ void samsung_exynos_cal_usb3phy_enable(struct exynos_usbphy_info *usbphy_info)
 	/* Select ref clk */
 	phyclkrst &= ~PHYCLKRST_FSEL_MASK;
 	phyclkrst |= PHYCLKRST_FSEL(refclkfreq & 0x3f);
-
-	/* Enable Common Block in suspend/sleep mode */
-	phyclkrst &= ~PHYCLKRST_COMMONONN;
 
 	/* Additional control for 3.0 PHY */
 	if ((EXYNOS_USBCON_VER_01_0_0 <= version)
@@ -689,8 +911,6 @@ void samsung_exynos_cal_usb3phy_late_enable(
 			&& version <= EXYNOS_USBCON_VER_01_MAX) {
 		/* Set RXDET_MEAS_TIME[11:4] each reference clock */
 		samsung_exynos_cal_cr_write(usbphy_info, 0x1010, 0x80);
-		printk("Check CR Port write 0x1010: 0x%x\n",
-			samsung_exynos_cal_cr_read(usbphy_info, 0x1010));
 		if (tune) {
 #if defined(USB_SS_TX_TUNE_PCS)
 			samsung_exynos_cal_cr_write(usbphy_info,
@@ -711,9 +931,9 @@ void samsung_exynos_cal_usb3phy_late_enable(
 				 * los_level to 0x9 */
 				samsung_exynos_cal_cr_write(usbphy_info,
 							    0x15, 0xA409);
-				/* Set TX_VBOOST_LEVLE to default Value (0x4) */
+				/* Set TX_VBOOST_LEVLE to tune->tx_boost_level */
 				samsung_exynos_cal_cr_write(usbphy_info,
-					0x12, 0x8000);
+					0x12, tune->tx_boost_level<<13);
 			}
 			/* to set the charge pump proportional current */
 			if (tune->set_crport_mpll_charge_pump) {
@@ -724,8 +944,12 @@ void samsung_exynos_cal_usb3phy_late_enable(
 				samsung_exynos_cal_usb3phy_tune_fix_rxeq(
 						usbphy_info);
 			}
-			set_ss_tx_impedance(usbphy_info);
 		}
+
+		/* when reverse connection as DP Alt mode, early set ss_disable for power reduction. */
+		if (usbphy_info->used_phy_port == 1)
+			samsung_exynos_cal_usb3phy_dp_altmode_set_ss_disable(usbphy_info, 0);
+
 	}
 }
 
@@ -882,7 +1106,7 @@ void samsung_exynos_cal_usb3phy_tune_each(
 			else
 				reg &= ~PHYPARAM0_TXPREEMPPULSETUNE;
 			if (tune)
-				tune->tx_pre_emp_plus = val & 0x1;
+				tune->tx_pre_emp_puls = val & 0x1;
 			break;
 		case USBPHY_TUNE_HS_TXRES:
 			reg &= ~PHYPARAM0_TXRESTUNE_MASK;
@@ -988,7 +1212,7 @@ void samsung_exynos_cal_usb3phy_hs_tune_extract(
 	hs_tune->tx_vref = PHYPARAM0_TXVREFTUNE_EXT(reg);
 	hs_tune->tx_rise = PHYPARAM0_TXRISETUNE_EXT(reg);
 	hs_tune->tx_res = PHYPARAM0_TXRESTUNE_EXT(reg);
-	hs_tune->tx_pre_emp_plus = PHYPARAM0_TXPREEMPPULSETUNE_EXT(reg);
+	hs_tune->tx_pre_emp_puls = PHYPARAM0_TXPREEMPPULSETUNE_EXT(reg);
 	hs_tune->tx_pre_emp = PHYPARAM0_TXPREEMPAMPTUNE_EXT(reg);
 	hs_tune->tx_hsxv = PHYPARAM0_TXHSXVTUNE_EXT(reg);
 	hs_tune->tx_fsls = PHYPARAM0_TXFSLSTUNE_EXT(reg);
@@ -1030,8 +1254,8 @@ void samsung_exynos_cal_usb3phy_tune_dev(struct exynos_usbphy_info *usbphy_info)
 		/* TX RES TUNE */
 		reg &= ~PHYPARAM0_TXRESTUNE_MASK;
 		reg |= PHYPARAM0_TXRESTUNE(tune->tx_res);
-		/* TX PRE EMPHASIS PLUS */
-		if (tune->tx_pre_emp_plus)
+		/* TX PRE EMPHASIS PULS */
+		if (tune->tx_pre_emp_puls)
 			reg |= PHYPARAM0_TXPREEMPPULSETUNE;
 		else
 			reg &= ~PHYPARAM0_TXPREEMPPULSETUNE;
@@ -1135,8 +1359,8 @@ void samsung_exynos_cal_usb3phy_tune_host(
 		/* TX RES TUNE */
 		reg &= ~PHYPARAM0_TXRESTUNE_MASK;
 		reg |= PHYPARAM0_TXRESTUNE(tune->tx_res);
-		/* TX PRE EMPHASIS PLUS */
-		if (tune->tx_pre_emp_plus)
+		/* TX PRE EMPHASIS PULS */
+		if (tune->tx_pre_emp_puls)
 			reg |= PHYPARAM0_TXPREEMPPULSETUNE;
 		else
 			reg &= ~PHYPARAM0_TXPREEMPPULSETUNE;

@@ -20,9 +20,7 @@
 #include <linux/platform_device.h>
 #include <linux/reboot.h>
 #include <linux/soc/samsung/exynos-soc.h>
-#include <soc/samsung/exynos-debug.h>
 #include <linux/debug-snapshot.h>
-#include "../../../lib/debug-snapshot-local.h"
 
 #ifdef CONFIG_EXYNOS_ACPM
 #include <soc/samsung/acpm_ipc_ctrl.h>
@@ -60,17 +58,47 @@ int soc_has_big(void)
 	}
 	return big_cpu_cnt;
 }
+static const char * const mngs_cores[] = {
+        "arm,mongoose",
+        "arm,cortex-a73",
+        NULL,
+};
 
-#define CPU_RESET_DISABLE_FROM_SOFTRESET	(0x041C)
+static bool is_mngs_cpu(struct device_node *cn)
+{
+        const char * const *lc;
+        for (lc = mngs_cores; *lc; lc++)
+                if (of_device_is_compatible(cn, *lc))
+                        return true;
+        return false;
+}
+
+int soc_has_mongoose(void)
+{
+        struct device_node *cn = NULL;
+        u32 mngs_cpu_cnt = 0;
+
+        /* find arm,mongoose compatable in device tree */
+        while ((cn = of_find_node_by_type(cn, "cpu"))) {
+                if (is_mngs_cpu(cn))
+                        mngs_cpu_cnt++;
+        }
+        return mngs_cpu_cnt;
+}
+
+
+#define CPU_RESET_DISABLE_FROM_SOFTRESET (0x041C)
 #define CPU_RESET_DISABLE_FROM_WDTRESET	(0x0414)
+#define EXYNOS_PMU_ATLAS_CPU0_RESET     (0x200C)
 #define BIG_CPU0_RESET			(0x220C)
+#define EXYNOS_PMU_ATLAS_DBG_RESET      (0x244C)
 #define BIG_NONCPU_ETC_RESET		(0x242C)
 #define	PMU_CPU_OFFSET			(0x80)
 #define SWRESET				(0x0400)
 #define RESET_SEQUENCER_CONFIGURATION	(0x0500)
 #define PS_HOLD_CONTROL			(0x330C)
-#define EXYNOS_PMU_SYSIP_DAT0			(0x0810)
-#define EXYNOS_PMU_SYSIP_DAT3			(0x081C)
+#define EXYNOS_PMU_SYSIP_DAT0		(0x0810)
+
 /* defines for BIG reset */
 #define PEND_BIG				(1 << 0)
 #define PEND_LITTLE				(1 << 1)
@@ -117,18 +145,65 @@ int soc_has_big(void)
 					| RESET_DISABLE_WDT_PRESET_DBG	\
 					| RESET_DISABLE_PRESET_DBG	\
 					| RESET_DISABLE_L2RESET)
+#define DFD_MNGS_DBG_RESET              (RESET_DISABLE_WDT_PRESET_DBG   \
+                                        | RESET_DISABLE_PRESET_DBG)
+#define DFD_NONCPU_RESET                (RESET_DISABLE_L2RESET          \
+                                        | RESET_DISABLE_WDT_L2RESET)
 
-static int in_panic = 0;
-static int panic_prep_restart(struct notifier_block *this,
-			      unsigned long event, void *ptr)
+void mngs_reset_control(int en)
 {
-	in_panic = 1;
-	return NOTIFY_DONE;
+        u32 reg_val, val;
+        u32 mngs_cpu_cnt = soc_has_mongoose();
+        u32 check_dumpGPR;
+
+        if (mngs_cpu_cnt == 0 || !exynos_pmu_base)
+                return;
+
+        exynos_pmu_read(RESET_SEQUENCER_CONFIGURATION, &check_dumpGPR);
+        if (!(check_dumpGPR & DFD_EDPCSR_DUMP_EN))
+                return;
+
+        if (en) {
+                /* reset disable for MNGS */
+                exynos_pmu_read(CPU_RESET_DISABLE_FROM_SOFTRESET, &reg_val);
+                if (reg_val != DEFAULT_VAL_CPU_RESET_DISABLE)
+                        exynos_pmu_update(CPU_RESET_DISABLE_FROM_SOFTRESET,
+                                        DFD_RESET_PEND, 0);
+
+                exynos_pmu_read(CPU_RESET_DISABLE_FROM_WDTRESET, &reg_val);
+                if (reg_val != DEFAULT_VAL_CPU_RESET_DISABLE)
+                        exynos_pmu_update(CPU_RESET_DISABLE_FROM_WDTRESET,
+                                        DFD_RESET_PEND, 0);
+
+                for (val = 0; val < mngs_cpu_cnt; val++) {
+                        exynos_pmu_update(EXYNOS_PMU_ATLAS_CPU0_RESET + (val * PMU_CPU_OFFSET),
+                                        DFD_DISABLE_RESET, DFD_DISABLE_RESET);
+                }
+
+                if ((read_cpuid_implementor() == ARM_CPU_IMP_SEC)
+                                && (read_cpuid_part_number() == ARM_CPU_PART_MONGOOSE)) {
+                        exynos_pmu_update(EXYNOS_PMU_ATLAS_DBG_RESET, DFD_MNGS_DBG_RESET,
+                                        DFD_MNGS_DBG_RESET);
+                }
+
+                exynos_pmu_update(BIG_NONCPU_ETC_RESET, DFD_NONCPU_RESET,
+                                DFD_NONCPU_RESET);
+	} else {
+                /* reset enable for MNGS */
+                for (val = 0; val < mngs_cpu_cnt; val++) {
+                        exynos_pmu_update(EXYNOS_PMU_ATLAS_CPU0_RESET + (val * PMU_CPU_OFFSET),
+                                        DFD_DISABLE_RESET, 0);
+                }
+
+                if ((read_cpuid_implementor() == ARM_CPU_IMP_SEC)
+                                && (read_cpuid_part_number() == ARM_CPU_PART_MONGOOSE)) {
+                        exynos_pmu_update(EXYNOS_PMU_ATLAS_DBG_RESET, DFD_MNGS_DBG_RESET, 0);
+                }
+
+                exynos_pmu_update(BIG_NONCPU_ETC_RESET, DFD_NONCPU_RESET, 0);
+        }
 }
 
-static struct notifier_block panic_blk = {
-	.notifier_call	= panic_prep_restart,
-};
 
 static void dfd_set_dump_gpr(int en)
 {
@@ -215,13 +290,10 @@ void big_reset_control(int en)
 #define INFORM_RECOVERY		0xf
 
 #define REBOOT_MODE_NORMAL		0x00
-#define REBOOT_MODE_CHARGE		0x0A
 /* Reboot into fastboot mode */
 #define REBOOT_MODE_FASTBOOT		0xFC
 /* Reboot into recovery */
 #define REBOOT_MODE_RECOVERY		0xFF
-/* Reboot into recovery */
-#define REBOOT_MODE_FACTORY		0xFD
 
 #if !defined(CONFIG_SEC_REBOOT)
 #ifdef CONFIG_OF
@@ -260,7 +332,6 @@ static void exynos_power_off(void)
 #ifdef CONFIG_EXYNOS_ACPM
 			exynos_acpm_reboot();
 #endif
-			dbg_snapshot_scratch_reg(DSS_SIGN_RESET);
 			pr_emerg("%s: Set PS_HOLD Low.\n", __func__);
 			writel(readl(exynos_pmu_base + PS_HOLD_CONTROL) & 0xFFFFFEFF,
 						exynos_pmu_base + PS_HOLD_CONTROL);
@@ -283,13 +354,11 @@ static void exynos_power_off(void)
 #endif
 #endif
 
-#define PON_RESTART_REASON_OEM_MIN 0x20
-
 static void exynos_reboot(enum reboot_mode mode, const char *cmd)
 {
 	u32 soc_id, revision;
 	void __iomem *addr;
-	void __iomem *restart_reason;
+
 	if (!exynos_pmu_base)
 		return;
 #ifdef CONFIG_EXYNOS_ACPM
@@ -298,66 +367,13 @@ static void exynos_reboot(enum reboot_mode mode, const char *cmd)
 	printk("[%s] reboot cmd: %s\n", __func__, cmd);
 
 	addr = exynos_pmu_base + EXYNOS_PMU_SYSIP_DAT0;
-	restart_reason = exynos_pmu_base + EXYNOS_PMU_SYSIP_DAT3;
-
 	if (cmd) {
-		if (!strcmp((char *)cmd, "charge")) {
-			__raw_writel(REBOOT_MODE_CHARGE, addr);
-		} else if (!strcmp(cmd, "bootloader") || !strcmp(cmd, "bl") ||
+		if (!strcmp(cmd, "bootloader") || !strcmp(cmd, "bl") ||
 				!strcmp((char *)cmd, "fastboot") || !strcmp(cmd, "fb")) {
 			__raw_writel(REBOOT_MODE_FASTBOOT, addr);
 		} else if (!strcmp(cmd, "recovery")) {
 			__raw_writel(REBOOT_MODE_RECOVERY, addr);
-		} else if (!strcmp(cmd, "sfactory")) {
-			__raw_writel(REBOOT_MODE_FACTORY, addr);
 		}
-	}
-
-	if (cmd != NULL) {
-		if (!strncmp(cmd, "bootloader", 10)) {
-			__raw_writel(0x77665500, restart_reason);
-		} else if (!strncmp(cmd, "recovery", 8)) {
-			__raw_writel(0x77665502, restart_reason);
-		} else if (!strcmp(cmd, "rtc")) {
-			__raw_writel(0x77665503, restart_reason);
-		} else if (!strcmp(cmd, "dm-verity device corrupted")) {
-			__raw_writel(0x77665508, restart_reason);
-		} else if (!strcmp(cmd, "dm-verity enforcing")) {
-			__raw_writel(0x77665509, restart_reason);
-		} else if (!strcmp(cmd, "keys clear")) {
-			__raw_writel(0x7766550a, restart_reason);
-		} else if (!strncmp(cmd, "oem-", 4)) {
-			unsigned long code;
-			unsigned long reset_reason;
-			int ret;
-
-			ret = kstrtoul(cmd + 4, 16, &code);
-			if (!ret) {
-				/* Bit-2 to bit-7 of SOFT_RB_SPARE for hard
-				 * reset reason:
-				 * Value 0 to 31 for common defined features
-				 * Value 32 to 63 for oem specific features
-				 */
-				reset_reason = code +
-						PON_RESTART_REASON_OEM_MIN;
-				__raw_writel(0x6f656d00 | (code & 0xff),
-					     restart_reason);
-			}
-		} else if (!strncmp(cmd, "post-wdt", 8)) {
-			__raw_writel(0x77665518, restart_reason);
-		} else if (!strncmp(cmd, "post-pmicwdt", 12)) {
-			__raw_writel(0x77665517, restart_reason);
-		} else if (!strncmp(cmd, "post-panic", 10)) {
-			__raw_writel(0x77665516, restart_reason);
-		} else if (!strncmp(cmd, "panic", 5)) {
-			__raw_writel(0x77665505, restart_reason);
-		} else {
-			__raw_writel(0x77665501, restart_reason);
-		}
-	} else if (in_panic == 1) {
-		__raw_writel(0x77665505, restart_reason);
-	} else {
-		__raw_writel(0x77665501, restart_reason);
 	}
 
 	/* Check by each SoC */
@@ -365,15 +381,22 @@ static void exynos_reboot(enum reboot_mode mode, const char *cmd)
 	revision = exynos_soc_info.revision;
 	pr_info("SOC ID %X. Revision: %x\n", soc_id, revision);
 	switch(soc_id) {
+	case EXYNOS7885_SOC_ID:
+                /* Check reset_sequencer_configuration register */
+                if (readl(exynos_pmu_base + RESET_SEQUENCER_CONFIGURATION) & DFD_EDPCSR_DUMP_EN) {
+                        mngs_reset_control(0);
+                        dfd_set_dump_gpr(0);
+                }
+                break;
+
 	case EXYNOS9810_SOC_ID:
 		/* Check reset_sequencer_configuration register */
 		if (readl(exynos_pmu_base + RESET_SEQUENCER_CONFIGURATION) & DFD_EDPCSR_DUMP_EN) {
-			big_reset_control(0);
 			dfd_set_dump_gpr(0);
 		}
 		if (revision < EXYNOS_MAIN_REV_1) {
 			pr_emerg("%s: Exynos SoC reset right now with fake watchdog\n", __func__);
-			s3c2410wdt_set_emergency_reset(1000, 1);
+			s3c2410wdt_set_emergency_reset(1000);
 			while (1)
 				wfi();
 		}
@@ -381,7 +404,6 @@ static void exynos_reboot(enum reboot_mode mode, const char *cmd)
 	case EXYNOS9610_SOC_ID:
 		/* Check reset_sequencer_configuration register */
 		if (readl(exynos_pmu_base + RESET_SEQUENCER_CONFIGURATION) & DFD_EDPCSR_DUMP_EN) {
-			big_reset_control(0);
 			dfd_set_dump_gpr(0);
 		}
 		break;
@@ -405,20 +427,13 @@ static int __init exynos_reboot_setup(struct device_node *np)
 			pr_err("%s: failed to map to exynos-pmu-base address 0x%x\n",
 				__func__, id);
 			err = -ENOMEM;
-		} else {
-			__raw_writel(0x77665505, exynos_pmu_base + EXYNOS_PMU_SYSIP_DAT3); //defaule reboot reason is AP Panic
 		}
 	}
 
 	of_node_put(np);
 
 	pr_info("[Exynos Reboot]: Success to register arm_pm_restart\n");
-
-#ifndef CONFIG_DEBUG_SNAPSHOT
-	/* If Debug-Snapshot is disabed, This code prevents entering fastboot */
-	writel(0, exynos_pmu_base + RESET_SEQUENCER_CONFIGURATION);
-#endif
-	big_reset_control(1);
+	big_reset_control(0);
 	return err;
 }
 
@@ -438,7 +453,6 @@ static int __init exynos_reboot_init(void)
 	if (!np)
 		return -ENODEV;
 
-	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
 	arm_pm_restart = exynos_reboot;
 #if !defined(CONFIG_SEC_REBOOT)
 	pm_power_off = exynos_power_off;

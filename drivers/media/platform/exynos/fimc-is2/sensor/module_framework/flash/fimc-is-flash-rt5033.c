@@ -31,11 +31,11 @@ static int flash_rt5033_init(struct v4l2_subdev *subdev, u32 val)
 	int ret = 0;
 	struct fimc_is_flash *flash;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flash = (struct fimc_is_flash *)v4l2_get_subdevdata(subdev);
 
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	/* TODO: init flash driver */
 	flash->flash_data.mode = CAM2_FLASH_MODE_OFF;
@@ -56,10 +56,10 @@ static int sensor_rt5033_flash_control(struct v4l2_subdev *subdev, enum flash_mo
 	int ret = 0;
 	struct fimc_is_flash *flash = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flash = (struct fimc_is_flash *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	if (mode == CAM2_FLASH_MODE_OFF) {
 		ret = control_flash_gpio(flash->flash_gpio, 0);
@@ -91,10 +91,10 @@ int flash_rt5033_s_ctrl(struct v4l2_subdev *subdev, struct v4l2_control *ctrl)
 	int ret = 0;
 	struct fimc_is_flash *flash = NULL;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	flash = (struct fimc_is_flash *)v4l2_get_subdevdata(subdev);
-	FIMC_BUG(!flash);
+	BUG_ON(!flash);
 
 	switch(ctrl->id) {
 	case V4L2_CID_FLASH_SET_INTENSITY:
@@ -142,7 +142,7 @@ static const struct v4l2_subdev_ops subdev_ops = {
 	.core = &core_ops,
 };
 
-static int __init flash_rt5033_probe(struct device *dev, struct i2c_client *client)
+int flash_rt5033_probe(struct device *dev, struct i2c_client *client)
 {
 	int ret = 0;
 	struct fimc_is_core *core;
@@ -153,8 +153,8 @@ static int __init flash_rt5033_probe(struct device *dev, struct i2c_client *clie
 	u32 sensor_id = 0;
 	struct device_node *dnode;
 
-	FIMC_BUG(!fimc_is_dev);
-	FIMC_BUG(!dev);
+	BUG_ON(!fimc_is_dev);
+	BUG_ON(!dev);
 
 	dnode = dev->of_node;
 
@@ -180,7 +180,7 @@ static int __init flash_rt5033_probe(struct device *dev, struct i2c_client *clie
 
 	sensor_peri = find_peri_by_flash_id(device, FLADRV_NAME_RT5033);
 	if (!sensor_peri) {
-		probe_info("sensor peri is net yet probed");
+		probe_info("sensor peri is not yet probed");
 		return -EPROBE_DEFER;
 	}
 
@@ -233,13 +233,13 @@ p_err:
 	return ret;
 }
 
-static int flash_rt5033_i2c_probe(struct i2c_client *client,
+int flash_rt5033_i2c_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
 	int ret = 0;
 	struct device *dev;
 
-	FIMC_BUG(!client);
+	BUG_ON(!client);
 
 	dev = &client->dev;
 
@@ -255,12 +255,18 @@ p_err:
 	return ret;
 }
 
-static int __init flash_rt5033_platform_probe(struct platform_device *pdev)
+static int flash_rt5033_i2c_remove(struct i2c_client *client)
+{
+	int ret = 0;
+	return ret;
+}
+
+int flash_rt5033_platform_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct device *dev;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 
@@ -274,6 +280,15 @@ static int __init flash_rt5033_platform_probe(struct platform_device *pdev)
 
 p_err:
 	return ret;
+}
+
+static int flash_rt5033_platform_remove(struct platform_device *pdev)
+{
+        int ret = 0;
+
+        info("%s\n", __func__);
+
+        return ret;
 }
 
 static const struct of_device_id exynos_fimc_is_sensor_flash_rt5033_match[] = {
@@ -292,47 +307,24 @@ static const struct i2c_device_id flash_rt5033_i2c_idt[] = {
 
 static struct i2c_driver sensor_flash_rt5033_i2c_driver = {
 	.probe	= flash_rt5033_i2c_probe,
+	.remove	= flash_rt5033_i2c_remove,
+	.id_table = flash_rt5033_i2c_idt,
 	.driver = {
 		.name	= "FIMC-IS-SENSOR-FLASH-RT5033-I2C",
 		.owner	= THIS_MODULE,
 		.of_match_table = exynos_fimc_is_sensor_flash_rt5033_match
-		.suppress_bind_attrs = true,
 	}
-	.id_table = flash_rt5033_i2c_idt,
 };
-
-static int __init sensor_flash_rt5033_i2c_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&sensor_flash_rt5033_i2c_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_flash_rt5033_i2c_driver.driver.name, ret);
-
-	return ret;
-};
-late_initcall_sync(sensor_flash_rt5033_i2c_init);
+module_i2c_driver(sensor_flash_rt5033_i2c_driver);
 
 /* register platform driver */
 static struct platform_driver sensor_flash_rt5033_platform_driver = {
+	.probe  = flash_rt5033_platform_probe,
+	.remove = flash_rt5033_platform_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-FLASH-RT5033-PLATFORM",
 		.owner  = THIS_MODULE,
 		.of_match_table = exynos_fimc_is_sensor_flash_rt5033_match,
 	}
 };
-
-static int __init sensor_flash_rt5033_platform_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_flash_rt5033_platform_driver,
-				flash_rt5033_platform_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_flash_rt5033_platform_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(sensor_flash_rt5033_platform_init);
+module_platform_driver(sensor_flash_rt5033_platform_driver);

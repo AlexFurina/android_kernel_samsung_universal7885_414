@@ -19,6 +19,34 @@
 #include <soc/samsung/exynos-powermode.h>
 #include <soc/samsung/cal-if.h>
 #include <soc/samsung/exynos-pmu.h>
+#include <asm/smp_plat.h>
+
+#ifndef CONFIG_SOC_EXYNOS7885
+#define linear_phycpu(mpidr)			\
+	((MPIDR_AFFINITY_LEVEL(mpidr, 1) << 2)	\
+	 | MPIDR_AFFINITY_LEVEL(mpidr, 0))
+#else
+#define CLUSTER0_CORES_CNT		(2)
+#define CLUSTER1_CORES_CNT		(4)
+unsigned int linear_phycpu(unsigned int mpidr)
+{
+	unsigned int cluster = MPIDR_AFFINITY_LEVEL(mpidr, 1);
+	unsigned int cpuid = 0;
+
+	/* It's base on the pmucal_cpu_xxx.h */
+	switch (cluster) {
+	case 2:
+		cpuid += CLUSTER1_CORES_CNT;
+	case 1:
+		cpuid += CLUSTER0_CORES_CNT;
+	case 0:
+		cpuid += MPIDR_AFFINITY_LEVEL(mpidr, 0);
+		break;
+	}
+
+	return cpuid;
+}
+#endif
 
 #ifdef CONFIG_CPU_IDLE
 /*
@@ -272,33 +300,60 @@ static void __init idle_ip_init(void)
 /******************************************************************************
  *                                CAL interfaces                              *
  ******************************************************************************/
-#ifdef CONFIG_EXYNOS_REBOOT
-extern void big_reset_control(int en);
-#else
-static inline void big_reset_control(int en) { }
-#endif
 
 static void cpu_enable(unsigned int cpu)
 {
+#ifdef CONFIG_SOC_EXYNOS7885
+	unsigned int mpidr = cpu_logical_map(cpu);
+	/* Get the Physical CPU number for CAL IF call */
+	cpu = linear_phycpu(mpidr);
+#endif
+
 	cal_cpu_enable(cpu);
 }
 
 static void cpu_disable(unsigned int cpu)
 {
+#ifdef CONFIG_SOC_EXYNOS7885
+	unsigned int mpidr = cpu_logical_map(cpu);
+	/* Get the Physical CPU number for CAL IF call */
+	cpu = linear_phycpu(mpidr);
+#endif
+
 	cal_cpu_disable(cpu);
 }
 
+#ifdef CONFIG_SOC_EXYNOS7885
+static void cluster_enable(unsigned int cpu)
+{
+	unsigned int mpidr = cpu_logical_map(cpu);
+	/* Get the Physical Cluster number for CAL IF call */
+	unsigned int cluster_id = MPIDR_AFFINITY_LEVEL(mpidr, 1);
+
+	cal_cluster_enable(cluster_id);
+}
+#else
 static void cluster_enable(unsigned int cluster_id)
 {
 	cal_cluster_enable(cluster_id);
-	big_reset_control(1);
 }
+#endif
 
-static void cluster_disable(unsigned int cluster_id)
+#ifdef CONFIG_SOC_EXYNOS7885
+static void cluster_disable(unsigned int cpu)
 {
-	big_reset_control(0);
+	unsigned int mpidr = cpu_logical_map(cpu);
+	/* Get the Physical Cluster number for CAL IF call */
+	unsigned int cluster_id = MPIDR_AFFINITY_LEVEL(mpidr, 1);
+
 	cal_cluster_disable(cluster_id);
 }
+#else
+static void cluster_disable(unsigned int cluster_id)
+{
+	cal_cluster_disable(cluster_id);
+}
+#endif
 
 /******************************************************************************
  *                               CPU HOTPLUG                                  *
@@ -315,9 +370,13 @@ static int cpuhp_cpupm_online(unsigned int cpu)
 {
 	struct cpumask mask;
 
-	cpumask_and(&mask, cpu_cluster_mask(cpu), cpu_online_mask);
+	cpumask_and(&mask, topology_idle_cpumask(cpu), cpu_online_mask);
 	if (cpumask_weight(&mask) == 0) {
+#ifdef CONFIG_SOC_EXYNOS7885
+		cluster_enable(cpu);
+#else
 		cluster_enable(cpu_topology[cpu].cluster_id);
+#endif
 		/* clear cpus of this cluster from cpuhp_last_mask */
 		cpumask_andnot(&cpuhp_last_mask,
 			&cpuhp_last_mask, cpu_cluster_mask(cpu));
@@ -335,12 +394,16 @@ static int cpuhp_cpupm_offline(unsigned int cpu)
 	cpu_disable(cpu);
 
 	spin_lock(&cpupm_lock);
-	cpumask_and(&online_mask, cpu_cluster_mask(cpu), cpu_online_mask);
+	cpumask_and(&online_mask, topology_idle_cpumask(cpu), cpu_online_mask);
 	cpumask_and(&last_mask, cpu_cluster_mask(cpu), &cpuhp_last_mask);
 	if ((cpumask_weight(&online_mask) == 0) && cpumask_empty(&last_mask)) {
 		/* set cpu cpuhp_last_mask */
 		cpumask_set_cpu(cpu, &cpuhp_last_mask);
+#ifdef CONFIG_SOC_EXYNOS7885
+		cluster_disable(cpu);
+#else
 		cluster_disable(cpu_topology[cpu].cluster_id);
+#endif
 	}
 	spin_unlock(&cpupm_lock);
 
@@ -619,7 +682,11 @@ static int try_to_enter_power_mode(int cpu, struct power_mode *mode)
 	 */
 	switch (mode->type) {
 	case POWERMODE_TYPE_CLUSTER:
+#ifdef CONFIG_SOC_EXYNOS7885
+		cluster_disable(cpu);
+#else
 		cluster_disable(cpu_topology[cpu].cluster_id);
+#endif
 		break;
 	case POWERMODE_TYPE_SYSTEM:
 		if (unlikely(exynos_system_idle_enter()))
@@ -654,7 +721,11 @@ static void exit_mode(int cpu, struct power_mode *mode, int cancel)
 
 	switch (mode->type) {
 	case POWERMODE_TYPE_CLUSTER:
+#ifdef CONFIG_SOC_EXYNOS7885
+		cluster_enable(cpu);
+#else
 		cluster_enable(cpu_topology[cpu].cluster_id);
+#endif
 		break;
 	case POWERMODE_TYPE_SYSTEM:
 		exynos_system_idle_exit(cancel);
@@ -856,15 +927,11 @@ static int __init cpu_power_mode_init(void)
 		if (of_property_read_bool(dn, "system-idle"))
 			mode->system_idle = true;
 
-		if (!of_property_read_string(dn, "siblings", &buf)) {
+		if (!of_property_read_string(dn, "siblings", &buf))
 			cpulist_parse(buf, &mode->siblings);
-			cpumask_and(&mode->siblings, &mode->siblings, cpu_possible_mask);
-		}
 
-		if (!of_property_read_string(dn, "entry-allowed", &buf)) {
+		if (!of_property_read_string(dn, "entry-allowed", &buf))
 			cpulist_parse(buf, &mode->entry_allowed);
-			cpumask_and(&mode->entry_allowed, &mode->entry_allowed, cpu_possible_mask);
-		}
 
 		atomic_set(&mode->disable, 0);
 

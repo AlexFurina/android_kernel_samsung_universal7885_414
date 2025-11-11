@@ -1,9 +1,9 @@
 /* sound/soc/samsung/abox/abox_effect.h
  *
- * ALSA SoC Audio Layer - Samsung Abox Effect driver
+ * ALSA SoC - Samsung Abox driver
  *
  * Copyright (c) 2016 Samsung Electronics Co. Ltd.
- *
+  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -22,32 +22,31 @@ enum {
 	NXPBUNDLE, /* includes BB,EQ, virtualizer, volume */
 	NXPREVERB_CTX, /* Reverb context inforamtion */
 	NXPREVERB_PARAM, /* Reverb effect parameters */
-	SOUNDBOOSTER,
 };
 
 /* Effect offset */
 #define SA_BASE			(0x000)
 #define SA_CHANGE_BIT		(0x000)
 #define SA_OUT_DEVICE		(0x010)
-#define	SA_PRESET		(0x014)
+#define	SA_PRESET 		(0x014)
 #define SA_EQ_BEGIN		(0x018)
-#define SA_EQ_END		(0x038)
-#define SA_3D_LEVEL		(0x03C)
-#define SA_BE_LEVEL		(0x040)
-#define SA_REVERB		(0x044)
-#define SA_ROOMSIZE		(0x048)
-#define SA_CLA_LEVEL		(0x04C)
-#define SA_VOLUME_LEVEL		(0x050)
-#define SA_SQUARE_ROW		(0x054)
-#define SA_SQUARE_COLUMN	(0x058)
-#define SA_TAB_INFO		(0x05C)
-#define SA_NEW_UI		(0x060)
-#define SA_3D_ON		(0x064)
-#define SA_3D_ANGLE_L		(0x068)
-#define SA_3D_ANGLE_R		(0x06C)
-#define SA_3D_GAIN_L		(0x070)
-#define SA_3D_GAIN_R		(0x074)
-#define SA_MAX_COUNT		(26)
+#define SA_EQ_END		(0x030)
+#define SA_3D_LEVEL		(0x034)
+#define SA_BE_LEVEL		(0x038)
+#define SA_REVERB		(0x03C)
+#define SA_ROOMSIZE		(0x040)
+#define SA_CLA_LEVEL		(0x044)
+#define SA_VOLUME_LEVEL		(0x048)
+#define SA_SQUARE_ROW		(0x04C)
+#define SA_SQUARE_COLUMN	(0x050)
+#define SA_TAB_INFO		(0x054)
+#define SA_NEW_UI		(0x058)
+#define SA_3D_ON		(0x05C)
+#define SA_3D_ANGLE_L		(0x060)
+#define SA_3D_ANGLE_R		(0x064)
+#define SA_3D_GAIN_L		(0x068)
+#define SA_3D_GAIN_R		(0x06C)
+#define SA_MAX_COUNT		(24)
 #define SA_VALUE_MIN		(0)
 #define SA_VALUE_MAX		(100)
 
@@ -142,21 +141,7 @@ enum {
 #define NXPRVB_CTX_VALUE_MIN	(0)
 #define NXPRVB_CTX_VALUE_MAX	(192000)
 
-#define SB_BASE			(0x900)
-#define SB_CHANGE_BIT		(0x900)
-#define SB_ROTATION		(0x910)
-#define SB_MAX_COUNT		(1)
-#define SB_VALUE_MIN		(0)
-#define SB_VALUE_MAX		(3)
-
-#define UPSCALER_BASE		(0xA00)
-#define UPSCALER_CHANGE_BIT	(0xA00)
-#define UPSCALER_ROTATION	(0xA10)
-#define UPSCALER_MAX_COUNT	(1)
-#define UPSCALER_VALUE_MIN	(0)
-#define UPSCALER_VALUE_MAX	(2)
-
-#define ABOX_EFFECT_MAX_REGISTERS	(0xB00)
+#define ABOX_EFFECT_MAX_REGISTERS	(0x900)
 
 #define PARAM_OFFSET		(0x10)
 #define CHANGE_BIT		(1)
@@ -167,10 +152,5 @@ struct abox_effect_data {
 	void __iomem *base;
 	struct regmap *regmap;
 };
-
-/**
- * Restore abox effect register map
- */
-extern void abox_effect_restore(void);
 
 #endif /* __SND_SOC_ABOX_EFFECT_H */

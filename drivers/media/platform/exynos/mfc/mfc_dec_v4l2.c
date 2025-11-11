@@ -273,7 +273,6 @@ static int mfc_dec_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 {
 	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
 	struct mfc_dec *dec = ctx->dec_priv;
-	struct mfc_dev *dev = ctx->dev;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
 	struct mfc_raw_info *raw;
 	int i;
@@ -281,11 +280,8 @@ static int mfc_dec_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 	mfc_debug_enter();
 
 	mfc_debug(2, "dec dst g_fmt, state: %d\n", ctx->state);
-	MFC_TRACE_CTX("** DEC g_fmt(state:%d wait_state:%d)\n",
-			ctx->state, ctx->wait_state);
 
 	if (ctx->state == MFCINST_GOT_INST ||
-	    ctx->state == MFCINST_RES_CHANGE_INIT ||
 	    ctx->state == MFCINST_RES_CHANGE_FLUSH ||
 	    ctx->state == MFCINST_RES_CHANGE_END) {
 		/* If there is no source buffer to parsing, we can't SEQ_START */
@@ -364,7 +360,6 @@ static int mfc_dec_g_fmt_vid_cap_mplane(struct file *file, void *priv,
 	if ((ctx->wait_state & WAIT_G_FMT) != 0) {
 		ctx->wait_state &= ~(WAIT_G_FMT);
 		mfc_debug(2, "clear WAIT_G_FMT %d\n", ctx->wait_state);
-		MFC_TRACE_CTX("** DEC clear WAIT_G_FMT(wait_state %d)\n", ctx->wait_state);
 	}
 
 	mfc_debug_leave();
@@ -422,6 +417,7 @@ static int mfc_dec_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 {
 	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
+	struct mfc_fmt *fmt = NULL;
 
 	mfc_debug_enter();
 
@@ -430,11 +426,12 @@ static int mfc_dec_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 		return -EBUSY;
 	}
 
-	ctx->dst_fmt = __mfc_dec_find_format(ctx, pix_fmt_mp->pixelformat);
-	if (!ctx->dst_fmt) {
+	fmt = __mfc_dec_find_format(ctx, pix_fmt_mp->pixelformat);
+	if (!fmt) {
 		mfc_err_ctx("Unsupported format for destination\n");
 		return -EINVAL;
 	}
+	ctx->dst_fmt = fmt;
 	ctx->raw_buf.num_planes = ctx->dst_fmt->num_planes;
 	mfc_info_ctx("[FRAME] dec dst pixelformat : %s\n", ctx->dst_fmt->name);
 
@@ -481,6 +478,7 @@ static int mfc_dec_s_fmt_vid_out_mplane(struct file *file, void *priv,
 	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
 	struct mfc_dec *dec = ctx->dec_priv;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
+	struct mfc_fmt *fmt = NULL;
 	int ret = 0;
 
 	mfc_debug_enter();
@@ -490,11 +488,12 @@ static int mfc_dec_s_fmt_vid_out_mplane(struct file *file, void *priv,
 		return -EBUSY;
 	}
 
-	ctx->src_fmt = __mfc_dec_find_format(ctx, pix_fmt_mp->pixelformat);
-	if (!ctx->src_fmt) {
+	fmt = __mfc_dec_find_format(ctx, pix_fmt_mp->pixelformat);
+	if (!fmt) {
 		mfc_err_ctx("Unsupported format for source\n");
 		return -EINVAL;
 	}
+	ctx->src_fmt = fmt;
 
 	ctx->codec_mode = ctx->src_fmt->codec_mode;
 	mfc_info_ctx("[STREAM] Dec src codec(%d): %s\n",
@@ -559,7 +558,8 @@ static int mfc_dec_s_fmt_vid_out_mplane(struct file *file, void *priv,
 
 	mfc_debug(2, "Got instance number: %d\n", ctx->inst_no);
 
-	mfc_ctx_ready_set_bit(ctx, &dev->work_bits);
+	if (mfc_ctx_ready(ctx))
+		mfc_set_bit(ctx->num, &dev->work_bits);
 	if (mfc_is_work_to_do(dev))
 		queue_work(dev->butler_wq, &dev->butler_work);
 
@@ -653,7 +653,9 @@ static int mfc_dec_reqbufs(struct file *file, void *priv,
 
 		ctx->capture_state = QUEUE_BUFS_REQUESTED;
 
-		mfc_ctx_ready_set_bit(ctx, &dev->work_bits);
+		if (mfc_ctx_ready(ctx))
+			mfc_set_bit(ctx->num, &dev->work_bits);
+
 		mfc_try_run(dev);
 	}
 
@@ -699,6 +701,7 @@ static int mfc_dec_querybuf(struct file *file, void *priv,
 static int mfc_dec_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 {
 	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
+	struct mfc_dev *dev = ctx->dev;
 	int ret = -EINVAL;
 
 	mfc_debug_enter();
@@ -708,7 +711,12 @@ static int mfc_dec_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 		return -EIO;
 	}
 
-	if (V4L2_TYPE_IS_MULTIPLANAR(buf->type) && !buf->length) {
+	if (!V4L2_TYPE_IS_MULTIPLANAR(buf->type)) {
+		mfc_err_ctx("Invalid V4L2 Buffer for driver: type(%d)\n", buf->type);
+		return -EINVAL;
+	}
+
+	if (!buf->length) {
 		mfc_err_ctx("multiplanar but length is zero\n");
 		return -EIO;
 	}
@@ -723,7 +731,7 @@ static int mfc_dec_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 			return -EIO;
 		}
 
-		mfc_qos_update_framerate(ctx, buf->m.planes[0].bytesused);
+		mfc_qos_update_framerate(ctx, 0);
 
 		if (!buf->m.planes[0].bytesused) {
 			buf->m.planes[0].bytesused = buf->m.planes[0].length;
@@ -735,8 +743,11 @@ static int mfc_dec_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 		ret = vb2_qbuf(&ctx->vq_src, buf);
 	} else {
 		mfc_debug(4, "dec dst buf[%d] Q\n", buf->index);
+		mfc_qos_update_framerate(ctx, 1);
 		ret = vb2_qbuf(&ctx->vq_dst, buf);
 	}
+
+	atomic_inc(&dev->queued_cnt);
 
 	mfc_debug_leave();
 	return ret;
@@ -758,6 +769,12 @@ static int mfc_dec_dqbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 		mfc_err_ctx("Call on DQBUF after unrecoverable error\n");
 		return -EIO;
 	}
+
+	if (!V4L2_TYPE_IS_MULTIPLANAR(buf->type)) {
+		mfc_err_ctx("Invalid V4L2 Buffer for driver: type(%d)\n", buf->type);
+		return -EINVAL;
+	}
+
 	if (buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		mfc_debug(4, "dec src buf[%d] DQ\n", buf->index);
 		ret = vb2_dqbuf(&ctx->vq_src, buf, file->f_flags & O_NONBLOCK);
@@ -1156,7 +1173,7 @@ static int mfc_dec_g_crop(struct file *file, void *priv,
 	mfc_debug_enter();
 
 	if (!ready_to_get_crop(ctx)) {
-		mfc_err_ctx("ready to get crop failed\n");
+		mfc_debug(2, "ready to get crop failed\n");
 		return -EINVAL;
 	}
 

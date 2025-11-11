@@ -32,6 +32,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/module.h>
 #include <linux/init.h>
 #include <linux/moduleparam.h>
 #include <linux/kernel.h>
@@ -42,10 +43,9 @@
 #include <linux/rcupdate.h>
 #include <linux/profile.h>
 #include <linux/notifier.h>
+#include <linux/ratelimit.h>
 
 static u32 lowmem_debug_level = 1;
-extern int extra_free_kbytes;
-
 static short lowmem_adj[6] = {
 	0,
 	1,
@@ -62,6 +62,54 @@ static int lowmem_minfree[6] = {
 };
 
 static int lowmem_minfree_size = 4;
+static u32 lowmem_lmkcount;
+static int lmkd_count;
+static int lmkd_cricount;
+
+static void show_memory(void)
+{
+#define K(x) ((x) << (PAGE_SHIFT - 10))
+	printk("Mem-Info:"
+		" totalram_pages:%lukB"
+		" free:%lukB"
+		" active_anon:%lukB"
+		" inactive_anon:%lukB"
+		" active_file:%lukB"
+		" inactive_file:%lukB"
+		" unevictable:%lukB"
+		" isolated(anon):%lukB"
+		" isolated(file):%lukB"
+		" dirty:%lukB"
+		" writeback:%lukB"
+		" mapped:%lukB"
+		" shmem:%lukB"
+		" slab_reclaimable:%lukB"
+		" slab_unreclaimable:%lukB"
+		" kernel_stack:%lukB"
+		" pagetables:%lukB"
+		" free_cma:%lukB"
+		"\n",
+		K(totalram_pages),
+		K(global_zone_page_state(NR_FREE_PAGES)),
+		K(global_node_page_state(NR_ACTIVE_ANON)),
+		K(global_node_page_state(NR_INACTIVE_ANON)),
+		K(global_node_page_state(NR_ACTIVE_FILE)),
+		K(global_node_page_state(NR_INACTIVE_FILE)),
+		K(global_node_page_state(NR_UNEVICTABLE)),
+		K(global_node_page_state(NR_ISOLATED_ANON)),
+		K(global_node_page_state(NR_ISOLATED_FILE)),
+		K(global_node_page_state(NR_FILE_DIRTY)),
+		K(global_node_page_state(NR_WRITEBACK)),
+		K(global_node_page_state(NR_FILE_MAPPED)),
+		K(global_node_page_state(NR_SHMEM)),
+		K(global_node_page_state(NR_SLAB_RECLAIMABLE)),
+		K(global_node_page_state(NR_SLAB_UNRECLAIMABLE)),
+		global_zone_page_state(NR_KERNEL_STACK_KB),
+		K(global_zone_page_state(NR_PAGETABLE)),
+		K(global_zone_page_state(NR_FREE_CMA_PAGES))
+		);
+#undef K
+}
 
 static unsigned long lowmem_deathpending_timeout;
 
@@ -96,14 +144,22 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	int other_file = global_node_page_state(NR_FILE_PAGES) -
 				global_node_page_state(NR_SHMEM) -
 				total_swapcache_pages();
+	static DEFINE_RATELIMIT_STATE(lmk_rs, DEFAULT_RATELIMIT_INTERVAL, 1);
+	unsigned long nr_cma_free;
+	int migratetype;
+
+	nr_cma_free = global_zone_page_state(NR_FREE_CMA_PAGES);
+	migratetype = gfpflags_to_migratetype(sc->gfp_mask);
+	if (!((migratetype == MIGRATE_MOVABLE) &&
+		((sc->gfp_mask & GFP_HIGHUSER_MOVABLE) == GFP_HIGHUSER_MOVABLE)))
+		other_free -= nr_cma_free;
 
 	if (lowmem_adj_size < array_size)
 		array_size = lowmem_adj_size;
 	if (lowmem_minfree_size < array_size)
 		array_size = lowmem_minfree_size;
 	for (i = 0; i < array_size; i++) {
-		minfree = lowmem_minfree[i] +
-			  ((extra_free_kbytes * 1024) / PAGE_SIZE);
+		minfree = lowmem_minfree[i];
 		if (other_free < minfree && other_file < minfree) {
 			min_score_adj = lowmem_adj[i];
 			break;
@@ -117,7 +173,7 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	if (min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
 		lowmem_print(5, "lowmem_scan %lu, %x, return 0\n",
 			     sc->nr_to_scan, sc->gfp_mask);
-		return 0;
+		return SHRINK_STOP;
 	}
 
 	selected_oom_score_adj = min_score_adj;
@@ -134,11 +190,20 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		if (!p)
 			continue;
 
-		if (task_lmk_waiting(p) &&
-		    time_before_eq(jiffies, lowmem_deathpending_timeout)) {
+		if (task_lmk_waiting(p)) {
 			task_unlock(p);
-			rcu_read_unlock();
-			return 0;
+
+			if (time_before_eq(jiffies,
+					   lowmem_deathpending_timeout)) {
+				rcu_read_unlock();
+				return SHRINK_STOP;
+			}
+
+			continue;
+		}
+		if (p->state & TASK_UNINTERRUPTIBLE) {
+			task_unlock(p);
+			continue;
 		}
 		oom_score_adj = p->signal->oom_score_adj;
 		if (oom_score_adj < min_score_adj) {
@@ -171,7 +236,9 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		lowmem_print(1, "Killing '%s' (%d), adj %hd,\n"
 				 "   to free %ldkB on behalf of '%s' (%d) because\n"
 				 "   cache %ldkB is below limit %ldkB for oom_score_adj %hd\n"
-				 "   Free memory is %ldkB above reserved\n",
+				 "   Free memory is %ldkB above reserved\n"
+				 "   Free CMA is %ldkB\n"
+				 "   GFP mask is %#x(%pGg)\n",
 			     selected->comm, selected->pid,
 			     selected_oom_score_adj,
 			     selected_tasksize * (long)(PAGE_SIZE / 1024),
@@ -179,14 +246,28 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 			     other_file * (long)(PAGE_SIZE / 1024),
 			     minfree * (long)(PAGE_SIZE / 1024),
 			     min_score_adj,
-			     other_free * (long)(PAGE_SIZE / 1024));
+			     other_free * (long)(PAGE_SIZE / 1024),
+			     nr_cma_free * (long)(PAGE_SIZE / 1024),
+			     sc->gfp_mask, &sc->gfp_mask);
+
+		show_mem_extra_call_notifiers();
+		show_memory();
+		if ((selected_oom_score_adj <= 100) && (__ratelimit(&lmk_rs)))
+				dump_tasks(NULL, NULL);
+
 		lowmem_deathpending_timeout = jiffies + HZ;
 		rem += selected_tasksize;
+
+		lowmem_lmkcount++;
 	}
 
 	lowmem_print(4, "lowmem_scan %lu, %x, return %lu\n",
 		     sc->nr_to_scan, sc->gfp_mask, rem);
 	rcu_read_unlock();
+
+	if (!rem)
+		rem = SHRINK_STOP;
+
 	return rem;
 }
 
@@ -201,7 +282,11 @@ static int __init lowmem_init(void)
 	register_shrinker(&lowmem_shrinker);
 	return 0;
 }
-device_initcall(lowmem_init);
+
+static void __exit lowmem_exit(void)
+{
+		unregister_shrinker(&lowmem_shrinker);
+}
 
 /*
  * not really modular, but the easiest way to keep compat with existing
@@ -212,4 +297,11 @@ module_param_array_named(adj, lowmem_adj, short, &lowmem_adj_size, 0644);
 module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
 			 0644);
 module_param_named(debug_level, lowmem_debug_level, uint, 0644);
+module_param_named(lmkcount, lowmem_lmkcount, uint, 0444);
+module_param_named(lmkd_count, lmkd_count, int, 0644);
+module_param_named(lmkd_cricount, lmkd_cricount, int, 0644);
 
+module_init(lowmem_init);
+module_exit(lowmem_exit);
+
+MODULE_LICENSE("GPL");

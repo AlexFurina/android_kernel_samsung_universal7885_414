@@ -68,6 +68,8 @@
 #include <scsi/scsi_eh.h>
 #include <scsi/scsi_ioctl.h>
 
+#define CUSTOMIZE_UPIU_FLAGS
+
 #include "ufs.h"
 #include "ufshci.h"
 #include "ufs_quirks.h"
@@ -280,6 +282,8 @@ struct ufs_pa_layer_attr {
 	u32 hs_rate;
 	u32 peer_available_lane_rx;
 	u32 peer_available_lane_tx;
+	u32 available_lane_rx;
+	u32 available_lane_tx;
 };
 
 struct ufs_pwr_mode_info {
@@ -333,16 +337,19 @@ struct ufs_hba_variant_ops {
 	void	(*set_nexus_t_xfer_req)(struct ufs_hba *,
 					int, struct scsi_cmnd *);
 	void	(*set_nexus_t_task_mgmt)(struct ufs_hba *, int, u8);
+	int	(*hibern8_prepare)(struct ufs_hba *, u8, bool);
 	void    (*hibern8_notify)(struct ufs_hba *, u8, bool);
 	int     (*suspend)(struct ufs_hba *, enum ufs_pm_op);
 	int     (*resume)(struct ufs_hba *, enum ufs_pm_op);
 	void	(*dbg_register_dump)(struct ufs_hba *hba);
 	u8      (*get_unipro_result)(struct ufs_hba *hba, u32 num);
 	int	(*phy_initialization)(struct ufs_hba *);
-	int	(*crypto_engine_cfg)(struct ufs_hba *, struct ufshcd_lrb *,
-					struct scatterlist *, int, int, int);
-	int	(*crypto_engine_clear)(struct ufs_hba *, struct ufshcd_lrb *);
-	int	(*access_control_abort)(struct ufs_hba *);
+	int	(*crypto_engine_cfg)(struct ufs_hba *hba,
+					struct ufshcd_lrb *lrbp);
+	int	(*crypto_engine_clear)(struct ufs_hba *hba,
+					struct ufshcd_lrb *lrbp);
+	int	(*crypto_sec_cfg)(struct ufs_hba *hba, bool init);
+	int	(*access_control_abort)(struct ufs_hba *hba);
 
 };
 
@@ -523,6 +530,7 @@ struct ufs_stats {
  * @uic_error: UFS interconnect layer error status
  * @saved_err: sticky error mask
  * @saved_uic_err: sticky UIC error mask
+ * @silence_err_logs: flag to silence error logs
  * @dev_cmd: ufs device management command information
  * @last_dme_cmd_tstamp: time stamp of the last completed DME command
  * @auto_bkops_enabled: to track whether bkops is enabled in device
@@ -669,8 +677,8 @@ struct ufs_hba {
 	u32 uic_error;
 	u32 saved_err;
 	u32 saved_uic_err;
-	u32 saved_uic_phy_err_cnt;
 	struct ufs_stats ufs_stats;
+	bool silence_err_logs;
 
 	u32 tcx_replay_timer_expired_cnt;
 	u32 fcx_protection_timer_expired_cnt;
@@ -738,6 +746,9 @@ struct ufs_hba {
 	struct rw_semaphore clk_scaling_lock;
 	struct ufs_desc_size desc_size;
 	struct ufs_secure_log secure_log;
+	/* ITMON DEBUG */
+	void __iomem    *err_reg;
+	void __iomem    *monitor_reg;
 };
 
 /* Returns true if clocks can be gated. Otherwise false */
@@ -1042,13 +1053,10 @@ static inline u8 ufshcd_vops_get_unipro(struct ufs_hba *hba, int num)
 }
 int ufshcd_read_health_desc(struct ufs_hba *hba, u8 *buf, u32 size);
 static inline int ufshcd_vops_crypto_engine_cfg(struct ufs_hba *hba,
-					struct ufshcd_lrb *lrbp,
-					struct scatterlist *sg, int index,
-					int sector_offset, int page_index)
+					struct ufshcd_lrb *lrbp)
 {
 	if (hba->vops && hba->vops->crypto_engine_cfg)
-		return hba->vops->crypto_engine_cfg(hba, lrbp, sg, index,
-						sector_offset, page_index);
+		return hba->vops->crypto_engine_cfg(hba, lrbp);
 	return 0;
 }
 
@@ -1064,6 +1072,13 @@ static inline int ufshcd_vops_access_control_abort(struct ufs_hba *hba)
 {
 	if (hba->vops && hba->vops->access_control_abort)
 		return hba->vops->access_control_abort(hba);
+	return 0;
+}
+
+static inline int ufshcd_vops_crypto_sec_cfg(struct ufs_hba *hba, bool init)
+{
+	if (hba->vops && hba->vops->crypto_sec_cfg)
+		return hba->vops->crypto_sec_cfg(hba, init);
 	return 0;
 }
 #endif /* End of Header */

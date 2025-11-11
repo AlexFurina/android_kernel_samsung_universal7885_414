@@ -130,16 +130,16 @@ static int __init get_cp_volt(char *str)
 }
 early_param("cp", get_cp_volt);
 
-static int __init get_fsys0_volt(char *str)
+static int __init get_fsys_volt(char *str)
 {
 	int volt;
 
 	get_option(&str, &volt);
-	init_margin_table[MARGIN_FSYS0] = volt;
+	init_margin_table[MARGIN_FSYS] = volt;
 
 	return 0;
 }
-early_param("fsys0", get_fsys0_volt);
+early_param("fsys", get_fsys_volt);
 
 static int __init get_aud_volt(char *str)
 {

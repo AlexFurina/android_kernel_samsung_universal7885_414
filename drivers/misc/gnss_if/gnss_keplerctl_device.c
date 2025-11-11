@@ -29,9 +29,8 @@
 #include "gnss_link_device_shmem.h"
 #include "pmu-gnss.h"
 
-#define BCMD_WAKELOCK_TIMEOUT	(HZ / 10) /* 100 msec */
-#define REQ_BCMD_TIMEOUT	(200) /* ms */
-#define REQ_INIT_TIMEOUT	(1000) /* ms */
+#define BCMD_WAKELOCK_TIMEOUT		(HZ / 10) /* 100 msec */
+#define REQ_BCMD_TIMEOUT	200		/* 10 ms */
 
 static void gnss_state_changed(struct gnss_ctl *gc, enum gnss_state state)
 {
@@ -46,18 +45,6 @@ static void gnss_state_changed(struct gnss_ctl *gc, enum gnss_state state)
 
 	if (state == STATE_OFFLINE || state == STATE_FAULT)
 		wake_up(&iod->wq);
-}
-
-static irqreturn_t kepler_req_init_isr(int irq, void *arg)
-{
-	struct gnss_ctl *gc = (struct gnss_ctl *)arg;
-
-	gif_err("REQ_INIT Interrupt occurred!\n");
-
-	disable_irq_nosync(gc->req_init_irq);
-	complete(&gc->req_init_cmpl);
-
-	return IRQ_HANDLED;
 }
 
 static irqreturn_t kepler_active_isr(int irq, void *arg)
@@ -127,7 +114,7 @@ static irqreturn_t kepler_wakelock_isr(int irq, void *arg)
 	if (wake_lock_active(&shmd->wlock))
 		wake_unlock(&shmd->wlock);
 
-	gif_info("Wake Lock ISR!!!!\n");
+	gif_debug("Wake Lock ISR!!!!\n");
 	gif_err(">>>>DBUS_SW_WAKE_INT\n");
 
 	/* 1. Set wake-lock-timeout(). */
@@ -167,7 +154,7 @@ static void mbox_kepler_simple_lock(void *arg)
 	struct gnss_ctl *gc = (struct gnss_ctl *)arg;
 	struct gnss_mbox *mbx = gc->gnss_data->mbx;
 
-	gif_info("[GNSS] WAKE interrupt(Mbox15) occurred\n");
+	gif_debug("[GNSS] WAKE interrupt(Mbox15) occurred\n");
 	mbox_set_interrupt(mbx->id, mbx->int_ap2gnss_ack_wake_set);
 	gc->pmu_ops->clear_int(GNSS_INT_WAKEUP_CLEAR);
 }
@@ -202,7 +189,7 @@ static void mbox_kepler_wake_clr(void *arg)
 	*/
 	gc->pmu_ops->clear_int(GNSS_INT_WAKEUP_CLEAR);
 
-	gif_info("Wake Lock Clear!!!!\n");
+	gif_debug("Wake Lock Clear!!!!\n");
 	gif_err(">>>>DBUS_SW_WAKE_INT CLEAR\n");
 
 	wake_unlock(&gc->gc_wake_lock);
@@ -223,18 +210,14 @@ static void mbox_kepler_rsp_fault_info(void *arg)
 	complete(&gc->fault_cmpl);
 }
 
-static DEFINE_MUTEX(reset_lock);
-
 static int kepler_hold_reset(struct gnss_ctl *gc)
 {
-	gif_err("%s+++\n", __func__);
+	gif_err("%s\n", __func__);
 
 	if (gc->gnss_state == STATE_OFFLINE) {
 		gif_err("Current Kerpler status is OFFLINE, so it will be ignored\n");
 		return 0;
 	}
-
-	mutex_lock(&reset_lock);
 
 	gnss_state_changed(gc, STATE_HOLD_RESET);
 
@@ -246,23 +229,17 @@ static int kepler_hold_reset(struct gnss_ctl *gc)
 	gc->pmu_ops->hold_reset();
 	mbox_sw_reset(gc->gnss_data->mbx->id);
 
-	mutex_unlock(&reset_lock);
-
-	gif_err("%s---\n", __func__);
-
 	return 0;
 }
 
 static int kepler_release_reset(struct gnss_ctl *gc)
 {
 	int ret;
-	unsigned long timeout = msecs_to_jiffies(REQ_INIT_TIMEOUT);
-
-	gif_err("%s+++\n", __func__);
+	gif_err("%s\n", __func__);
 
 	gnss_state_changed(gc, STATE_ONLINE);
+	gif_debug("[GNSS] CLEAR all interrupts(EXYNOS_MCU_IPC_INTCR1(0xffff))\n");
 	mcu_ipc_clear_all_interrupt(MCU_GNSS);
-
 	gc->pmu_ops->release_reset();
 
 	if (gc->ccore_qch_lh_gnss) {
@@ -273,35 +250,15 @@ static int kepler_release_reset(struct gnss_ctl *gc)
 			gif_err("Could not enable Qch (%d)\n", ret);
 	}
 
-	enable_irq(gc->req_init_irq);
-	ret = wait_for_completion_timeout(&gc->req_init_cmpl, timeout);
-	if (ret == 0) {
-		gif_err("%s: req_init_cmpl TIMEOUT!\n", gc->name);
-		disable_irq_nosync(gc->req_init_irq);
-		return -EIO;
-	}
-	ret = gc->pmu_ops->req_security();
-	if (ret != 0) {
-		gif_err("req_security error! %d\n", ret);
-		return ret;
-	}
-	gc->pmu_ops->req_baaw();
-
-	gif_err("%s---\n", __func__);
-
 	return 0;
 }
 
 static int kepler_power_on(struct gnss_ctl *gc)
 {
 	int ret;
-	unsigned long timeout = msecs_to_jiffies(REQ_INIT_TIMEOUT);
-
-	gif_err("%s+++\n", __func__);
+	gif_err("%s\n", __func__);
 
 	gnss_state_changed(gc, STATE_ONLINE);
-	mcu_ipc_clear_all_interrupt(MCU_GNSS);
-
 	gc->pmu_ops->power_on(GNSS_POWER_ON);
 
 	if (gc->ccore_qch_lh_gnss) {
@@ -311,22 +268,6 @@ static int kepler_power_on(struct gnss_ctl *gc)
 		else
 			gif_err("Could not enable Qch (%d)\n", ret);
 	}
-
-	enable_irq(gc->req_init_irq);
-	ret = wait_for_completion_timeout(&gc->req_init_cmpl, timeout);
-	if (ret == 0) {
-		gif_err("%s: req_init_cmpl TIMEOUT!\n", gc->name);
-		disable_irq_nosync(gc->req_init_irq);
-		return -EIO;
-	}
-	ret = gc->pmu_ops->req_security();
-	if (ret != 0) {
-		gif_err("req_security error! %d\n", ret);
-		return ret;
-	}
-	gc->pmu_ops->req_baaw();
-
-	gif_err("%s---\n", __func__);
 
 	return 0;
 }
@@ -339,14 +280,11 @@ static int kepler_req_fault_info(struct gnss_ctl *gc)
 	unsigned long timeout = msecs_to_jiffies(1000);
 	u32 size = 0;
 
-	mutex_lock(&reset_lock);
-
 	if (!gc) {
 		gif_err("No gnss_ctl info!\n");
 		ret = -ENODEV;
 		goto req_fault_exit;
 	}
-
 	pdata = gc->gnss_data;
 	mbx = pdata->mbx;
 
@@ -375,7 +313,6 @@ static int kepler_req_fault_info(struct gnss_ctl *gc)
 
 req_fault_exit:
 	wake_unlock(&gc->gc_fault_wake_lock);
-	mutex_unlock(&reset_lock);
 
 	return ret;
 }
@@ -442,23 +379,9 @@ static int kepler_req_bcmd(struct gnss_ctl *gc, u16 cmd_id, u16 flags,
 	struct gnss_mbox *mbx = gc->gnss_data->mbx;
 	struct link_device *ld = gc->iod->ld;
 
-	mutex_lock(&reset_lock);
-
-#if defined(CONFIG_SOC_EXYNOS9610)
-	if (gc->gnss_state == STATE_OFFLINE) {
-		gif_debug("Set POWER ON on kepler_req_bcmd!!!!\n");
-		kepler_power_on(gc);
-	} else if (gc->gnss_state == STATE_HOLD_RESET) {
-		ld->reset_buffers(ld);
-		gif_debug("Set RELEASE RESET on kepler_req_bcmd!!!!\n");
-		kepler_release_reset(gc);
-	}
-#endif
-
 #ifndef USE_SIMPLE_WAKE_LOCK
 	wake_lock_timeout(&gc->gc_bcmd_wake_lock, BCMD_WAKELOCK_TIMEOUT);
 #endif
-
 	/* Parse arguments */
 	/* Flags: Command flags */
 	/* Param1/2 : Paramter 1/2 */
@@ -466,7 +389,7 @@ static int kepler_req_bcmd(struct gnss_ctl *gc, u16 cmd_id, u16 flags,
 	ctrl[CTRL0] = (flags << 16) + cmd_id;
 	ctrl[CTRL1] = param1;
 	ctrl[CTRL2] = param2;
-	gif_info("%s : set param  0 : 0x%x, 1 : 0x%x, 2 : 0x%x\n",
+	gif_debug("%s : set param  0 : 0x%x, 1 : 0x%x, 2 : 0x%x\n",
 			__func__, ctrl[CTRL0], ctrl[CTRL1], ctrl[CTRL2]);
 	mbox_set_value(mbx->id, mbx->reg_bcmd_ctrl[CTRL0], ctrl[CTRL0]);
 	mbox_set_value(mbx->id, mbx->reg_bcmd_ctrl[CTRL1], ctrl[CTRL1]);
@@ -479,21 +402,17 @@ static int kepler_req_bcmd(struct gnss_ctl *gc, u16 cmd_id, u16 flags,
 
 	mbox_set_interrupt(mbx->id, mbx->int_ap2gnss_bcmd);
 
-#if !defined(CONFIG_SOC_EXYNOS9610)
 	if (gc->gnss_state == STATE_OFFLINE) {
-		gif_info("Set POWER ON!!!!\n");
+		gif_debug("Set POWER ON!!!!\n");
 		kepler_power_on(gc);
 	} else if (gc->gnss_state == STATE_HOLD_RESET) {
 		ld->reset_buffers(ld);
-		gif_info("Set RELEASE RESET!!!!\n");
+		gif_debug("Set RELEASE RESET!!!!\n");
 		kepler_release_reset(gc);
 	}
-#endif
 
-	if (cmd_id == 0x4) { /* BLC_Branch does not have return value */
-		mutex_unlock(&reset_lock);
+	if (cmd_id == 0x4) /* BLC_Branch does not have return value */
 		return 0;
-	}
 
 	ret = wait_for_completion_interruptible_timeout(&gc->bcmd_cmpl,
 						timeout);
@@ -502,14 +421,11 @@ static int kepler_req_bcmd(struct gnss_ctl *gc, u16 cmd_id, u16 flags,
 		wake_unlock(&gc->gc_bcmd_wake_lock);
 #endif
 		gif_err("%s: bcmd TIMEOUT!\n", gc->name);
-		mutex_unlock(&reset_lock);
 		return -EIO;
 	}
 
 	ret_val = mbox_get_value(mbx->id, mbx->reg_bcmd_ctrl[CTRL3]);
-	gif_info("BCMD cmd_id 0x%x returned 0x%x\n", cmd_id, ret_val);
-
-	mutex_unlock(&reset_lock);
+	gif_debug("BCMD cmd_id 0x%x returned 0x%x\n", cmd_id, ret_val);
 
 	return ret_val;
 }
@@ -546,7 +462,6 @@ int init_gnssctl_device(struct gnss_ctl *gc, struct gnss_data *pdata)
 
 	init_completion(&gc->fault_cmpl);
 	init_completion(&gc->bcmd_cmpl);
-	init_completion(&gc->req_init_cmpl);
 
 	pdev = to_platform_device(gc->dev);
 
@@ -594,20 +509,6 @@ int init_gnssctl_device(struct gnss_ctl *gc, struct gnss_data *pdata)
 	mbox_request_irq(gc->gnss_data->mbx->id, 15, mbox_kepler_simple_lock, (void *)gc);
 
 #endif
-
-	/* GNSS2AP */
-	irq = platform_get_irq_byname(pdev, "REQ_INIT");
-	if (irq < 0)
-		irq = platform_get_irq(pdev, 3);
-	gc->req_init_irq = irq;
-	ret = devm_request_irq(&pdev->dev, gc->req_init_irq, kepler_req_init_isr, 0,
-			  "kepler_req_init_handler", gc);
-	if (ret) {
-		gif_err("Request irq fail - kepler_req_init_isr(%d)\n", ret);
-		return ret;
-	}
-	enable_irq_wake(irq);
-	disable_irq(gc->req_init_irq);
 
 	/* Initializing Shared Memory for GNSS */
 	gif_err("Initializing shared memory for GNSS.\n");

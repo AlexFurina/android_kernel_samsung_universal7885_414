@@ -105,7 +105,6 @@ static int plugins_init(void)
 	unsigned int offset = 0;
 
 	plugins = (struct plugin *)(acpm_srambase + acpm_initdata->plugins);
-
 	for (i = 0; i < acpm_initdata->num_plugins; i++) {
 		if ((plugins[i].is_attached == 0 && plugins[i].stay_attached == 1) ||
 			(plugins[i].is_attached == 1 && plugins[i].stay_attached == 0)) {
@@ -142,15 +141,16 @@ static int plugins_init(void)
 
 				strncpy(name, fw_name, 50);
 				name[49]= 0;
-
 				firmware_update(exynos_acpm->dev, fw_base_addr, name);
 			}
-
 			ret = handle_dynamic_plugin(exynos_acpm->dev->of_node, plugins[i].id, plugins[i].stay_attached);
 			if (ret < 0)
 				dev_err(exynos_acpm->dev, "plugin attach/detach:%u fail! plugin_id:%d, ret:%d",
 						plugins[i].stay_attached, plugins[i].id, ret);
-
+#ifdef CONFIG_ACPM_DVFS
+			if (fw_name && strstr(fw_name, "dvfs"))
+				fvmap_init(fw_base_addr + plugins[i].size);
+#endif
 		} else if (plugins[i].is_attached == 1 && plugins[i].stay_attached == 1) {
 			fw_name = (const char *)(acpm_srambase + plugins[i].fw_name);
 
@@ -158,14 +158,15 @@ static int plugins_init(void)
 					(strstr(fw_name, "DVFS") || strstr(fw_name, "dvfs"))) {
 
 				dvfs_base_addr = acpm_srambase + (plugins[i].base_addr & ~0x1);
-				prop = of_get_property(exynos_acpm->dev->of_node, "fvmap_offset", &len);
-				if (prop)
-					offset = be32_to_cpup(prop);
 			}
 		}
 	}
 
-	fvmap_init(dvfs_base_addr + offset);
+	prop = of_get_property(exynos_acpm->dev->of_node, "fvmap_offset", &len);
+	if (prop) {
+		offset = be32_to_cpup(prop);
+		fvmap_init(dvfs_base_addr + offset);
+	}
 
 	return ret;
 }
@@ -260,11 +261,23 @@ void *memcpy_align_4(void *dest, const void *src, unsigned int n)
 	return dest;
 }
 
+void exynos_apm_power_down(void)
+{
+	unsigned int reg;
+
+	reg = __raw_readl(exynos_acpm->mcore_base + EXYNOS_PMU_CORTEX_APM_CONFIGURATION);
+	reg &= APM_LOCAL_PWR_CFG_RESET;
+	__raw_writel(reg, exynos_acpm->mcore_base + EXYNOS_PMU_CORTEX_APM_CONFIGURATION);
+}
+
 void acpm_enter_wfi(void)
 {
 	struct ipc_config config;
 	int ret = 0;
 	unsigned int cmd[4] = {0, };
+
+	if (exynos_acpm->enter_wfi)
+		return;
 
 	config.cmd = cmd;
 	config.response = true;
@@ -275,28 +288,31 @@ void acpm_enter_wfi(void)
 
 	config.cmd = NULL;
 
-	if (ret)
+	if (ret) {
 		pr_err("[ACPM] acpm enter wfi fail!!\n");
-	else
+	} else {
 		pr_err("[ACPM] wfi done\n");
+		exynos_acpm->enter_wfi++;
+	}
 }
 
-void exynos_acpm_timer_clear(void)
+/*void exynos_acpm_timer_clear(void)
 {
 	writel(exynos_acpm->timer_cnt, exynos_acpm->timer_base + EXYNOS_TIMER_APM_TCVR);
-}
+}*/
 
 void exynos_acpm_reboot(void)
 {
-	u32 soc_id, revision;
+	//u32 soc_id, revision;
 
 	acpm_ipc_set_waiting_mode(BUSY_WAIT);
 
-	soc_id = exynos_soc_info.product_id;
-	revision = exynos_soc_info.revision;
+	//soc_id = exynos_soc_info.product_id;
+	//revision = exynos_soc_info.revision;
 
-	if (!(soc_id == EXYNOS9810_SOC_ID && revision < EXYNOS_MAIN_REV_1))
+	//if (!(soc_id == EXYNOS9810_SOC_ID && revision < EXYNOS_MAIN_REV_1))
 		acpm_enter_wfi();
+	exynos_apm_power_down();
 }
 
 static int acpm_send_data(struct device_node *node, unsigned int check_id,
@@ -370,19 +386,19 @@ static int acpm_probe(struct platform_device *pdev)
 
 	acpm->dev = &pdev->dev;
 
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "timer_apm");
-	acpm->timer_base = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(acpm->timer_base))
-		dev_info(&pdev->dev, "could not find timer base addr \n");
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	acpm->mcore_base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(acpm->mcore_base))
+		return PTR_ERR(acpm->mcore_base);
 
-		if (of_property_read_u32(node, "peritimer-cnt", &acpm->timer_cnt))
-		pr_warn("No matching property: peritiemr_cnt\n");
+		//if (of_property_read_u32(node, "peritimer-cnt", &acpm->timer_cnt))
+		//pr_warn("No matching property: peritiemr_cnt\n");
 
 	exynos_acpm = acpm;
 
 	acpm_debugfs_init(acpm);
 
-	exynos_acpm_timer_clear();
+	//exynos_acpm_timer_clear();
 	return ret;
 }
 
@@ -415,11 +431,11 @@ arch_initcall_sync(exynos_acpm_init);
 static int __init exynos_acpm_binary_update(void)
 {
 	int ret;
-
+	printk("%s probe start",__func__);
 	acpm_ipc_set_waiting_mode(BUSY_WAIT);
 
 	ret = plugins_init();
-
+	printk("%s probe end",__func__);
 	return ret;
 }
 fs_initcall_sync(exynos_acpm_binary_update);

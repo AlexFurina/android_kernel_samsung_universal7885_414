@@ -31,12 +31,11 @@
 #include <linux/clk-provider.h>
 #include <linux/timekeeping.h>
 #include <linux/of_gpio.h>
-#include <linux/fcntl.h>
-#include <uapi/linux/sched/types.h>
-
 #ifdef CONFIG_EXYNOS_ITMON
 #include <soc/samsung/exynos-itmon.h>
 #endif
+
+#include <soc/samsung/exynos-pmu.h>
 
 #ifdef CONFIG_CHRE_SENSORHUB_HAL
 #include "main.h"
@@ -52,36 +51,8 @@
 enum { CHUB_ON, CHUB_OFF };
 enum { C2A_ON, C2A_OFF };
 
-const char *os_image[SENSOR_VARIATION] = {
-	"os.checked_0.bin",
-	"os.checked_1.bin",
-	"os.checked_2.bin",
-	"os.checked_3.bin",
-	"os.checked_4.bin",
-	"os.checked_5.bin",
-	"os.checked_6.bin",
-	"os.checked_7.bin",
-	"os.checked_8.bin",
-};
-
 static DEFINE_MUTEX(reset_mutex);
 static DEFINE_MUTEX(pmu_shutdown_mutex);
-static DEFINE_MUTEX(log_mutex);
-static DEFINE_MUTEX(wt_mutex);
-
-void chub_wake_event(struct chub_alive *event)
-{
-	atomic_set(&event->flag, 1);
-	wake_up_interruptible_sync(&event->event);
-}
-
-static int chub_wait_event(struct chub_alive *event, int timeout)
-{
-	atomic_set(&event->flag, 0);
-	return wait_event_interruptible_timeout(event->event,
-						 atomic_read(&event->flag),
-						 msecs_to_jiffies(timeout));
-}
 
 static int contexthub_get_token(struct contexthub_ipc_info *ipc)
 {
@@ -219,10 +190,10 @@ static int contexthub_ipc_drv_init(struct contexthub_ipc_info *chub)
 
 	/* init debug-log */
 	/* HACK for clang */
-	chub->ipc_map->logbuf.logbuf.eq = 0;
-	chub->ipc_map->logbuf.logbuf.dq = 0;
+	chub->ipc_map->logbuf.eq = 0;
+	chub->ipc_map->logbuf.dq = 0;
 	chub->fw_log = log_register_buffer(chub_dev, 0,
-					   (void *)&chub->ipc_map->logbuf.logbuf,
+					   (void *)&chub->ipc_map->logbuf,
 					   "fw", 1);
 	if (!chub->fw_log)
 		return -EINVAL;
@@ -247,7 +218,7 @@ static int contexthub_ipc_drv_init(struct contexthub_ipc_info *chub)
 	chub->dd_log =
 	    log_register_buffer(chub_dev, 1, chub->dd_log_buffer, "dd", 0);
 #endif
-	ret = chub_dbg_init(chub, chub->chub_rt_log.buffer, chub->chub_rt_log.buffer_size);
+	ret = chub_dbg_init(chub);
 	if (ret)
 		dev_err(chub_dev, "%s: fails. ret:%d\n", __func__, ret);
 
@@ -286,23 +257,40 @@ static inline int get_recv_channel(struct recv_ctrl *recv)
 	return min_order_evt;
 }
 
+static inline bool read_is_locked(struct contexthub_ipc_info *ipc)
+{
+	return atomic_read(&ipc->read_lock.cnt) != 0;
+}
+
+static inline void read_get_locked(struct contexthub_ipc_info *ipc)
+{
+	atomic_inc(&ipc->read_lock.cnt);
+}
+
+static inline void read_put_unlocked(struct contexthub_ipc_info *ipc)
+{
+	atomic_dec(&ipc->read_lock.cnt);
+}
+
 /* simple alive check function : don't use ipc map */
 static bool contexthub_lowlevel_alive(struct contexthub_ipc_info *ipc)
 {
-	int ret;
+	int val;
 
-	atomic_set(&ipc->chub_alive_lock.flag, 0);
+	ipc->chub_alive_lock.flag = 0;
 	ipc_hw_gen_interrupt(AP, IRQ_EVT_CHUB_ALIVE);
-	ret = chub_wait_event(&ipc->chub_alive_lock, 200);
-	dev_info(ipc->dev, "%s done: ret:%d\n", __func__, ret);
-	return atomic_read(&ipc->chub_alive_lock.flag);
+	val = wait_event_timeout(ipc->chub_alive_lock.event,
+				 ipc->chub_alive_lock.flag,
+				 msecs_to_jiffies(WAIT_TIMEOUT_MS));
+
+	return ipc->chub_alive_lock.flag;
 }
 
-#define CHUB_RESET_THOLD (10)
+#define CHUB_RESET_THOLD (5)
 /* handle errors of chub driver and fw  */
 static void handle_debug_work(struct contexthub_ipc_info *ipc, enum chub_err_type err)
 {
-	int need_reset = 0;
+	int need_reset;
 	int alive = contexthub_lowlevel_alive(ipc);
 
 	dev_info(ipc->dev, "%s: err:%d, alive:%d, status:%d, in-reset:%d\n",
@@ -319,7 +307,7 @@ static void handle_debug_work(struct contexthub_ipc_info *ipc, enum chub_err_typ
 		dev_info(ipc->dev, "%s: request silent reset. err:%d, alive:%d, status:%d, in-reset:%d\n",
 			__func__, err, alive, __raw_readl(&ipc->chub_status),
 			__raw_readl(&ipc->in_reset));
-		ret = contexthub_reset(ipc, 1, err);
+		ret = contexthub_reset(ipc, 0, err);
 		if (ret)
 			dev_warn(ipc->dev, "%s: fails to reset:%d. status:%d\n",
 				__func__, ret, __raw_readl(&ipc->chub_status));
@@ -342,10 +330,16 @@ static void contexthub_handle_debug(struct contexthub_ipc_info *ipc,
 	dev_info(ipc->dev, "%s: err:%d(cnt:%d), enable_wq:%d\n",
 		__func__, err, ipc->err_cnt[err], enable_wq);
 
-	/* set status in CHUB_ST_ERR */
-	if ((err == CHUB_ERR_ITMON) || (err == CHUB_ERR_FW_WDT) || (err == CHUB_ERR_FW_FAULT) || (err == CHUB_ERR_CHUB_NO_RESPONSE)) {
-		atomic_set(&ipc->chub_status, CHUB_ST_ERR);
-		goto error_handler;
+	if (err < CHUB_ERR_NEED_RESET) {
+		if (ipc->err_cnt[err] > CHUB_RESET_THOLD) {
+			atomic_set(&ipc->chub_status, CHUB_ST_ERR);
+			ipc->err_cnt[err] = 0;
+			dev_info(ipc->dev, "%s: err:%d(cnt:%d), enter error status\n",
+				__func__, err, ipc->err_cnt[err]);
+		} else {
+			ipc->err_cnt[err]++;
+			return;
+		}
 	}
 
 	/* get chub-fw err */
@@ -366,19 +360,12 @@ static void contexthub_handle_debug(struct contexthub_ipc_info *ipc,
 
 		ipc_write_debug_event(AP, 0);
 		contexthub_put_token(ipc);
-
-		if (ipc->err_cnt[err] > CHUB_RESET_THOLD) {
-			atomic_set(&ipc->chub_status, CHUB_ST_ERR);
-			ipc->err_cnt[err] = 0;
-			dev_info(ipc->dev, "%s: err:%d(cnt:%d), enter error status\n",
-				__func__, err, ipc->err_cnt[err]);
-		} else {
-			ipc->err_cnt[err]++;
-			return;
-		}
 	}
 
-error_handler:
+	/* set status in CHUB_ST_ERR */
+	if ((err == CHUB_ERR_ITMON) || (err == CHUB_ERR_FW_WDT) || (err == CHUB_ERR_FW_FAULT))
+		atomic_set(&ipc->chub_status, CHUB_ST_ERR);
+
 	/* handle err */
 	if (enable_wq) {
 		ipc->cur_err |= (1 << err);
@@ -388,43 +375,6 @@ error_handler:
 	}
 }
 
-static void contexthub_select_os(struct contexthub_ipc_info *ipc)
-{
-	int trycnt = 0;
-	u8 val = (u8) ipc_read_val(AP);
-	if(!val){
-		dev_warn(ipc->dev, "%s os number is invalid\n");
-		val = 1;
-	}
-	ipc->sel_os = true;
-
-	strcpy(ipc->os_name, os_image[val]);
-	dev_info(ipc->dev, "%s selected os_name = %s\n", __func__, ipc->os_name);
-
-	log_flush_all();
-	contexthub_download_image(ipc, IPC_REG_OS);
-	ipc_hw_write_shared_reg(AP, ipc->os_load, SR_BOOT_MODE);
-	ipc_write_val(AP, 99);
-	do {
-		msleep(WAIT_CHUB_MS);
-		contexthub_ipc_write_event(ipc, MAILBOX_EVT_CHUB_ALIVE);
-		if (++trycnt > 10)
-			break;
-	} while ((atomic_read(&ipc->chub_status) != CHUB_ST_RUN));
-
-	if (atomic_read(&ipc->chub_status) == CHUB_ST_RUN)
-		dev_info(ipc->dev, "%s done. contexthub status is %d\n",
-				__func__, atomic_read(&ipc->chub_status));
-	else {
-		dev_warn(ipc->dev, "%s failed. contexthub status is %d\n",
-				__func__, atomic_read(&ipc->chub_status));
-		atomic_set(&ipc->chub_status, CHUB_ST_NO_RESPONSE);
-		contexthub_handle_debug(ipc, CHUB_ERR_CHUB_NO_RESPONSE, 0);
-	}
-	dev_info(ipc->dev, "%s done: wakeup interrupt\n", __func__);
-	chub_wake_event(&ipc->poweron_lock);
-}
-
 static DEFINE_MUTEX(dbg_mutex);
 static void handle_debug_work_func(struct work_struct *work)
 {
@@ -432,58 +382,14 @@ static void handle_debug_work_func(struct work_struct *work)
 	    container_of(work, struct contexthub_ipc_info, debug_work);
 	int i;
 
-	if (atomic_read(&ipc->chub_status) == CHUB_ST_POWER_ON && ipc->sel_os == false) {
-		contexthub_select_os(ipc);
-		return;
-	}
-
-	dev_info(ipc->dev, "%s: cur_err:0x%x, chub_stats:%d\n", __func__, ipc->cur_err, atomic_read(&ipc->chub_status));
+	dev_info(ipc->dev, "%s: cur_err:0x%x\n", __func__, ipc->cur_err);
 	for (i = 0; i < CHUB_ERR_MAX; i++) {
 		if (ipc->cur_err & (1 << i)) {
 			dev_info(ipc->dev, "%s: loop: err:%d, cur_err:0x%x\n", __func__, i, ipc->cur_err);
-			ipc->cur_err &= ~(1 << i);
 			handle_debug_work(ipc, i);
+			ipc->cur_err &= ~(1 << i);
 		}
 	}
-}
-
-void contexthub_print_rtlog(struct contexthub_ipc_info *ipc, bool loop)
-{
-	if (!atomic_read(&ipc->log_work_active)) {
-		if (contexthub_get_token(ipc)) {
-			dev_warn(ipc->dev, "%s: get token\n", __func__);
-			return;
-		}
-		if (ipc_logbuf_outprint(&ipc->chub_rt_log, loop))
-			chub_dbg_dump_hw(ipc, CHUB_ERR_NANOHUB);
-		contexthub_put_token(ipc);
-	}
-}
-
-static void handle_log_work_func(struct work_struct *work)
-{
-	struct contexthub_ipc_info *ipc =
-	    container_of(work, struct contexthub_ipc_info, log_work);
-	int retrycnt = 0;
-
-retry:
-	if (contexthub_get_token(ipc)) {
-		chub_wait_event(&ipc->reset_lock, WAIT_TIMEOUT_MS * 2);
-		if (!retrycnt) {
-			retrycnt++;
-			goto retry;
-		}
-		atomic_set(&ipc->log_work_active, 0);
-		return;
-	}
-	ipc_logbuf_flush_on(1);
-	mutex_lock(&log_mutex);
-	if (ipc_logbuf_outprint(&ipc->chub_rt_log, 100))
-		chub_dbg_dump_hw(ipc, CHUB_ERR_NANOHUB);
-	mutex_unlock(&log_mutex);
-	ipc_logbuf_flush_on(0);
-	contexthub_put_token(ipc);
-	atomic_set(&ipc->log_work_active, 0);
 }
 
 static inline void clear_err_cnt(struct contexthub_ipc_info *ipc, enum chub_err_type err)
@@ -497,55 +403,46 @@ int contexthub_ipc_read(struct contexthub_ipc_info *ipc, uint8_t *rx, int max_le
 {
 	unsigned long flag;
 	int size = 0;
-	int ret = 0;
+	int ret;
 	void *rxbuf;
-	u64 time = 0; /* for debug */
 
-	if (!atomic_read(&ipc->read_lock.cnt)) {
-		time = sched_clock();
-
+	if (!ipc->read_lock.flag) {
 		spin_lock_irqsave(&ipc->read_lock.event.lock, flag);
-		atomic_inc(&ipc->read_lock.flag);
+		read_get_locked(ipc);
 		ret =
 			wait_event_interruptible_timeout_locked(ipc->read_lock.event,
-								atomic_read(&ipc->read_lock.cnt),
+								ipc->read_lock.flag,
 								msecs_to_jiffies(timeout));
-		atomic_dec(&ipc->read_lock.flag);
+		read_put_unlocked(ipc);
 		spin_unlock_irqrestore(&ipc->read_lock.event.lock, flag);
 		if (ret < 0)
 			dev_warn(ipc->dev,
-				 "fails to get read ret:%d timeout:%d\n", ret, timeout);
+				 "fails to get read ret:%d timeout:%d, flag:0x%x",
+				 ret, timeout, ipc->read_lock.flag);
+
+		if (!ipc->read_lock.flag)
+			goto fail_get_channel;
 	}
 
-	if (__raw_readl(&ipc->chub_status) != CHUB_ST_RUN) {
-		dev_warn(ipc->dev, "%s: chub isn't run:%d\n", __raw_readl(&ipc->chub_status));
-		return 0;
-	}
+	ipc->read_lock.flag--;
 
 	if (contexthub_get_token(ipc)) {
 		dev_warn(ipc->dev, "no-active: read fails\n");
 		return 0;
 	}
 
-	if (atomic_read(&ipc->read_lock.cnt)) {
-		rxbuf = ipc_read_data(IPC_DATA_C2A, &size);
-		if (size > 0) {
-			ret = contexthub_read_process(rx, rxbuf, size);
-			atomic_dec(&ipc->read_lock.cnt);
-		}
-	} else {
-		dev_dbg(ipc->dev, "%s: read timeout(%d): c2aq_cnt:%d, recv_cnt:%d during %lld ns\n",
-			__func__, ipc->err_cnt[CHUB_ERR_READ_FAIL],
-			ipc_get_data_cnt(IPC_DATA_C2A), atomic_read(&ipc->read_lock.cnt),
-			sched_clock() - time);
-		if (ipc_get_data_cnt(IPC_DATA_C2A)) {
-			ipc->err_cnt[CHUB_ERR_READ_FAIL]++;
-			ipc_dump();
-		}
-		ret = -EINVAL;
+	rxbuf = ipc_read_data(IPC_DATA_C2A, &size);
+
+	if (size > 0) {
+		clear_err_cnt(ipc, CHUB_ERR_READ_FAIL);
+		ret = contexthub_read_process(rx, rxbuf, size);
 	}
 	contexthub_put_token(ipc);
 	return ret;
+
+fail_get_channel:
+	contexthub_handle_debug(ipc, CHUB_ERR_READ_FAIL, 0);
+	return -EINVAL;
 }
 
 int contexthub_ipc_write(struct contexthub_ipc_info *ipc,
@@ -553,19 +450,12 @@ int contexthub_ipc_write(struct contexthub_ipc_info *ipc,
 {
 	int ret;
 
-	if (__raw_readl(&ipc->chub_status) != CHUB_ST_RUN) {
-		dev_warn(ipc->dev, "%s: chub isn't run:%d\n", __raw_readl(&ipc->chub_status));
-		return 0;
-	}
-
 	if (contexthub_get_token(ipc)) {
 		dev_warn(ipc->dev, "no-active: write fails\n");
 		return 0;
 	}
 
-	mutex_lock(&wt_mutex);
 	ret = ipc_write_data(IPC_DATA_A2C, tx, (u16)length);
-	mutex_unlock(&wt_mutex);
 	contexthub_put_token(ipc);
 	if (ret) {
 		pr_err("%s: fails to write data: ret:%d, len:%d errcnt:%d\n",
@@ -606,7 +496,6 @@ static int contexthub_hw_reset(struct contexthub_ipc_info *ipc,
 	int trycnt = 0;
 	int ret = 0;
 	int i;
-	bool first_poweron = false;
 
 	dev_info(ipc->dev, "%s. status:%d\n",
 		__func__, __raw_readl(&ipc->chub_status));
@@ -614,9 +503,7 @@ static int contexthub_hw_reset(struct contexthub_ipc_info *ipc,
 	/* clear ipc value */
 	atomic_set(&ipc->wakeup_chub, CHUB_OFF);
 	atomic_set(&ipc->irq1_apInt, C2A_OFF);
-	atomic_set(&ipc->read_lock.cnt, 0);
-	atomic_set(&ipc->read_lock.flag, 0);
-	atomic_set(&ipc->log_work_active, 0);
+	atomic_set(&ipc->read_lock.cnt, 0x0);
 
 	/* chub err init */
 	for (i = 0; i < CHUB_ERR_MAX; i++) {
@@ -625,19 +512,18 @@ static int contexthub_hw_reset(struct contexthub_ipc_info *ipc,
 		ipc->err_cnt[i] = 0;
 	}
 
+	ipc->read_lock.flag = 0;
 	ipc_hw_write_shared_reg(AP, ipc->os_load, SR_BOOT_MODE);
 	ipc_set_chub_clk((u32)ipc->clkrate);
-	ipc->chub_rt_log.loglevel = CHUB_RT_LOG_DUMP_PRT;
-	ipc_set_chub_bootmode(BOOTMODE_COLD, ipc->chub_rt_log.loglevel);
+	ipc_set_chub_bootmode(BOOTMODE_COLD);
+	ipc_set_chub_kernel_log(KERNEL_LOG_ON);
+
 	switch (event) {
 	case MAILBOX_EVT_POWER_ON:
 #ifdef NEED_TO_RTC_SYNC
 		check_rtc_time();
 #endif
 		if (atomic_read(&ipc->chub_status) == CHUB_ST_NO_POWER) {
-			if (ipc->sel_os == false)
-				first_poweron = true;
-
 			atomic_set(&ipc->chub_status, CHUB_ST_POWER_ON);
 
 			/* enable Dump gpr */
@@ -701,17 +587,10 @@ static int contexthub_hw_reset(struct contexthub_ipc_info *ipc,
 		break;
 	}
 
-	/* don't send alive with first poweron of multi-os */
-	if (first_poweron) {
-		dev_info(ipc->dev, "%s -> os select\n", __func__);
-		return 0;
-	}
-
 	if (ret)
 		return ret;
 	else {
 		/* wait active */
-		dev_info(ipc->dev, "%s: alive check\n", __func__);
 		trycnt = 0;
 		do {
 			msleep(WAIT_CHUB_MS);
@@ -751,75 +630,6 @@ static void contexthub_config_init(struct contexthub_ipc_info *chub)
 	ipc_set_base(chub->sram);
 	ipc_set_owner(AP, chub->mailbox, IPC_SRC);
 }
-#define os_name_idx (11)
-
-int contexthub_get_sensortype(struct contexthub_ipc_info *ipc, char *buf)
-{
-	struct sensor_map *sensor_map;
-	struct saved_setting *pack = (struct saved_setting *) buf;
-	int len = 0;
-	int trycnt = 0;
-	int ret;
-	unsigned int *tmp = (unsigned int *)pack;
-	int i;
-
-	if (atomic_read(&ipc->chub_status) != CHUB_ST_RUN) {
-		dev_warn(ipc->dev, "%s :fails chub isn't active, status:%d, inreset:%d\n",
-			__func__, atomic_read(&ipc->chub_status), atomic_read(&ipc->in_reset));
-		return -EINVAL;
-	}
-
-	ret = contexthub_get_token(ipc);
-	if (ret) {
-		do {
-			msleep(WAIT_CHUB_MS);
-			if (++trycnt > WAIT_TRY_CNT)
-				break;
-			ret = contexthub_get_token(ipc);
-		} while (ret);
-
-		if (ret) {
-			dev_warn(ipc->dev, "%s fails to get token\n", __func__);
-			return -EINVAL;
-		}
-	}
-	sensor_map = ipc_get_base(IPC_REG_IPC_SENSORINFO);
-	if (ipc_have_sensor_info(sensor_map)) {
-
-		pack->num_os = ipc->os_name[os_name_idx] - '0';
-		len = ipc_get_offset(IPC_REG_IPC_SENSORINFO);
-		dev_info(ipc->dev, "%s: get sensorinfo: %p (os:%d, size:%d, %d / %d %d %d)\n", __func__, sensor_map, pack->num_os, len, sizeof(struct saved_setting),
-			sizeof(pack->magic), sizeof(pack->num_os), sizeof(pack->readbuf));
-		memcpy(&pack->readbuf, ipc_get_sensor_base(), len);
-		for (i = 0; i < SENSOR_TYPE_MAX; i++)
-			if (sensor_map->active_sensor_list[i])
-				dev_info(ipc->dev, "%s: get sensorinfo: type:%d, id:%d - %d\n", __func__, i, sensor_map->active_sensor_list[i], pack->readbuf[i]);
-	} else {
-		dev_err(ipc->dev, "%s: fails to get sensorinfo: %p\n", __func__, sensor_map);
-	}
-	contexthub_put_token(ipc);
-
-	for (i = 0; i < sizeof(struct saved_setting) / sizeof(int); i++, tmp++)
-		pr_info("%s: %d: 0x%x\n", __func__, i, *tmp);
-	return sizeof(struct saved_setting);
-}
-
-void contexthub_ipc_status_reset(struct contexthub_ipc_info *ipc)
-{
-	/* clear ipc value */
-	atomic_set(&ipc->wakeup_chub, CHUB_OFF);
-	atomic_set(&ipc->irq1_apInt, C2A_OFF);
-	atomic_set(&ipc->read_lock.cnt, 0x0);
-	atomic_set(&ipc->log_work_active, 0);
-	memset_io(ipc_get_base(IPC_REG_IPC_A2C), 0, ipc_get_offset(IPC_REG_IPC_A2C));
-	memset_io(ipc_get_base(IPC_REG_IPC_C2A), 0, ipc_get_offset(IPC_REG_IPC_C2A));
-	memset_io(ipc_get_base(IPC_REG_IPC_EVT_A2C), 0, ipc_get_offset(IPC_REG_IPC_EVT_A2C));
-	memset_io(ipc_get_base(IPC_REG_IPC_EVT_C2A), 0, ipc_get_offset(IPC_REG_IPC_EVT_C2A));
-	memset_io(ipc_get_base(IPC_REG_IPC_EVT_A2C_CTRL), 0, ipc_get_offset(IPC_REG_IPC_EVT_A2C_CTRL));
-	memset_io(ipc_get_base(IPC_REG_IPC_EVT_C2A_CTRL), 0, ipc_get_offset(IPC_REG_IPC_EVT_C2A_CTRL));
-	ipc_hw_clear_all_int_pend_reg(AP);
-	ipc_hw_set_mcuctrl(AP, 0x1);
-}
 
 int contexthub_ipc_write_event(struct contexthub_ipc_info *ipc,
 				enum mailbox_event event)
@@ -835,14 +645,16 @@ int contexthub_ipc_write_event(struct contexthub_ipc_info *ipc,
 	case MAILBOX_EVT_POWER_ON:
 		ret = contexthub_hw_reset(ipc, event);
 		if (!ret)
-			log_flush_all();
+			log_schedule_flush_all();
 		break;
 	case MAILBOX_EVT_RESET:
-		if (atomic_read(&ipc->chub_status) == CHUB_ST_SHUTDOWN) {
+		if (atomic_read(&ipc->chub_shutdown)) {
 			ret = contexthub_hw_reset(ipc, event);
 		} else {
 			dev_err(ipc->dev,
-				"contexthub status isn't shutdown. fails to reset\n");
+				"contexthub status isn't shutdown. fails to reset: %d, %d\n",
+					atomic_read(&ipc->chub_shutdown),
+					atomic_read(&ipc->chub_status));
 			ret = -EINVAL;
 		}
 		break;
@@ -853,6 +665,7 @@ int contexthub_ipc_write_event(struct contexthub_ipc_info *ipc,
 			ret = pmucal_shub_reset_assert();
 			if (ret) {
 				pr_err("%s: reset assert fail\n", __func__);
+				ipc->pmu_shub_status.reason = 2;
 				return ret;
 			}
 
@@ -860,6 +673,7 @@ int contexthub_ipc_write_event(struct contexthub_ipc_info *ipc,
 			ret = pmucal_shub_reset_release_config();
 			if (ret) {
 				pr_err("%s: reset release cfg fail\n", __func__);
+				ipc->pmu_shub_status.reason = 3;
 				return ret;
 			}
 
@@ -870,6 +684,7 @@ int contexthub_ipc_write_event(struct contexthub_ipc_info *ipc,
 			if (ret) {
 				pr_err("%s: TZPC setting fail\n",
 					__func__);
+				ipc->pmu_shub_status.reason = 4;
 				return -EINVAL;
 			}
 			dev_info(ipc->dev, "%s: tzpc setted\n", __func__);
@@ -891,18 +706,20 @@ int contexthub_ipc_write_event(struct contexthub_ipc_info *ipc,
 				return -EINVAL;
 			}
 		}
+		atomic_set(&ipc->chub_shutdown, 1);
 		atomic_set(&ipc->chub_status, CHUB_ST_SHUTDOWN);
 		break;
 	case MAILBOX_EVT_CHUB_ALIVE:
-		ipc_hw_write_shared_reg(AP, AP_WAKE, SR_3);
 		val = contexthub_lowlevel_alive(ipc);
 		if (val) {
 			atomic_set(&ipc->chub_status, CHUB_ST_RUN);
-			dev_info(ipc->dev, "%s : chub is alive", __func__);
-		} else if (ipc->sel_os == true) {
+			dev_info(ipc->dev, "chub is alive");
+			clear_err_cnt(ipc, CHUB_ERR_CHUB_NO_RESPONSE);
+		} else {
 			dev_err(ipc->dev,
-				"%s : chub isn't alive, should be reset. status:%d, inreset:%d\n",
-				__func__, atomic_read(&ipc->chub_status), atomic_read(&ipc->in_reset));
+				"chub isn't alive, should be reset. status:%d\n",
+				atomic_read(&ipc->chub_status));
+			ipc_dump_mailbox_sfr(&ipc->mailbox_sfr_dump);
 			ret = -EINVAL;
 		}
 		break;
@@ -921,19 +738,14 @@ int contexthub_ipc_write_event(struct contexthub_ipc_info *ipc,
 	}
 
 	if (need_ipc) {
-		if (atomic_read(&ipc->chub_status) != CHUB_ST_RUN) {
+		if (contexthub_get_token(ipc)) {
 			dev_warn(ipc->dev, "%s event:%d/%d fails chub isn't active, status:%d, inreset:%d\n",
 				__func__, event, MAILBOX_EVT_MAX, atomic_read(&ipc->chub_status), atomic_read(&ipc->in_reset));
 			return -EINVAL;
 		}
-		if (contexthub_get_token(ipc))
-			return -EINVAL;
 
 		/* handle ipc */
 		switch (event) {
-		case MAILBOX_EVT_RT_LOGLEVEL:
-			ipc_logbuf_loglevel(ipc->chub_rt_log.loglevel, 1);
-			break;
 		case MAILBOX_EVT_ERASE_SHARED:
 			memset(ipc_get_base(IPC_REG_SHARED), 0, ipc_get_offset(IPC_REG_SHARED));
 			break;
@@ -945,20 +757,14 @@ int contexthub_ipc_write_event(struct contexthub_ipc_info *ipc,
 			break;
 		case MAILBOX_EVT_WAKEUP_CLR:
 			if (atomic_read(&ipc->wakeup_chub) == CHUB_ON) {
+				atomic_set(&ipc->wakeup_chub, CHUB_OFF);
 				ret = ipc_add_evt(IPC_EVT_A2C, IRQ_EVT_A2C_WAKEUP_CLR);
-				if (ret >= 0)
-					atomic_set(&ipc->wakeup_chub, CHUB_OFF);
-				else
-					dev_warn(ipc->dev, "%s: fails to set wakeup. ret:%d", __func__, ret);
 			}
 			break;
 		case MAILBOX_EVT_WAKEUP:
 			if (atomic_read(&ipc->wakeup_chub) == CHUB_OFF) {
+				atomic_set(&ipc->wakeup_chub, CHUB_ON);
 				ret = ipc_add_evt(IPC_EVT_A2C, IRQ_EVT_A2C_WAKEUP);
-				if (ret >= 0)
-					atomic_set(&ipc->wakeup_chub, CHUB_ON);
-				else
-					dev_warn(ipc->dev, "%s: fails to set wakeupclr. ret:%d", __func__, ret);
 			}
 			break;
 		default:
@@ -974,13 +780,8 @@ int contexthub_ipc_write_event(struct contexthub_ipc_info *ipc,
 		}
 		contexthub_put_token(ipc);
 
-		/* add slient reset with write event error */
-		if ((event == MAILBOX_EVT_WAKEUP_CLR) || (event == MAILBOX_EVT_WAKEUP)) {
-			if (ret < 0)
-				contexthub_handle_debug(ipc, CHUB_ERR_EVTQ_ADD, 0);
-			else
-				clear_err_cnt(ipc, CHUB_ERR_EVTQ_ADD);
-		}
+		if (ret)
+			ipc->err_cnt[CHUB_ERR_EVTQ_ADD]++;
 	}
 	return ret;
 }
@@ -989,18 +790,13 @@ int contexthub_poweron(struct contexthub_ipc_info *ipc)
 {
 	int ret = 0;
 	struct device *dev = ipc->dev;
-	struct chub_bootargs *map;
 
 	if (!atomic_read(&ipc->chub_status)) {
-		memset_io(ipc->sram, 0, ipc->sram_size);
 		ret = contexthub_download_image(ipc, IPC_REG_BL);
 		if (ret) {
 			dev_warn(dev, "fails to download bootloader\n");
 			return ret;
 		}
-
-		if (ipc_get_offset(IPC_REG_DUMP) != ipc->sram_size)
-			dev_warn(dev, "sram size doen't match kernel:%d, fw:%d\n", ipc->sram_size, ipc_get_offset(IPC_REG_DUMP));
 
 		ret = contexthub_ipc_write_event(ipc, MAILBOX_EVT_INIT_IPC);
 		if (ret) {
@@ -1008,41 +804,25 @@ int contexthub_poweron(struct contexthub_ipc_info *ipc)
 			return ret;
 		}
 
-		if(!strcmp(ipc->os_name, "os.checked_0.bin") || ipc->os_name[0] != 'o') {
-			map = ipc_get_base(IPC_REG_BL_MAP);
-			ipc->sel_os = !(map->bootmode);
-		} else
-			dev_info(dev, "saved os_name: %s", ipc->os_name);
-
 		ret = contexthub_download_image(ipc, IPC_REG_OS);
 		if (ret) {
 			dev_warn(dev, "fails to download kernel\n");
 			return ret;
 		}
-
 		ret = contexthub_ipc_write_event(ipc, MAILBOX_EVT_POWER_ON);
 		if (ret) {
 			dev_warn(dev, "fails to poweron\n");
 			return ret;
 		}
-		if (atomic_read(&ipc->chub_status) == CHUB_ST_RUN)
-			dev_info(dev, "%s: contexthub power-on", __func__);
-		else {
-			if (ipc->sel_os)
-				dev_warn(dev, "contexthub failed to power-on");
-			else {
-				dev_info(dev, "%s: wait for multi-os poweron\n", __func__);
-				ret = chub_wait_event(&ipc->poweron_lock, WAIT_TIMEOUT_MS * 2);
-				dev_info(dev, "%s: multi-os poweron %s, status:%d, ret:%d, flag:%d\n", __func__,
-					atomic_read(&ipc->chub_status) == CHUB_ST_RUN ? "success" : "fails",
-					atomic_read(&ipc->chub_status), ret, ipc->poweron_lock.flag);
-			}
-		}
-	} else
-	/* CHUB already went through poweron sequence */
-		return -EINVAL;
 
-	return 0;
+		if (atomic_read(&ipc->chub_status) == CHUB_ST_RUN)
+			dev_info(dev, "contexthub power-on");
+		else
+			dev_warn(dev, "contexthub fails to power-on");
+	} else {
+		ret = -EINVAL;
+	}
+	return ret;
 }
 
 static int contexthub_download_and_check_image(struct contexthub_ipc_info *ipc, enum ipc_region reg)
@@ -1082,53 +862,75 @@ out:
 	return ret;
 }
 
-int contexthub_reset(struct contexthub_ipc_info *ipc, bool force_load, enum chub_err_type err)
+void contexthub_dump_pmu_sfr(struct contexthub_ipc_info *ipc)
+{
+	exynos_pmu_read(TOP_BUS_SHUB_STATUS, &ipc->pmu_shub_status.top_bus_shub);
+	exynos_pmu_read(TOP_PWR_SHUB_STATUS, &ipc->pmu_shub_status.top_pwr_shub);
+	exynos_pmu_read(LOGIC_RESET_SHUB_STATUS, &ipc->pmu_shub_status.logic_reset_shub);
+	exynos_pmu_read(RESET_OTP_SHUB_STATUS, &ipc->pmu_shub_status.reset_otp_shub);
+	exynos_pmu_read(RESET_CMU_SHUB_STATUS, &ipc->pmu_shub_status.reset_cmu_shub);
+	exynos_pmu_read(RESET_SUBCPU_SHUB_STATUS, &ipc->pmu_shub_status.reset_subcpu_shub);
+	dev_err(ipc->dev, "================%s: reset fail at %d: ================", __func__,  ipc->pmu_shub_status.reason);
+	dev_err(ipc->dev, "TOP_BUS_SHUB_STATUS     : 0x%08x, TOP_PWR_SHUB_STATUS      : 0x%08x",
+			ipc->pmu_shub_status.top_bus_shub, ipc->pmu_shub_status.top_pwr_shub);
+	dev_err(ipc->dev, "LOGIC_RESET_SHUB_STATUS : 0x%08x, RESET_OTP_SHUB_STATUS    : 0x%08x",
+			ipc->pmu_shub_status.logic_reset_shub, ipc->pmu_shub_status.reset_otp_shub);
+	dev_err(ipc->dev, "RESET_CMU_SHUB_STATUS   : 0x%08x, RESET_SUBCPU_SHUB_STATUS : 0x%08x",
+			ipc->pmu_shub_status.reset_cmu_shub, ipc->pmu_shub_status.reset_subcpu_shub);
+	dev_err(ipc->dev, "===========================================================================");
+}
+
+#define RESET_RETRY_THD (5)
+int contexthub_reset(struct contexthub_ipc_info *ipc, bool force_load, int dump)
 {
 	int ret;
 	int trycnt = 0;
 	bool irq_disabled;
+	int fail_cnt = 0;
 
-	dev_info(ipc->dev, "%s: force:%d, status:%d, in-reset:%d, err:%d, user:%d\n",
-		__func__, force_load, atomic_read(&ipc->chub_status),
-		atomic_read(&ipc->in_reset), err, atomic_read(&ipc->in_use_ipc));
+	dev_info(ipc->dev, "%s: force:%d, status:%d, in-reset:%d, dump:%d, user:%d\n",
+		__func__, force_load, atomic_read(&ipc->chub_status), atomic_read(&ipc->in_reset), dump, atomic_read(&ipc->in_use_ipc));
+
 	mutex_lock(&reset_mutex);
 	if (!force_load && (atomic_read(&ipc->chub_status) == CHUB_ST_RUN)) {
 		mutex_unlock(&reset_mutex);
 		dev_info(ipc->dev, "%s: out status:%d\n", __func__, atomic_read(&ipc->chub_status));
 		return 0;
 	}
+
+	atomic_inc(&ipc->in_reset);
+	__pm_stay_awake(&ipc->ws_reset);
+
+reset_fail_retry:
 	/* disable mailbox interrupt to prevent sram access during chub reset */
 	disable_irq(ipc->irq_mailbox);
 	irq_disabled = true;
 
-	atomic_inc(&ipc->in_reset);
-
-	/* wait for ipc free */
-	do {
+	while (atomic_read(&ipc->in_use_ipc)) {
 		msleep(WAIT_CHUB_MS);
 		if (++trycnt > RESET_WAIT_TRY_CNT) {
-			dev_info(ipc->dev, "%s: can't get lock. in_use_ipc: %d\n",
-				__func__, atomic_read(&ipc->in_use_ipc));
+			dev_info(ipc->dev, "%s: can't get lock. in_use_ipc: %d\n", __func__, atomic_read(&ipc->in_use_ipc));
+			ipc->pmu_shub_status.reason = 1;
 			ret = -EINVAL;
 			goto out;
 		}
-		dev_info(ipc->dev, "%s: wait for ipc user free: %d\n",
-			__func__, atomic_read(&ipc->in_use_ipc));
-	} while (atomic_read(&ipc->in_use_ipc));
+		dev_info(ipc->dev, "%s: wait for ipc user free: %d\n", __func__, atomic_read(&ipc->in_use_ipc));
+	}
 
-	/* debug dump */
-	chub_dbg_dump_hw(ipc, err);
+	if (dump) {
+		ipc->err_cnt[CHUB_ERR_NONE] = dump;
+		chub_dbg_dump_hw(ipc, ipc->cur_err);
+	}
 
 	dev_info(ipc->dev, "%s: start reset status:%d\n", __func__, atomic_read(&ipc->chub_status));
-
 	if (!ipc->block_reset) {
 		/* core reset */
 		ipc_add_evt(IPC_EVT_A2C, IRQ_EVT_A2C_SHUTDOWN);
 		msleep(100);	/* wait for shut down time */
 	}
 
-	/* shutdown */
 	mutex_lock(&pmu_shutdown_mutex);
+	atomic_set(&ipc->chub_shutdown, 0);
 	dev_info(ipc->dev, "%s: enter shutdown\n", __func__);
 	ret = contexthub_ipc_write_event(ipc, MAILBOX_EVT_SHUTDOWN);
 	if (ret) {
@@ -1139,13 +941,6 @@ int contexthub_reset(struct contexthub_ipc_info *ipc, bool force_load, enum chub
 	dev_info(ipc->dev, "%s: out shutdown\n", __func__);
 	mutex_unlock(&pmu_shutdown_mutex);
 
-	/* image download */
-	dev_info(ipc->dev, "%s: clear ipc:%p, %d\n", __func__, ipc_get_base(IPC_REG_IPC), ipc_get_offset(IPC_REG_IPC));
-	memset_io(ipc_get_base(IPC_REG_IPC_A2C), 0, ipc_get_offset(IPC_REG_IPC_A2C));
-	memset_io(ipc_get_base(IPC_REG_IPC_C2A), 0, ipc_get_offset(IPC_REG_IPC_C2A));
-	memset_io(ipc_get_base(IPC_REG_IPC_EVT_A2C), 0, ipc_get_offset(IPC_REG_IPC_EVT_A2C));
-	memset_io(ipc_get_base(IPC_REG_IPC_EVT_C2A), 0, ipc_get_offset(IPC_REG_IPC_EVT_C2A));
-	memset_io(ipc_get_base(IPC_REG_LOG), 0, ipc_get_offset(IPC_REG_LOG));
 	if (ipc->block_reset || force_load) {
 		ret = contexthub_download_image(ipc, IPC_REG_BL);
 		if (!ret) {
@@ -1156,12 +951,12 @@ int contexthub_reset(struct contexthub_ipc_info *ipc, bool force_load, enum chub
 
 			if (ret) {
 				dev_err(ipc->dev, "%s: download os fails\n", __func__);
-				ret = -EINVAL;
+				ipc->pmu_shub_status.reason = 5;
 				goto out;
 			}
 		} else {
 				dev_err(ipc->dev, "%s: download bl fails\n", __func__);
-				ret = -EINVAL;
+				ipc->pmu_shub_status.reason = 6;
 				goto out;
 		}
 	}
@@ -1170,10 +965,10 @@ int contexthub_reset(struct contexthub_ipc_info *ipc, bool force_load, enum chub
 	enable_irq(ipc->irq_mailbox);
 	irq_disabled = false;
 
-	/* reset */
 	ret = contexthub_ipc_write_event(ipc, MAILBOX_EVT_RESET);
 	if (ret) {
 		dev_err(ipc->dev, "%s: reset fails, ret:%d\n", __func__, ret);
+		ipc->pmu_shub_status.reason = 7;
 	} else {
 		dev_info(ipc->dev, "%s: chub reseted! (cnt:%d)\n",
 			__func__, ipc->err_cnt[CHUB_ERR_RESET_CNT]);
@@ -1182,14 +977,23 @@ int contexthub_reset(struct contexthub_ipc_info *ipc, bool force_load, enum chub
 	}
 out:
 	if (ret) {
-		atomic_set(&ipc->chub_status, CHUB_ST_RESET_FAIL);
+		atomic_set(&ipc->chub_status, CHUB_ST_NO_RESPONSE);
+		contexthub_dump_pmu_sfr(ipc);
+		ipc_dump_mailbox_sfr(&ipc->mailbox_sfr_dump);
 		if (irq_disabled)
 			enable_irq(ipc->irq_mailbox);
 		dev_err(ipc->dev, "%s: chub reset fail! should retry to reset (ret:%d), irq_disabled:%d\n",
 			__func__, ret, irq_disabled);
+		dump = 1;
+		if (fail_cnt++ < RESET_RETRY_THD) {
+			msleep(2000);
+			dev_err(ipc->dev, "%s: chub reset fail! retry:%d\n", __func__, fail_cnt);
+			goto reset_fail_retry;
+		}
+		dev_err(ipc->dev, "%s: chub reset failed finally\n", __func__);
 	}
-	msleep(100); /* wakeup delay */
-	chub_wake_event(&ipc->reset_lock);
+
+	__pm_relax(&ipc->ws_reset);
 	atomic_dec(&ipc->in_reset);
 	mutex_unlock(&reset_mutex);
 
@@ -1201,14 +1005,11 @@ int contexthub_download_image(struct contexthub_ipc_info *ipc, enum ipc_region r
 	const struct firmware *entry;
 	int ret;
 
-	if (reg == IPC_REG_BL) {
-		dev_info(ipc->dev, "%s: download bl\n", __func__);
+	dev_info(ipc->dev, "%s: enter for bl:%d\n", __func__, reg == IPC_REG_BL);
+	if (reg == IPC_REG_BL)
 		ret = request_firmware(&entry, "bl.unchecked.bin", ipc->dev);
-	}
-	else if (reg == IPC_REG_OS) {
-		dev_info(ipc->dev, "%s: download %s\n", __func__, ipc->os_name);
+	else if (reg == IPC_REG_OS)
 		ret = request_firmware(&entry, ipc->os_name, ipc->dev);
-	}
 	else
 		ret = -EINVAL;
 
@@ -1217,7 +1018,7 @@ int contexthub_download_image(struct contexthub_ipc_info *ipc, enum ipc_region r
 			reg == IPC_REG_BL, __func__);
 		return ret;
 	}
-	memcpy_toio(ipc_get_base(reg), entry->data, entry->size);
+	memcpy(ipc_get_base(reg), entry->data, entry->size);
 	dev_info(ipc->dev, "%s: bl:%d, bin(size:%d) on %lx\n",
 		 __func__, reg == IPC_REG_BL, (int)entry->size, (unsigned long)ipc_get_base(reg));
 	release_firmware(entry);
@@ -1227,13 +1028,9 @@ int contexthub_download_image(struct contexthub_ipc_info *ipc, enum ipc_region r
 
 static void handle_irq(struct contexthub_ipc_info *ipc, enum irq_evt_chub evt)
 {
-	int err;
-
 	switch (evt) {
 	case IRQ_EVT_C2A_DEBUG:
-		err = (ipc_read_debug_event(AP) == IPC_DEBUG_CHUB_FAULT) ? CHUB_ERR_FW_FAULT : CHUB_ERR_NANOHUB;
-		dev_err(ipc->dev, "%s: c2a_debug: debug:%d, err:%d\n", __func__, ipc_read_debug_event(AP), err);
-		contexthub_handle_debug(ipc, err, 1);
+		contexthub_handle_debug(ipc, CHUB_ERR_NANOHUB, 1);
 		break;
 	case IRQ_EVT_C2A_INT:
 		if (atomic_read(&ipc->irq1_apInt) == C2A_OFF) {
@@ -1244,31 +1041,23 @@ static void handle_irq(struct contexthub_ipc_info *ipc, enum irq_evt_chub evt)
 	case IRQ_EVT_C2A_INTCLR:
 		atomic_set(&ipc->irq1_apInt, C2A_OFF);
 		break;
-	case IRQ_EVT_C2A_LOG:
-		break;
 	default:
 		if (evt < IRQ_EVT_CH_MAX) {
 			int lock;
 
-			atomic_inc(&ipc->read_lock.cnt);
+			ipc->read_lock.flag++;
 			/* TODO: requered.. ? */
 			spin_lock(&ipc->read_lock.event.lock);
-			lock = atomic_read(&ipc->read_lock.flag);
+			lock = read_is_locked(ipc);
 			spin_unlock(&ipc->read_lock.event.lock);
 			if (lock)
 				wake_up_interruptible_sync(&ipc->read_lock.event);
 		} else {
 			dev_warn(ipc->dev, "%s: invalid %d event",
 				 __func__, evt);
-			return;
 		}
 		break;
 	};
-	if (ipc_logbuf_filled() && !atomic_read(&ipc->log_work_active)) {
-		ipc->log_work_reqcnt++; /* debug */
-		atomic_set(&ipc->log_work_active, 1);
-		schedule_work(&ipc->log_work);
-	}
 }
 
 static irqreturn_t contexthub_irq_handler(int irq, void *data)
@@ -1280,29 +1069,25 @@ static irqreturn_t contexthub_irq_handler(int irq, void *data)
 	enum chub_err_type err = 0;
 	enum irq_chub evt = 0;
 	int irq_num = IRQ_EVT_CHUB_ALIVE + start_index;
-	u32 status_org = status; /* for debug */
-	struct ipc_evt *ipc_evt = ipc_get_base(IPC_REG_IPC_EVT_C2A);
 
+	if (atomic_read(&ipc->chub_status) != CHUB_ST_POWER_ON &&
+		atomic_read(&ipc->chub_status) != CHUB_ST_RUN &&
+		atomic_read(&ipc->chub_status) != CHUB_ST_SHUTDOWN) {
+		pr_err("%s: illegal interrupt from mailbox!! %d", __func__, atomic_read(&ipc->chub_status));
+		ipc_hw_mask_all(AP, 1);
+		contexthub_dump_pmu_sfr(data);
+		ipc_dump_mailbox_sfr(&ipc->mailbox_sfr_dump);
+		return IRQ_HANDLED;
+	}
 	/* chub alive interrupt handle */
 	if (status & (1 << irq_num)) {
 		status &= ~(1 << irq_num);
 		ipc_hw_clear_int_pend_reg(AP, irq_num);
-		if (atomic_read(&ipc->chub_status) == CHUB_ST_POWER_ON && ipc->sel_os == false) {
-			schedule_work(&ipc->debug_work);
-			return IRQ_HANDLED;
-		}
-
 		/* set wakeup flag for chub_alive_lock */
-		chub_wake_event(&ipc->chub_alive_lock);
-	}
-	irq_num = IRQ_EVT_C2A_LOG + start_index;
-	if (status & (1 << irq_num)) {
-		status &= ~(1 << irq_num);
-		ipc_hw_clear_int_pend_reg(AP, irq_num);
-		handle_irq(ipc, IRQ_EVT_C2A_LOG);
+		ipc->chub_alive_lock.flag = 1;
+		wake_up(&ipc->chub_alive_lock.event);
 	}
 
-#ifdef CHECK_HW_TRIGGER
 	/* chub ipc interrupt handle */
 	while (status) {
 		cur_evt = ipc_get_evt(IPC_EVT_C2A);
@@ -1311,55 +1096,25 @@ static irqreturn_t contexthub_irq_handler(int irq, void *data)
 			evt = cur_evt->evt;
 			irq_num = cur_evt->irq + start_index;
 
-			if (!ipc_evt->ctrl.pending[cur_evt->irq])
-				CSP_PRINTF_ERROR
-					("%s: no-sw-trigger irq:%d(%d+%d), evt:%d, status:0x%x->0x%x(SR:0x%x)\n", __func__,
-					irq_num, cur_evt->irq, start_index, evt, status_org, status, ipc_hw_read_int_status_reg(AP));
-
 			/* check match evtq and hw interrupt pending */
 			if (!(status & (1 << irq_num))) {
 				err = CHUB_ERR_EVTQ_NO_HW_TRIGGER;
-				CSP_PRINTF_ERROR
-						 ("%s: no-hw-trigger irq:%d(%d+%d), evt:%d, status:0x%x->0x%x(SR:0x%x)\n", __func__,
-						  irq_num, cur_evt->irq, start_index, evt, status_org, status, ipc_hw_read_int_status_reg(AP));
+				break;
 			}
 		} else {
 			err = CHUB_ERR_EVTQ_EMTPY;
-			CSP_PRINTF_ERROR
-					 ("%s: evt-empty irq:%d(%d), evt:%d, status:0x%x->0x%x(SR:0x%x)\n", __func__,
-					  irq_num, start_index, evt, status_org, status, ipc_hw_read_int_status_reg(AP));
 			break;
 		}
-		ipc_hw_clear_int_pend_reg(AP, irq_num);
-		ipc_evt->ctrl.pending[cur_evt->irq] = 0;
+
 		handle_irq(ipc, (u32)evt);
+		ipc_hw_clear_int_pend_reg(AP, irq_num);
 		status &= ~(1 << irq_num);
 	}
-#else
-	if (status) {
-		int i;
-
-		for (i = start_index; i < irq_num; i++) {
-
-			if (status & (1 << i)) {
-				cur_evt = ipc_get_evt(IPC_EVT_C2A);
-				if (cur_evt) {
-					evt = cur_evt->evt;
-					handle_irq(ipc, (u32)evt);
-					ipc_hw_clear_int_pend_reg(AP, i);
-				} else {
-					err = CHUB_ERR_EVTQ_EMTPY;
-					break;
-				}
-			}
-		}
-	}
-#endif
 
 	if (err) {
-		dev_err(ipc->dev, "nanohub: inval irq err(%d):start_irqnum:%d,evt(%p):%d,irq_hw:%d,status_reg:0x%x->0x%x(0x%x,0x%x)\n",
+		pr_err("inval irq err(%d):start_irqnum:%d,evt(%p):%d,irq_hw:%d,status_reg:0x%x(0x%x,0x%x)\n",
 		       err, start_index, cur_evt, evt, irq_num,
-		       status_org, status, ipc_hw_read_int_status_reg(AP),
+		       status, ipc_hw_read_int_status_reg(AP),
 		       ipc_hw_read_int_gen_reg(AP));
 		ipc_hw_clear_all_int_pend_reg(AP);
 		contexthub_handle_debug(ipc, err, 1);
@@ -1416,32 +1171,6 @@ error:
 extern int cal_dll_apm_enable(void);
 #endif
 
-static void __iomem *get_iomem(struct platform_device *pdev,
-                const char *name, u32 *size)
-{
-	struct resource *res;
-	void __iomem *ret;
-
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
-	if (IS_ERR_OR_NULL(res)) {
-		dev_err(&pdev->dev, "Failed to get %s\n", name);
-		return ERR_PTR(-EINVAL);
-	}
-
-	ret = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(ret)) {
-		dev_err(&pdev->dev, "fails to get %s\n", name);
-		return ERR_PTR(-EINVAL);
-	}
-
-	if (size)
-		*size = resource_size(res);
-	dev_info(&pdev->dev, "%s: %s(%p) is mapped on %p with size of %zu",
-		__func__, name, (void *)res->start, ret, (size_t)resource_size(res));
-
-	return ret;
-}
-
 static __init int contexthub_ipc_hw_init(struct platform_device *pdev,
 					 struct contexthub_ipc_info *chub)
 {
@@ -1450,7 +1179,6 @@ static __init int contexthub_ipc_hw_init(struct platform_device *pdev,
 	struct resource *res;
 	const char *os;
 	const char *resetmode;
-	const char *selectos;
 	struct device *dev = &pdev->dev;
 	struct device_node *node = dev->of_node;
 	const char *string_array[10];
@@ -1480,16 +1208,6 @@ static __init int contexthub_ipc_hw_init(struct platform_device *pdev,
 		chub->block_reset = 1;
 	else
 		chub->block_reset = 0;
-
-	/* get os select from dt */
-	selectos = of_get_property(node, "os-select", NULL);
-	if (!selectos || strcmp(selectos, "true")) {
-		dev_info(dev,"multi os disabled : %s\n", selectos);
-		chub->sel_os = true;
-	} else {
-		dev_info(dev,"multi os enabled : %s\n", selectos);
-		chub->sel_os = false;
-	}
 
 	/* get mailbox interrupt */
 	chub->irq_mailbox = irq_of_parse_and_map(node, 0);
@@ -1527,27 +1245,44 @@ static __init int contexthub_ipc_hw_init(struct platform_device *pdev,
 #endif
 
 	/* get MAILBOX SFR */
-	chub->mailbox = get_iomem(pdev, "mailbox", NULL);
-	if (IS_ERR(chub->mailbox))
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "mailbox");
+	chub->mailbox = devm_ioremap_resource(dev, res);
+	if (IS_ERR(chub->mailbox)) {
+		dev_err(dev, "fails to get mailbox sfr\n");
 		return PTR_ERR(chub->mailbox);
+	}
 
 	/* get SRAM base */
-	chub->sram = get_iomem(pdev, "sram", &chub->sram_size);
-	if (IS_ERR(chub->sram))
-			return PTR_ERR(chub->sram);
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "sram");
+	chub->sram = devm_ioremap_resource(dev, res);
+	if (IS_ERR(chub->sram)) {
+		dev_err(dev, "fails to get sram\n");
+		return PTR_ERR(chub->sram);
+	}
 
 	/* get chub gpr base */
-	chub->chub_dumpgpr = get_iomem(pdev, "dumpgpr", NULL);
-	if (IS_ERR(chub->chub_dumpgpr))
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dumpgpr");
+	chub->chub_dumpgpr = devm_ioremap_resource(dev, res);
+	if (IS_ERR(chub->chub_dumpgpr)) {
+		dev_err(dev, "fails to get dumpgpr\n");
 		return PTR_ERR(chub->chub_dumpgpr);
+	}
 
-	chub->pmu_chub_reset = get_iomem(pdev, "chub_reset", NULL);
-	if (IS_ERR(chub->pmu_chub_reset))
+	/* get pmu reset base */
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "chub_reset");
+	chub->pmu_chub_reset = devm_ioremap_resource(dev, res);
+	if (IS_ERR(chub->pmu_chub_reset)) {
+		dev_err(dev, "fails to get dumpgpr\n");
 		return PTR_ERR(chub->pmu_chub_reset);
+	}
 
-	chub->chub_baaw = get_iomem(pdev, "chub_baaw", NULL);
-	if (IS_ERR(chub->chub_baaw))
-		return PTR_ERR(chub->chub_baaw);
+	/* get chub baaw base */
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "chub_baaw");
+	chub->chub_baaw = devm_ioremap_resource(dev, res);
+	if (IS_ERR(chub->chub_baaw)) {
+		pr_err("driver failed to get chub_baaw\n");
+		chub->chub_baaw = 0;	/* it can be set on other-side (vts) */
+	}
 
 #if defined(CONFIG_SOC_EXYNOS9610)
 	/* get cmu qch base */
@@ -1641,7 +1376,7 @@ static ssize_t chub_reset(struct device *dev,
 				const char *buf, size_t count)
 {
 	struct contexthub_ipc_info *ipc = dev_get_drvdata(dev);
-	int ret = contexthub_reset(ipc, 1, CHUB_ERR_NONE);
+	int ret = contexthub_reset(ipc, 1, 1);
 
 	return ret < 0 ? ret : count;
 }
@@ -1716,8 +1451,6 @@ static int contexthub_ipc_probe(struct platform_device *pdev)
 	chub->data->irq1 = IRQ_EVT_A2C_WAKEUP;
 	chub->data->irq2 = 0;
 #endif
-	chub->chub_rt_log.loglevel = 0;
-	spin_lock_init(&chub->logout_lock);
 	atomic_set(&chub->in_use_ipc, 0);
 	atomic_set(&chub->chub_status, CHUB_ST_NO_POWER);
 	atomic_set(&chub->in_reset, 0);
@@ -1735,29 +1468,16 @@ static int contexthub_ipc_probe(struct platform_device *pdev)
 			dev_warn(chub->dev, "Failed to create file: %s\n",
 				 attributes[i].attr.name);
 	}
-	init_waitqueue_head(&chub->poweron_lock.event);
-	init_waitqueue_head(&chub->reset_lock.event);
+
 	init_waitqueue_head(&chub->read_lock.event);
 	init_waitqueue_head(&chub->chub_alive_lock.event);
-	atomic_set(&chub->poweron_lock.flag, 0);
-	atomic_set(&chub->chub_alive_lock.flag, 0);
 	INIT_WORK(&chub->debug_work, handle_debug_work_func);
-	INIT_WORK(&chub->log_work, handle_log_work_func);
-	chub->log_work_reqcnt = 0;
 #ifdef CONFIG_EXYNOS_ITMON
 	chub->itmon_nb.notifier_call = chub_itmon_notifier;
 	itmon_notifier_chain_register(&chub->itmon_nb);
 #endif
 
-	/* init fw runtime log */
-	chub->chub_rt_log.buffer = vzalloc(SZ_512K * 2);
-	if (!chub->chub_rt_log.buffer) {
-		ret = -ENOMEM;
-		goto err;
-	}
-	chub->chub_rt_log.buffer_size = SZ_512K * 2;
-	chub->chub_rt_log.write_index = 0;
-
+	wakeup_source_init(&chub->ws_reset, "chub_reboot");
 	dev_info(chub->dev, "%s with %s FW and %lu clk is done\n",
 					__func__, chub->os_name, chub->clkrate);
 	return 0;
@@ -1772,6 +1492,9 @@ err:
 
 static int contexthub_ipc_remove(struct platform_device *pdev)
 {
+	struct contexthub_ipc_info *chub = platform_get_drvdata(pdev);
+
+	wakeup_source_trash(&chub->ws_reset);
 	return 0;
 }
 
@@ -1785,8 +1508,8 @@ static int contexthub_suspend(struct device *dev)
 	if (atomic_read(&ipc->chub_status) != CHUB_ST_RUN)
 		return 0;
 
-	dev_info(dev, "nanohub log to kernel off\n");
-	ipc_hw_write_shared_reg(AP, AP_SLEEP, SR_3);
+	dev_dbg(dev, "nanohub log to kernel off\n");
+	ipc_hw_write_shared_reg(AP, MAILBOX_REQUEST_KLOG_OFF, SR_3);
 	ipc_hw_gen_interrupt(AP, IRQ_EVT_CHUB_ALIVE);
 
 #ifdef CONFIG_CHRE_SENSORHUB_HAL
@@ -1803,25 +1526,21 @@ static int contexthub_resume(struct device *dev)
 	struct nanohub_data *data = ipc->data;
 #endif
 
-	int ret;
 	if (atomic_read(&ipc->chub_status) != CHUB_ST_RUN)
 		return 0;
 
-	dev_info(dev, "nanohub log to kernel on\n");
-	ipc_hw_write_shared_reg(AP, AP_WAKE, SR_3);
+	dev_dbg(dev, "nanohub log to kernel on\n");
+	ipc_hw_write_shared_reg(AP, MAILBOX_REQUEST_KLOG_ON, SR_3);
 	ipc_hw_gen_interrupt(AP, IRQ_EVT_CHUB_ALIVE);
 
 #ifdef CONFIG_CHRE_SENSORHUB_HAL
-	ret = nanohub_resume(data->iio_dev);
-#endif
+	return nanohub_resume(data->iio_dev);
+#else
 	return 0;
+#endif
 }
 
-//static SIMPLE_DEV_PM_OPS(contexthub_pm_ops, contexthub_suspend, contexthub_resume);
-static const struct dev_pm_ops contexthub_pm_ops = {
-	.suspend = contexthub_suspend,
-	.resume = contexthub_resume,
-};
+static SIMPLE_DEV_PM_OPS(contexthub_pm_ops, contexthub_suspend, contexthub_resume);
 
 static const struct of_device_id contexthub_ipc_match[] = {
 	{.compatible = "samsung,exynos-nanohub"},

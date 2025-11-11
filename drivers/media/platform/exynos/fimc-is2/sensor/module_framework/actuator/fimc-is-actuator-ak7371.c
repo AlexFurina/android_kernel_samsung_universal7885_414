@@ -22,22 +22,24 @@
 #include "fimc-is-core.h"
 
 #include "fimc-is-helper-i2c.h"
+#include "fimc-is-device-af.h"
 
 #include "interface/fimc-is-interface-library.h"
 
 #define ACTUATOR_NAME		"AK7371"
 
-extern struct fimc_is_sysfs_actuator sysfs_actuator;
+#define DEF_AK7371_FIRST_POSITION		120
+#define DEF_AK7371_FIRST_DELAY			10
 
-#define AK7371_DEFAULT_FIRST_POSITION		120
-#define AK7371_DEFAULT_FIRST_DELAY			2000
+extern struct fimc_is_lib_support gPtr_lib_support;
+extern struct fimc_is_sysfs_actuator sysfs_actuator;
 
 static int sensor_ak7371_write_position(struct i2c_client *client, u32 val)
 {
 	int ret = 0;
 	u8 val_high = 0, val_low = 0;
 
-	WARN_ON(!client);
+	BUG_ON(!client);
 
 	if (!client->adapter) {
 		err("Could not find adapter!\n");
@@ -69,11 +71,12 @@ p_err:
 	return ret;
 }
 
+/*
 static int sensor_ak7371_valid_check(struct i2c_client * client)
 {
 	int i;
 
-	WARN_ON(!client);
+	BUG_ON(!client);
 
 	if (sysfs_actuator.init_step > 0) {
 		for (i = 0; i < sysfs_actuator.init_step; i++) {
@@ -119,7 +122,7 @@ static int sensor_ak7371_init_position(struct i2c_client *client,
 			if (ret < 0)
 				goto p_err;
 
-			mdelay(sysfs_actuator.init_delays[i]);
+			msleep(sysfs_actuator.init_delays[i]);
 		}
 
 		actuator->position = sysfs_actuator.init_positions[i];
@@ -127,30 +130,22 @@ static int sensor_ak7371_init_position(struct i2c_client *client,
 		sensor_ak7371_print_log(init_step);
 
 	} else {
-		if (actuator->position > 0) {
-			ret = sensor_ak7371_write_position(client, actuator->position);
-			if (ret < 0)
-				goto p_err;
+		ret = sensor_ak7371_write_position(client, DEF_AK7371_FIRST_POSITION);
+		if (ret < 0)
+			goto p_err;
 
-			usleep_range(actuator->vendor_first_delay, actuator->vendor_first_delay + 10);
+		msleep(DEF_AK7371_FIRST_DELAY);
 
-			dbg_actuator("initial position %d setting\n", actuator->vendor_first_pos);
-		} else {
-			ret = sensor_ak7371_write_position(client, actuator->vendor_first_pos);
-			if (ret < 0)
-				goto p_err;
+		actuator->position = DEF_AK7371_FIRST_POSITION;
 
-			usleep_range(actuator->vendor_first_delay, actuator->vendor_first_delay + 10);
-
-			actuator->position = actuator->vendor_first_pos;
-
-			dbg_actuator("initial position %d setting\n", actuator->vendor_first_pos);
-		}
+		dbg_actuator("initial position %d setting\n", DEF_AK7371_FIRST_POSITION);
 	}
+
 
 p_err:
 	return ret;
 }
+*/
 
 int sensor_ak7371_actuator_init(struct v4l2_subdev *subdev, u32 val)
 {
@@ -158,20 +153,26 @@ int sensor_ak7371_actuator_init(struct v4l2_subdev *subdev, u32 val)
 	u8 product_id = 0;
 	struct fimc_is_actuator *actuator;
 	struct i2c_client *client = NULL;
+#ifdef USE_CAMERA_HW_BIG_DATA
+	struct cam_hw_param *hw_param = NULL;
+	struct fimc_is_device_sensor *device = NULL;
+#endif
 #ifdef DEBUG_ACTUATOR_TIME
 	struct timeval st, end;
 	do_gettimeofday(&st);
 #endif
 
-	struct device *dev;
-	struct device_node *dnode;
+	long cal_addr;
+	u32 cal_data;
 
-	WARN_ON(!subdev);
+	int first_position = DEF_AK7371_FIRST_POSITION;
+
+	BUG_ON(!subdev);
 
 	dbg_actuator("%s\n", __func__);
 
 	actuator = (struct fimc_is_actuator *)v4l2_get_subdevdata(subdev);
-	WARN_ON(!actuator);
+	BUG_ON(!actuator);
 
 	client = actuator->client;
 	if (unlikely(!client)) {
@@ -180,42 +181,41 @@ int sensor_ak7371_actuator_init(struct v4l2_subdev *subdev, u32 val)
 		goto p_err;
 	}
 
-	dev = &client->dev;
-	dnode = dev->of_node;
-
-	ret = of_property_read_u32(dnode, "vendor_first_pos", &actuator->vendor_first_pos);
-	if (ret) {
-		err("vendor_first_pos read is fail(%d)", ret);
-		//goto p_err;
-	}
-
-	ret = of_property_read_u32(dnode, "vendor_first_delay", &actuator->vendor_first_delay);
-	if (ret) {
-		err("vendor_first_delay read is fail(%d)", ret);
-		//goto p_err;
-	}
-
 	I2C_MUTEX_LOCK(actuator->i2c_lock);
 	ret = fimc_is_sensor_addr8_read8(client, 0x03, &product_id);
 
-	if (ret < 0)
+	if (ret < 0) {
+#ifdef USE_CAMERA_HW_BIG_DATA
+		device = v4l2_get_subdev_hostdata(subdev);
+		if (device)
+			fimc_is_sec_get_hw_param(&hw_param, device->position);
+		if (hw_param)
+			hw_param->i2c_af_err_cnt++;
+#endif
 		goto p_err;
+	}
 
-#ifdef USE_AF_SLEEP_MODE
-	/* Go sleep mode */
-	ret = fimc_is_sensor_addr8_write8(client, 0x02, 32);
-#else
-	/* ToDo: Cal init data from FROM */
+	/* EEPROM AF calData address */
+	if (gPtr_lib_support.binary_load_flg) {
+		/* get pan_focus */
+		cal_addr = gPtr_lib_support.minfo->kvaddr_rear_cal + EEPROM_OEM_BASE;
+		memcpy((void *)&cal_data, (void *)cal_addr, sizeof(cal_data));
 
-	ret = sensor_ak7371_init_position(client, actuator);
+		if (cal_data > 0)
+			first_position = cal_data;
+	} else {
+		warn("SDK library is not loaded");
+	}
+
+	ret = sensor_ak7371_write_position(client, first_position);
 	if (ret <0)
 		goto p_err;
+	actuator->position = first_position;
 
 	/* Go active mode */
 	ret = fimc_is_sensor_addr8_write8(client, 0x02, 0);
 	if (ret <0)
 		goto p_err;
-#endif
 
 	/* ToDo */
 	/* Wait Settling(>20ms) */
@@ -244,11 +244,11 @@ int sensor_ak7371_actuator_get_status(struct v4l2_subdev *subdev, u32 *info)
 
 	dbg_actuator("%s\n", __func__);
 
-	WARN_ON(!subdev);
-	WARN_ON(!info);
+	BUG_ON(!subdev);
+	BUG_ON(!info);
 
 	actuator = (struct fimc_is_actuator *)v4l2_get_subdevdata(subdev);
-	WARN_ON(!actuator);
+	BUG_ON(!actuator);
 
 	client = actuator->client;
 	if (unlikely(!client)) {
@@ -284,13 +284,11 @@ int sensor_ak7371_actuator_set_position(struct v4l2_subdev *subdev, u32 *info)
 	do_gettimeofday(&st);
 #endif
 
-	WARN_ON(!subdev);
-	WARN_ON(!info);
-
-	dbg_actuator("%s\n", __func__);
+	BUG_ON(!subdev);
+	BUG_ON(!info);
 
 	actuator = (struct fimc_is_actuator *)v4l2_get_subdevdata(subdev);
-	WARN_ON(!actuator);
+	BUG_ON(!actuator);
 
 	client = actuator->client;
 	if (unlikely(!client)) {
@@ -302,11 +300,15 @@ int sensor_ak7371_actuator_set_position(struct v4l2_subdev *subdev, u32 *info)
 	I2C_MUTEX_LOCK(actuator->i2c_lock);
 	position = *info;
 	if (position > AK7371_POS_MAX_SIZE) {
-		err("[%d] Invalid af position(position : %d, Max : %d).\n",
-					actuator->device, position, AK7371_POS_MAX_SIZE);
+		err("Invalid af position(position : %d, Max : %d).\n",
+					position, AK7371_POS_MAX_SIZE);
 		ret = -EINVAL;
 		goto p_err;
 	}
+
+	/* debug option : fixed position testing */
+	if (sysfs_actuator.enable_fixed)
+		position = sysfs_actuator.fixed_position;
 
 	/* position Set */
 	ret = sensor_ak7371_write_position(client, position);
@@ -314,14 +316,7 @@ int sensor_ak7371_actuator_set_position(struct v4l2_subdev *subdev, u32 *info)
 		goto p_err;
 	actuator->position = position;
 
-	dbg_actuator("%s [%d]: position(%d)\n", __func__, actuator->device, position);
-
-	/* Add the setting delay for preventing i2c fail issue.
-	 * If this device is not sharing the i2c bus with others,
-	 * this delay could be removed.
-	 */
-	if (actuator->id == ACTUATOR_NAME_AK7371)
-		usleep_range(600, 610);
+	dbg_actuator("%s: position(%d)\n", __func__, position);
 
 #ifdef DEBUG_ACTUATOR_TIME
 	do_gettimeofday(&end);
@@ -381,52 +376,6 @@ p_err:
 	return ret;
 }
 
-#ifdef USE_AF_SLEEP_MODE
-static int sensor_ak7371_actuator_set_active(struct v4l2_subdev *subdev, int enable)
-{
-	int ret = 0;
-	struct fimc_is_actuator *actuator;
-	struct i2c_client *client = NULL;
-	struct fimc_is_module_enum *module;
-
-	WARN_ON(!subdev);
-
-	actuator = (struct fimc_is_actuator *)v4l2_get_subdevdata(subdev);
-	WARN_ON(!actuator);
-
-	module = actuator->sensor_peri->module;
-	pr_info("%s [%d]=%d\n", __func__, actuator->device, enable);
-
-	client = actuator->client;
-	if (unlikely(!client)) {
-		err("client is NULL");
-		ret = -EINVAL;
-		goto p_err;
-	}
-
-	I2C_MUTEX_LOCK(actuator->i2c_lock);
-
-	if (enable) {
-		sensor_ak7371_init_position(client, actuator);
-
-		/* Go active mode */
-		ret = fimc_is_sensor_addr8_write8(client, 0x02, 0);
-		if (ret < 0)
-			goto p_err;
-
-	} else {
-		/* Go sleep mode */
-		ret = fimc_is_sensor_addr8_write8(client, 0x02, 32);
-		if (ret < 0)
-			goto p_err;
-	}
-
-p_err:
-	I2C_MUTEX_UNLOCK(actuator->i2c_lock);
-	return ret;
-}
-#endif
-
 static const struct v4l2_subdev_core_ops core_ops = {
 	.init = sensor_ak7371_actuator_init,
 	.g_ctrl = sensor_ak7371_actuator_g_ctrl,
@@ -437,13 +386,7 @@ static const struct v4l2_subdev_ops subdev_ops = {
 	.core = &core_ops,
 };
 
-static struct fimc_is_actuator_ops actuator_ops = {
-#ifdef USE_AF_SLEEP_MODE
-	.set_active = sensor_ak7371_actuator_set_active,
-#endif
-};
-
-static int sensor_ak7371_actuator_probe(struct i2c_client *client,
+int sensor_ak7371_actuator_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -452,11 +395,12 @@ static int sensor_ak7371_actuator_probe(struct i2c_client *client,
 	struct fimc_is_actuator *actuator = NULL;
 	struct fimc_is_device_sensor *device = NULL;
 	u32 sensor_id = 0;
+	u32 place = 0;
 	struct device *dev;
 	struct device_node *dnode;
 
-	WARN_ON(!fimc_is_dev);
-	WARN_ON(!client);
+	BUG_ON(!fimc_is_dev);
+	BUG_ON(!client);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -474,7 +418,19 @@ static int sensor_ak7371_actuator_probe(struct i2c_client *client,
 		goto p_err;
 	}
 
+	ret = of_property_read_u32(dnode, "place", &place);
+	if (ret) {
+		pr_info("place read is fail(%d)", ret);
+		place = 0;
+	}
+	probe_info("%s sensor_id(%d) actuator_place(%d)\n", __func__, sensor_id, place);
+
 	device = &core->sensor[sensor_id];
+	if (!test_bit(FIMC_IS_SENSOR_PROBE, &device->state)) {
+		err("sensor device is not yet probed");
+		ret = -EPROBE_DEFER;
+		goto p_err;
+	}
 
 	actuator = kzalloc(sizeof(struct fimc_is_actuator), GFP_KERNEL);
 	if (!actuator) {
@@ -506,13 +462,14 @@ static int sensor_ak7371_actuator_probe(struct i2c_client *client,
 	actuator->pos_direction = AK7371_POS_DIRECTION;
 	actuator->i2c_lock = NULL;
 	actuator->need_softlanding = 0;
-	actuator->actuator_ops = &actuator_ops;
 
-	actuator->vendor_first_pos = AK7371_DEFAULT_FIRST_POSITION;
-	actuator->vendor_first_delay = AK7371_DEFAULT_FIRST_DELAY;
+	device->subdev_actuator[place] = subdev_actuator;
+	device->actuator[place] = actuator;
 
-	device->subdev_actuator[sensor_id] = subdev_actuator;
-	device->actuator[sensor_id] = actuator;
+	if (sensor_id == 2)
+		core->client4 = client;
+	else
+		core->client2 = client;
 
 	v4l2_i2c_subdev_init(subdev_actuator, client, &subdev_ops);
 	v4l2_set_subdevdata(subdev_actuator, actuator);
@@ -525,39 +482,34 @@ p_err:
 	return ret;
 }
 
-static const struct of_device_id sensor_actuator_ak7371_match[] = {
+static int sensor_ak7371_actuator_remove(struct i2c_client *client)
+{
+	int ret = 0;
+
+	return ret;
+}
+
+static const struct of_device_id exynos_fimc_is_ak7371_match[] = {
 	{
 		.compatible = "samsung,exynos5-fimc-is-actuator-ak7371",
 	},
 	{},
 };
-MODULE_DEVICE_TABLE(of, sensor_actuator_ak7371_match);
+MODULE_DEVICE_TABLE(of, exynos_fimc_is_ak7371_match);
 
-static const struct i2c_device_id sensor_actuator_ak7371_idt[] = {
+static const struct i2c_device_id actuator_ak7371_idt[] = {
 	{ ACTUATOR_NAME, 0 },
 	{},
 };
 
-static struct i2c_driver sensor_actuator_ak7371_driver = {
-	.probe  = sensor_ak7371_actuator_probe,
+static struct i2c_driver actuator_ak7371_driver = {
 	.driver = {
 		.name	= ACTUATOR_NAME,
 		.owner	= THIS_MODULE,
-		.of_match_table = sensor_actuator_ak7371_match,
-		.suppress_bind_attrs = true,
+		.of_match_table = exynos_fimc_is_ak7371_match
 	},
-	.id_table = sensor_actuator_ak7371_idt,
+	.probe	= sensor_ak7371_actuator_probe,
+	.remove	= sensor_ak7371_actuator_remove,
+	.id_table = actuator_ak7371_idt
 };
-
-static int __init sensor_actuator_ak7371_init(void)
-{
-	int ret;
-
-	ret = i2c_add_driver(&sensor_actuator_ak7371_driver);
-	if (ret)
-		err("failed to add %s driver: %d\n",
-			sensor_actuator_ak7371_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall_sync(sensor_actuator_ak7371_init);
+module_i2c_driver(actuator_ak7371_driver);

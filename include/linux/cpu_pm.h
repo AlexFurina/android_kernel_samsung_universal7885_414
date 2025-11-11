@@ -104,6 +104,16 @@ static inline int cpu_pm_exit(void)
 	return 0;
 }
 
+static inline int cpu_pm_enter_pre(void)
+{
+	return 0;
+}
+
+static inline int cpu_pm_exit_post(void)
+{
+	return 0;
+}
+
 static inline int cpu_cluster_pm_enter(void)
 {
 	return 0;

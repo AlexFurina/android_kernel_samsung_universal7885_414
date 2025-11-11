@@ -1,13 +1,12 @@
 /*
  * s2mu004.c - mfd core driver for the s2mu004
  *
- * Copyright (C) 2015 Samsung Electronics
+ * Copyright (C) 2016 Samsung Electronics Co.Ltd
  *
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -16,9 +15,7 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
- * This driver is based on max77843.c
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 #include <linux/module.h>
@@ -50,9 +47,9 @@ static struct mfd_cell s2mu004_devs[] = {
 #if defined(CONFIG_CHARGER_S2MU004)
 	{ .name = "s2mu004-charger", },
 #endif
-#if defined(CONFIG_BATTERY_S2MU00X_ERD)
-	{ .name = "s2mu00x-battery", },
-#endif
+#if 0 // defined(CONFIG_MOTOR_DRV_S2MU004)
+	{ .name = "s2mu004-haptic", },
+#endif /* CONFIG_S2MU004_HAPTIC */
 #if defined(CONFIG_LEDS_S2MU004_RGB)
 	{ .name = "leds-s2mu004-rgb", },
 #endif /* CONFIG_LEDS_S2MU004_RGB */
@@ -67,8 +64,8 @@ int s2mu004_read_reg(struct i2c_client *i2c, u8 reg, u8 *dest)
 	ret = i2c_smbus_read_byte_data(i2c, reg);
 	mutex_unlock(&s2mu004->i2c_lock);
 	if (ret < 0) {
-		pr_err("%s:%s reg(0x%x), ret(%d)\n", MFD_DEV_NAME,
-				__func__, reg, ret);
+		pr_info("%s:%s reg(0x%x), ret(%d)\n", MFD_DEV_NAME,
+						 __func__, reg, ret);
 		return ret;
 	}
 
@@ -117,7 +114,7 @@ int s2mu004_write_reg(struct i2c_client *i2c, u8 reg, u8 value)
 	ret = i2c_smbus_write_byte_data(i2c, reg, value);
 	mutex_unlock(&s2mu004->i2c_lock);
 	if (ret < 0)
-		pr_err("%s:%s reg(0x%x), ret(%d)\n",
+		pr_info("%s:%s reg(0x%x), ret(%d)\n",
 				MFD_DEV_NAME, __func__, reg, ret);
 
 	return ret;
@@ -176,20 +173,14 @@ static int of_s2mu004_dt(struct device *dev,
 				struct s2mu004_platform_data *pdata)
 {
 	struct device_node *np_s2mu004 = dev->of_node;
-	int ret = 0;
 
 	if (!np_s2mu004)
 		return -EINVAL;
 
-	ret = of_get_named_gpio(np_s2mu004, "s2mu004,irq-gpio", 0);
-	if (ret < 0)
-		return ret;
-	else
-		pdata->irq_gpio = ret;
-
+	pdata->irq_gpio = of_get_named_gpio(np_s2mu004, "s2mu004,irq-gpio", 0);
 	pdata->wakeup = of_property_read_bool(np_s2mu004, "s2mu004,wakeup");
 
-	pr_debug("%s: irq-gpio: %u\n", __func__, pdata->irq_gpio);
+	pr_info("%s: irq-gpio: %u\n", __func__, pdata->irq_gpio);
 
 	return 0;
 }
@@ -215,7 +206,7 @@ static int s2mu004_i2c_probe(struct i2c_client *i2c,
 	s2mu004 = kzalloc(sizeof(struct s2mu004_dev), GFP_KERNEL);
 	if (!s2mu004) {
 		dev_err(&i2c->dev, "%s: Failed to alloc mem for s2mu004\n",
-				__func__);
+								__func__);
 		return -ENOMEM;
 	}
 
@@ -263,12 +254,14 @@ static int s2mu004_i2c_probe(struct i2c_client *i2c,
 
 	i2c_set_clientdata(i2c, s2mu004);
 
-	s2mu004_read_reg(s2mu004->i2c, S2MU004_REG_REV_ID, &temp);
-	if (temp < 0)
+	ret = s2mu004_read_reg(s2mu004->i2c, S2MU004_REG_REV_ID, &temp);
+	if (ret < 0)
 		pr_err("[s2mu004 mfd] %s : i2c read error\n", __func__);
 
+	s2mu004->pmic_rev = (temp & 0xF0) >> 4;
 	s2mu004->pmic_ver = temp & 0x0F;
-	pr_err("[s2mu004 mfd] %s : ver=0x%x\n", __func__, s2mu004->pmic_ver);
+	pr_err("[s2mu004 mfd] %s : 0x%02x, rev=0x%x, ver=0x%x\n",
+		__func__, temp, s2mu004->pmic_rev, s2mu004->pmic_ver);
 
 	ret = s2mu004_irq_init(s2mu004);
 
@@ -291,8 +284,6 @@ err_irq_init:
 	i2c_unregister_device(s2mu004->i2c);
 err:
 	kfree(s2mu004);
-	i2c_set_clientdata(i2c, NULL);
-
 	return ret;
 }
 
@@ -303,7 +294,6 @@ static int s2mu004_i2c_remove(struct i2c_client *i2c)
 	mfd_remove_devices(s2mu004->dev);
 	i2c_unregister_device(s2mu004->i2c);
 	kfree(s2mu004);
-	i2c_set_clientdata(i2c, NULL);
 
 	return 0;
 }
@@ -340,7 +330,9 @@ static int s2mu004_resume(struct device *dev)
 	struct i2c_client *i2c = container_of(dev, struct i2c_client, dev);
 	struct s2mu004_dev *s2mu004 = i2c_get_clientdata(i2c);
 
-	pr_debug("%s:%s\n", MFD_DEV_NAME, __func__);
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+	pr_info("%s:%s\n", MFD_DEV_NAME, __func__);
+#endif /* CONFIG_SAMSUNG_PRODUCT_SHIP */
 
 	if (device_may_wakeup(dev))
 		disable_irq_wake(s2mu004->irq);
@@ -355,7 +347,8 @@ static int s2mu004_resume(struct device *dev)
 #endif /* CONFIG_PM */
 
 #ifdef CONFIG_HIBERNATION
-#if false
+
+/*
 u8 s2mu004_dumpaddr_pmic[] = {
 #if 0
 	s2mu004_LED_REG_IFLASH,
@@ -377,7 +370,7 @@ u8 s2mu004_dumpaddr_pmic[] = {
 	s2mu004_PMIC_REG_MAINCTRL1,
 	s2mu004_PMIC_REG_MCONFIG,
 };
-#endif
+*/
 
 u8 s2mu004_dumpaddr_muic[] = {
 	s2mu004_MUIC_REG_INTMASK1,
@@ -390,7 +383,7 @@ u8 s2mu004_dumpaddr_muic[] = {
 	s2mu004_MUIC_REG_CTRL3,
 };
 
-#if false
+/*
 u8 s2mu004_dumpaddr_haptic[] = {
 	s2mu004_HAPTIC_REG_CONFIG1,
 	s2mu004_HAPTIC_REG_CONFIG2,
@@ -408,7 +401,7 @@ u8 s2mu004_dumpaddr_haptic[] = {
 	s2mu004_HAPTIC_REG_CONFIG_PWM3,
 	s2mu004_HAPTIC_REG_CONFIG_PWM4,
 };
-#endif
+*/
 
 u8 s2mu004_dumpaddr_led[] = {
 	s2mu004_RGBLED_REG_LEDEN,
@@ -499,7 +492,7 @@ static int __init s2mu004_i2c_init(void)
 	return i2c_add_driver(&s2mu004_i2c_driver);
 }
 /* init early so consumer devices can complete system boot */
-subsys_initcall(s2mu004_i2c_init);
+module_init(s2mu004_i2c_init);
 
 static void __exit s2mu004_i2c_exit(void)
 {

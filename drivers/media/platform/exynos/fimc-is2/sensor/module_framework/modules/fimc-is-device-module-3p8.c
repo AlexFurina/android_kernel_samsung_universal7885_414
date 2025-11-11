@@ -50,7 +50,6 @@ enum sensor_module_3p8_position {
 	SENSOR_MODULE_3P8_FRONT = 1,
 };
 
-/* #define S5K3P8_PDAF_STAT_TYPE	VC_STAT_TYPE_TAIL_MSPD_GLOBAL */
 static struct fimc_is_sensor_cfg config_module_3p8[] = {
 	/* 4624x3466@30fps */
 	FIMC_IS_SENSOR_CFG_EXT(4624, 3466, 30, 32, 0, CSI_DATA_LANES_4, 0, SET_VC(VC_TAIL_MODE_PDAF, 144, 864), 0, 0),
@@ -96,14 +95,18 @@ static const struct v4l2_subdev_core_ops core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops video_ops = {
-	.s_routing = sensor_module_s_routing,
 	.s_stream = sensor_module_s_stream,
-	.s_mbus_fmt = sensor_module_s_format,
+	.s_parm = sensor_module_s_param
+};
+
+static const struct v4l2_subdev_pad_ops pad_ops = {
+	.set_fmt = sensor_module_s_format
 };
 
 static const struct v4l2_subdev_ops subdev_ops = {
 	.core = &core_ops,
 	.video = &video_ops,
+	.pad = &pad_ops
 };
 
 static int sensor_module_3p8_power_setpin_with_af(struct platform_device *pdev,
@@ -125,7 +128,7 @@ static int sensor_module_3p8_power_setpin_with_af(struct platform_device *pdev,
 	int gpio_ois_io_en = 0;
 #endif
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -431,7 +434,7 @@ static int sensor_module_3p8_power_setpin(struct platform_device *pdev,
 	int gpio_cam_avdd_en = 0;
 	int gpio_cam_io_en = 0;
 
-	FIMC_BUG(!pdev);
+	BUG_ON(!pdev);
 
 	dev = &pdev->dev;
 	dnode = dev->of_node;
@@ -558,10 +561,12 @@ static int (* module_3p8_power_setpin[MAX_3P8_SETPIN_CNT])(struct platform_devic
 	sensor_module_3p8_power_setpin_with_af
 };
 
-static int __init sensor_module_3p8_probe(struct platform_device *pdev)
+int sensor_module_3p8_probe(struct platform_device *pdev)
 {
 	int ret = 0;
+#ifdef USE_AP_PDAF
 	bool use_pdaf = false;
+#endif
 	u8 exist_actuator = 0;
 	int ch;
 	struct fimc_is_core *core;
@@ -573,7 +578,7 @@ static int __init sensor_module_3p8_probe(struct platform_device *pdev)
 	struct device *dev;
 	struct device_node *af_np;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {
@@ -583,11 +588,13 @@ static int __init sensor_module_3p8_probe(struct platform_device *pdev)
 
 	dev = &pdev->dev;
 
+#ifdef USE_AP_PDAF
 	if (of_property_read_bool(dev->of_node, "use_pdaf")) {
 		use_pdaf = true;
 	}
 
 	probe_info("%s use_pdaf(%d)\n", __func__, use_pdaf);
+#endif
 
 	af_np = of_find_node_by_name(dev->of_node, "af");
 	if (!af_np)
@@ -635,9 +642,12 @@ static int __init sensor_module_3p8_probe(struct platform_device *pdev)
 	module->vcis = ARRAY_SIZE(vci_module_3p8);
 	module->vci = vci_module_3p8;
 	module->sensor_maker = "SLSI";
+#ifdef USE_AP_PDAF
 	if (use_pdaf == true) {
 		module->sensor_name = "S5K3P8SX";
-	} else {
+	} else
+#endif
+	{
 		module->sensor_name = "S5K3P8SN";
 	}
 	if (pdata->position == SENSOR_MODULE_3P8_REAR) {
@@ -662,7 +672,6 @@ static int __init sensor_module_3p8_probe(struct platform_device *pdev)
 
 	ext = &module->ext;
 	ext->mipi_lane_num = module->lanes;
-	ext->I2CSclk = 0;
 
 	ext->sensor_con.product_name = module->sensor_id;
 	ext->sensor_con.peri_type = SE_I2C;
@@ -727,6 +736,15 @@ p_err:
 	return ret;
 }
 
+static int sensor_module_3p8_remove(struct platform_device *pdev)
+{
+        int ret = 0;
+
+        info("%s\n", __func__);
+
+        return ret;
+}
+
 static const struct of_device_id exynos_fimc_is_sensor_module_3p8_match[] = {
 	{
 		.compatible = "samsung,sensor-module-3p8",
@@ -736,6 +754,8 @@ static const struct of_device_id exynos_fimc_is_sensor_module_3p8_match[] = {
 MODULE_DEVICE_TABLE(of, exynos_fimc_is_sensor_module_3p8_match);
 
 static struct platform_driver sensor_module_3p8_driver = {
+	.probe  = sensor_module_3p8_probe,
+	.remove = sensor_module_3p8_remove,
 	.driver = {
 		.name   = "FIMC-IS-SENSOR-MODULE-3P8",
 		.owner  = THIS_MODULE,
@@ -743,16 +763,4 @@ static struct platform_driver sensor_module_3p8_driver = {
 	}
 };
 
-static int __init fimc_is_sensor_module_3p8_init(void)
-{
-	int ret;
-
-	ret = platform_driver_probe(&sensor_module_3p8_driver,
-				sensor_module_3p8_probe);
-	if (ret)
-		err("failed to probe %s driver: %d\n",
-			sensor_module_3p8_driver.driver.name, ret);
-
-	return ret;
-}
-late_initcall(fimc_is_sensor_module_3p8_init);
+module_platform_driver(sensor_module_3p8_driver);

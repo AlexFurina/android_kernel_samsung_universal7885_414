@@ -1,3 +1,4 @@
+
 /*
  * Driver for USB Mass Storage compliant devices
  * Main Header File
@@ -163,6 +164,9 @@ struct us_data {
 	/* hacks for READ CAPACITY bug handling */
 	int			use_last_sector_hacks;
 	int			last_sector_retries;
+#if defined(CONFIG_USB_HOST_SAMSUNG_FEATURE)
+	int is_mu_lock;
+#endif
 };
 
 /* Convert between us_data and the corresponding Scsi_Host */

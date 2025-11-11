@@ -358,6 +358,7 @@ struct sysmmu_drvdata {
 	struct tlb_props tlb_props;
 	bool is_suspended;
 	bool hold_rpm_on_boot;
+	bool is_abox;
 	struct exynos_iommu_event_log log;
 	int no_rpm_control;
 };

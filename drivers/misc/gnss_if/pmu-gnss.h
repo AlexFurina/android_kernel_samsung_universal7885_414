@@ -49,7 +49,7 @@
 #define GNSS_WAKEUP_REQ_EN	BIT(14)
 #define GNSS_WAKEUP_REQ_CLR	BIT(15)
 #define CLEANY_BYPASS_END	BIT(16)
-#define SFR_SERIALIZER_DUR_DATA2REQ	GENMASK(21, 20)
+#define SFR_SERIALIZER_DUR_DATA2REQ	GENMASK(21,20)
 
 #define MEMSIZE_MASK	(GENMASK(19, 0))
 #define MEMSIZE_OFFSET	0
@@ -58,10 +58,6 @@
 #define MEMBASE_ADDR_SHIFT	12
 #define MEMBASE_ADDR_MASK	(GENMASK(23, 0))
 #define MEMBASE_ADDR_OFFSET	0
-
-/* Base address in the point of GNSS view */
-#define MEMBASE_GNSS_ADDR	(0x60000000)
-#define MEMBASE_GNSS_ADDR_2ND	(0xA0000000)
 
 #ifndef CONFIG_ARCH_EXYNOS
 /* Exynos PMU API functions are only available when ARCH_EXYNOS is defined.
@@ -97,8 +93,6 @@ struct gnssctl_pmu_ops {
 	int (*power_on)(enum gnss_mode);
 	int (*clear_int)(enum gnss_int_clear);
 	int (*change_tcxo_mode)(enum gnss_tcxo_mode);
-	int (*req_security)(void);
-	void (*req_baaw)(void);
 };
 
 void gnss_get_pmu_ops(struct gnss_ctl *);

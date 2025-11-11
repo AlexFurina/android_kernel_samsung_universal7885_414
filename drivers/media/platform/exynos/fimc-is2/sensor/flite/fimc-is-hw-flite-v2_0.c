@@ -99,7 +99,7 @@ static void flite_hw_set_cam_source_size(u32 __iomem *base_reg,
 {
 	u32 cfg = 0;
 
-	FIMC_BUG(!image);
+	BUG_ON(!image);
 
 #ifdef COLORBAR_MODE
 	cfg |= FLITE_REG_CISRCSIZE_SIZE_H(640);
@@ -117,7 +117,7 @@ static void flite_hw_set_dma_offset(u32 __iomem *base_reg,
 {
 	u32 cfg = 0;
 
-	FIMC_BUG(!image);
+	BUG_ON(!image);
 
 	switch (image->format.pixelformat) {
 	case V4L2_PIX_FMT_SBGGR8:
@@ -183,7 +183,7 @@ static int flite_hw_set_source_format(u32 __iomem *base_reg, struct fimc_is_imag
 	int ret = 0;
 	u32 pixelformat, format, cfg;
 
-	FIMC_BUG(!image);
+	BUG_ON(!image);
 
 	pixelformat = image->format.pixelformat;
 	cfg = readl(base_reg + TO_WORD_OFFSET(FLITE_REG_CIGCTRL));
@@ -305,7 +305,7 @@ static void flite_hw_set_window_offset(u32 __iomem *base_reg,
 	u32 cfg = 0;
 	u32 hoff2, voff2;
 
-	FIMC_BUG(!image);
+	BUG_ON(!image);
 
 	cfg = readl(base_reg + TO_WORD_OFFSET(FLITE_REG_CIWDOFST));
 	cfg &= ~(FLITE_REG_CIWDOFST_HOROFF_MASK |
@@ -475,7 +475,7 @@ int flite_hw_set_bns(u32 __iomem *base_reg, bool enable, struct fimc_is_image *i
 	u32 otf_width, otf_height;
 	u32 factor_x, factor_y;
 
-	FIMC_BUG(!image);
+	BUG_ON(!image);
 
 	width = image->window.width;
 	height = image->window.height;

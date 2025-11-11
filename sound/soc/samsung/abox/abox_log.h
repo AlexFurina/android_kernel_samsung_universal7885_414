@@ -28,12 +28,6 @@ extern void abox_log_flush_all(struct device *dev);
 extern void abox_log_schedule_flush_all(struct device *dev);
 
 /**
- * drain log and stop scheduling log flush
- * @param[in]	dev		pointer to abox device
- */
-extern void abox_log_drain_all(struct device *dev);
-
-/**
  * Flush log from specific shared memory to kernel memory
  * @param[in]	dev		pointer to abox device
  * @param[in]	id		unique buffer id

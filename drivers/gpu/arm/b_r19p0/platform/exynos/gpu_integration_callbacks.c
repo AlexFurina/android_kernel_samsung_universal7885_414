@@ -29,7 +29,7 @@
 #include <platform/exynos/gpu_integration_defs.h>
 #endif
 
-#if defined(CONFIG_SCHED_EMS)
+#if 0 //defined(CONFIG_SCHED_EMS)
 #include <linux/ems.h>
 static struct gb_qos_request gb_req = {
 	.name = "ems_boost",
@@ -124,7 +124,7 @@ void gpu_destroy_context(void *ctx)
 #ifdef CONFIG_MALI_DVFS
 	gpu_dvfs_boost_lock(GPU_DVFS_BOOST_UNSET);
 #endif
-#if defined(CONFIG_SCHED_EMS) || defined(CONFIG_SCHED_EHMP)
+#if 0 //defined(CONFIG_SCHED_EMS) || defined(CONFIG_SCHED_EHMP)
 	platform = (struct exynos_context *) kbdev->platform_context;
 	mutex_lock(&platform->gpu_sched_hmp_lock);
 	if (platform->ctx_need_qos)
@@ -156,6 +156,9 @@ void gpu_destroy_context(void *ctx)
 	}
 
 	mutex_unlock(&platform->gpu_vk_boost_lock);
+#endif
+#ifdef CONFIG_MALI_SEC_CL_BOOST
+    platform->cl_boost_disable = false;
 #endif
 #endif /* MALI_SEC_PROBE_TEST */
 }
@@ -196,7 +199,7 @@ int gpu_vendor_dispatch(struct kbase_context *kctx, u32 flags)
 #if defined(CONFIG_MALI_PM_QOS)
 			struct exynos_context *platform;
 			platform = (struct exynos_context *) kbdev->platform_context;
-#if (defined(CONFIG_SCHED_EMS) || defined(CONFIG_SCHED_EHMP))
+#if 0 //(defined(CONFIG_SCHED_EMS) || defined(CONFIG_SCHED_EHMP))
 			mutex_lock(&platform->gpu_sched_hmp_lock);
 			if (!platform->ctx_need_qos) {
 				platform->ctx_need_qos = true;
@@ -226,7 +229,7 @@ int gpu_vendor_dispatch(struct kbase_context *kctx, u32 flags)
 #if defined(CONFIG_MALI_PM_QOS)
 			struct exynos_context *platform;
 			platform = (struct exynos_context *) kbdev->platform_context;
-#if (defined(CONFIG_SCHED_EMS) || defined(CONFIG_SCHED_EHMP))
+#if 0 //(defined(CONFIG_SCHED_EMS) || defined(CONFIG_SCHED_EHMP))
 			mutex_lock(&platform->gpu_sched_hmp_lock);
 			if (platform->ctx_need_qos) {
 				platform->ctx_need_qos = false;

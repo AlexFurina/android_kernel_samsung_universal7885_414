@@ -40,6 +40,8 @@
 #include <soc/samsung/bts.h>
 #endif
 
+#include "device/mali_kbase_device.h"
+
 extern struct kbase_device *pkbdev;
 
 int gpu_pmqos_dvfs_min_lock(int level)
@@ -1870,6 +1872,55 @@ static ssize_t show_kernel_sysfs_gpu_model(struct kobject *kobj, struct kobj_att
 	return scnprintf(buf, PAGE_SIZE, "%s\n", product_name);
 }
 
+
+static ssize_t show_kernel_sysfs_gpu_memory(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	struct list_head *entry;
+	const struct list_head *kbdev_list;
+	ssize_t ret = 0;
+	bool buffer_full = false;
+	const ssize_t buf_size = PAGE_SIZE;
+	const int padding = 100;
+
+	kbdev_list = kbase_device_get_list();
+	list_for_each(entry, kbdev_list) {
+		struct kbase_device *kbdev = NULL;
+		struct kbase_context *kctx;
+
+		kbdev = list_entry(entry, struct kbase_device, entry);
+
+		if (ret + padding > buf_size) {
+			buffer_full = true;
+			break;
+		}
+		/* output the total memory usage and cap for this device */
+		ret += scnprintf(buf + ret, buf_size - ret, "%-16s  %10u\n",
+				kbdev->devname,
+				atomic_read(&(kbdev->memdev.used_pages)));
+		mutex_lock(&kbdev->kctx_list_lock);
+		list_for_each_entry(kctx, &kbdev->kctx_list, kctx_list_link) {
+			if (ret + padding > buf_size) {
+				buffer_full = true;
+				break;
+			}
+
+			/* output the memory usage and cap for each kctx
+			* opened on this device */
+			ret += snprintf(buf + ret, buf_size - ret, "  %s-0x%p %10u\n",
+				"kctx",
+				kctx,
+				atomic_read(&(kctx->used_pages)));
+		}
+		mutex_unlock(&kbdev->kctx_list_lock);
+	}
+	kbase_device_put_list(kbdev_list);
+
+	if (buffer_full)
+		ret += scnprintf(buf + ret, buf_size - ret, "error: buffer is full\n", ret);
+
+	return ret;
+}
+
 #if defined(CONFIG_MALI_DVFS) && defined(CONFIG_EXYNOS_THERMAL) && defined(CONFIG_GPU_THERMAL)
 
 extern struct exynos_tmu_data *gpu_thermal_data;
@@ -1944,6 +1995,9 @@ static struct kobj_attribute gpu_available_governor_attribute =
 static struct kobj_attribute gpu_model_attribute =
 	__ATTR(gpu_model, S_IRUGO, show_kernel_sysfs_gpu_model, NULL);
 
+static struct kobj_attribute gpu_memory_attribute =
+	__ATTR(gpu_memory, S_IRUGO, show_kernel_sysfs_gpu_memory, NULL);
+
 
 static struct attribute *attrs[] = {
 #ifdef CONFIG_MALI_DVFS
@@ -1962,6 +2016,7 @@ static struct attribute *attrs[] = {
 	&gpu_available_governor_attribute.attr,
 #endif /* #ifdef CONFIG_MALI_DVFS */
 	&gpu_model_attribute.attr,
+	&gpu_memory_attribute.attr,
 	NULL,
 };
 

@@ -17333,8 +17333,8 @@ static int sensor_sr352_apply_set(struct i2c_client *client,
 	int ret = 0;
 	u32 i;
 
-	FIMC_BUG(!client);
-	FIMC_BUG(!regset);
+	BUG_ON(!client);
+	BUG_ON(!regset);
 
 	for (i = 0; i < regset->size; i++) {
 		ret = fimc_is_sr352_write8(client, regset->reg[i].addr, regset->reg[i].data);
@@ -17356,7 +17356,7 @@ static int sensor_sr352_s_capture_mode(struct v4l2_subdev *subdev, int value)
 	struct fimc_is_module_sr352 *module_sr352;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!module)) {
@@ -17390,7 +17390,7 @@ static int sensor_sr352_s_flash(struct v4l2_subdev *subdev, int value)
 	struct fimc_is_module_sr352 *module_sr352;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!module)) {
@@ -17424,7 +17424,7 @@ static int sensor_sr352_s_autofocus(struct v4l2_subdev *subdev)
 	struct fimc_is_module_sr352 *module_sr352;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!module)) {
@@ -17459,7 +17459,7 @@ static int sensor_sr352_init(struct v4l2_subdev *subdev, u32 val)
 	struct fimc_is_module_sr352 *module_sr352;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!module)) {
@@ -17597,8 +17597,8 @@ static int sensor_sr352_s_format(struct v4l2_subdev *subdev, struct v4l2_mbus_fr
 	struct fimc_is_module_sr352 *module_sr352;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!fmt);
+	BUG_ON(!subdev);
+	BUG_ON(!fmt);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (!module) {
@@ -17673,8 +17673,8 @@ static int sensor_sr352_s_param(struct v4l2_subdev *subdev, struct v4l2_streampa
 	struct v4l2_fract *tpf;
 	u64 framerate;
 
-	FIMC_BUG(!subdev);
-	FIMC_BUG(!param);
+	BUG_ON(!subdev);
+	BUG_ON(!param);
 
 	cp = &param->parm.capture;
 	tpf = &cp->timeperframe;
@@ -17727,7 +17727,7 @@ int sensor_sr352_stream_on(struct v4l2_subdev *subdev)
 	struct i2c_client *client;
 	u32 width, height;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!module)) {
@@ -17776,7 +17776,7 @@ int sensor_sr352_stream_off(struct v4l2_subdev *subdev)
 	struct fimc_is_module_sr352 *module_sr352;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!module)) {
@@ -17822,7 +17822,7 @@ int sensor_sr352_s_duration(struct v4l2_subdev *subdev, u64 duration)
 	struct fimc_is_module_sr352 *module_sr352;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	module = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!module)) {
@@ -17875,7 +17875,7 @@ int sensor_sr352_s_exposure(struct v4l2_subdev *subdev, u64 exposure)
 	struct fimc_is_module_enum *sensor;
 	struct i2c_client *client;
 
-	FIMC_BUG(!subdev);
+	BUG_ON(!subdev);
 
 	sensor = (struct fimc_is_module_enum *)v4l2_get_subdevdata(subdev);
 	if (unlikely(!sensor)) {
@@ -17975,7 +17975,7 @@ int sensor_sr352_probe(struct i2c_client *client,
 	struct fimc_is_module_enum *module;
 	struct fimc_is_device_sensor *device;
 
-	FIMC_BUG(!fimc_is_dev);
+	BUG_ON(!fimc_is_dev);
 
 	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 	if (!core) {

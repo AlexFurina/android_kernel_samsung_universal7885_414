@@ -90,10 +90,6 @@
 #define RTC_RUDR_MASK			(1 << RTC_RUDR_SHIFT)
 #define RTC_AUDR_SHIFT_REV		4
 #define RTC_AUDR_MASK_REV		(1 << RTC_AUDR_SHIFT_REV)
-#ifdef CONFIG_RTC_BOOT_ALARM
-#define RTC_WAKE_SHIFT			3
-#define RTC_WAKE_MASK			(1 << RTC_WAKE_SHIFT)
-#endif
 #define RTC_FREEZE_SHIFT		2
 #define RTC_FREEZE_MASK			(1 << RTC_FREEZE_SHIFT)
 #define RTC_WUDR_SHIFT_REV		1
@@ -147,4 +143,19 @@ enum {
 };
 
 #endif
+
+#ifdef CONFIG_RTC_HIGH_RES
+enum {
+	RTC_HR_MSEC = 0,
+	RTC_HR_SEC,
+	RTC_HR_MIN,
+	RTC_HR_HOUR,
+	RTC_HR_WEEKDAY,
+	RTC_HR_DATE,
+	RTC_HR_MONTH,
+	RTC_HR_YEAR,
+	NR_RTC_HR_CNT_REGS,
+};
+#endif /* CONFIG_RTC_HIGH_RES */
+
 #endif /*  __LINUX_MFD_SEC_RTC_H */

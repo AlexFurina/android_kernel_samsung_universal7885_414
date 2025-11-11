@@ -385,6 +385,7 @@ static int mfc_enc_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
 	struct mfc_enc *enc = ctx->enc_priv;
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
+	struct mfc_fmt *fmt = NULL;
 	int ret = 0;
 
 	mfc_debug_enter();
@@ -394,11 +395,12 @@ static int mfc_enc_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 		return -EBUSY;
 	}
 
-	ctx->dst_fmt = __mfc_enc_find_format(ctx, pix_fmt_mp->pixelformat);
-	if (!ctx->dst_fmt) {
+	fmt = __mfc_enc_find_format(ctx, pix_fmt_mp->pixelformat);
+	if (!fmt) {
 		mfc_err_ctx("Unsupported format for destination\n");
 		return -EINVAL;
 	}
+	ctx->dst_fmt = fmt;
 
 	ctx->codec_mode = ctx->dst_fmt->codec_mode;
 	mfc_info_ctx("[STREAM] Enc dst codec(%d) : %s\n",
@@ -478,9 +480,10 @@ static int mfc_enc_s_fmt_vid_cap_mplane(struct file *file, void *priv,
 
 	mfc_debug(2, "Got instance number: %d\n", ctx->inst_no);
 
-	mfc_ctx_ready_set_bit(ctx, &dev->work_bits);
-	if (ctx->otf_handle)
-		mfc_otf_ctx_ready_set_bit(ctx, &dev->work_bits);
+	if (mfc_ctx_ready(ctx))
+		mfc_set_bit(ctx->num, &dev->work_bits);
+	if (ctx->otf_handle && mfc_otf_ctx_ready(ctx))
+		mfc_set_bit(ctx->num, &dev->work_bits);
 	if (mfc_is_work_to_do(dev))
 		queue_work(dev->butler_wq, &dev->butler_work);
 
@@ -493,6 +496,7 @@ static int mfc_enc_s_fmt_vid_out_mplane(struct file *file, void *priv,
 {
 	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
 	struct v4l2_pix_format_mplane *pix_fmt_mp = &f->fmt.pix_mp;
+	struct mfc_fmt *fmt = NULL;
 
 	mfc_debug_enter();
 
@@ -506,11 +510,12 @@ static int mfc_enc_s_fmt_vid_out_mplane(struct file *file, void *priv,
 		return 0;
 	}
 
-	ctx->src_fmt = __mfc_enc_find_format(ctx, pix_fmt_mp->pixelformat);
-	if (!ctx->src_fmt) {
+	fmt = __mfc_enc_find_format(ctx, pix_fmt_mp->pixelformat);
+	if (!fmt) {
 		mfc_err_ctx("Unsupported format for source\n");
 		return -EINVAL;
 	}
+	ctx->src_fmt = fmt;
 
 	if (ctx->src_fmt->mem_planes != pix_fmt_mp->num_planes) {
 		mfc_err_ctx("[FRAME] enc src plane number is different (%d != %d)\n",
@@ -715,6 +720,7 @@ static int mfc_enc_querybuf(struct file *file, void *priv,
 static int mfc_enc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 {
 	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
+	struct mfc_dev *dev = ctx->dev;
 	int i, ret = -EINVAL;
 
 	mfc_debug_enter();
@@ -729,14 +735,26 @@ static int mfc_enc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 		return -EIO;
 	}
 
-	if (V4L2_TYPE_IS_MULTIPLANAR(buf->type) && !buf->length) {
+	if (!V4L2_TYPE_IS_MULTIPLANAR(buf->type)) {
+		mfc_err_ctx("Invalid V4L2 Buffer for driver: type(%d)\n", buf->type);
+		return -EINVAL;
+	}
+
+	if (!buf->length) {
 		mfc_err_ctx("multiplanar but length is zero\n");
 		return -EIO;
 	}
 
 	if (buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		mfc_debug(4, "enc src buf[%d] Q\n", buf->index);
-		for (i = 0; i < ctx->src_fmt->num_planes; i++) {
+		if (ctx->src_fmt->mem_planes != buf->length) {
+			mfc_err_ctx("number of memory container miss-match "
+					"between Src planes(%d) and buffer length(%d)\n",
+					ctx->src_fmt->mem_planes, buf->length);
+			return -EINVAL;
+		}
+
+		for (i = 0; i < ctx->src_fmt->mem_planes; i++) {
 			if (!buf->m.planes[i].bytesused) {
 				mfc_debug(2, "[FRAME] enc src[%d] size zero, "
 						"changed to buf size %d\n",
@@ -752,6 +770,8 @@ static int mfc_enc_qbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 		mfc_debug(4, "enc dst buf[%d] Q\n", buf->index);
 		ret = vb2_qbuf(&ctx->vq_dst, buf);
 	}
+
+	atomic_inc(&dev->queued_cnt);
 
 	mfc_debug_leave();
 	return ret;
@@ -774,6 +794,12 @@ static int mfc_enc_dqbuf(struct file *file, void *priv, struct v4l2_buffer *buf)
 		mfc_err_ctx("Call on DQBUF after unrecoverable error\n");
 		return -EIO;
 	}
+
+	if (!V4L2_TYPE_IS_MULTIPLANAR(buf->type)) {
+		mfc_err_ctx("Invalid V4L2 Buffer for driver: type(%d)\n", buf->type);
+		return -EINVAL;
+	}
+
 	if (buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		mfc_debug(4, "enc src buf[%d] DQ\n", buf->index);
 		ret = vb2_dqbuf(&ctx->vq_src, buf, file->f_flags & O_NONBLOCK);
@@ -797,6 +823,11 @@ static int mfc_enc_streamon(struct file *file, void *priv,
 	if (ctx->otf_handle) {
 		mfc_info_ctx("[OTF] skip streamon\n");
 		return 0;
+	}
+
+	if (!V4L2_TYPE_IS_MULTIPLANAR(type)) {
+		mfc_err_ctx("Invalid V4L2 Buffer for driver: type(%d)\n", type);
+		return -EINVAL;
 	}
 
 	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
@@ -824,7 +855,7 @@ static int mfc_enc_streamoff(struct file *file, void *priv,
 			    enum v4l2_buf_type type)
 {
 	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
-	int ret;
+	int ret = -EINVAL;;
 
 	mfc_debug_enter();
 
@@ -833,7 +864,11 @@ static int mfc_enc_streamoff(struct file *file, void *priv,
 		return 0;
 	}
 
-	ret = -EINVAL;
+	if (!V4L2_TYPE_IS_MULTIPLANAR(type)) {
+		mfc_err_ctx("Invalid V4L2 Buffer for driver: type(%d)\n", type);
+		return -EINVAL;
+	}
+
 	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		mfc_debug(4, "enc src streamoff\n");
 		mfc_qos_reset_last_framerate(ctx);
@@ -883,7 +918,6 @@ static int __mfc_enc_ext_info(struct mfc_ctx *ctx)
 	val |= ENC_SET_FIXED_SLICE;
 	val |= ENC_SET_PVC_MODE;
 	val |= ENC_SET_RATIO_OF_INTRA;
-	val |= ENC_SET_DROP_CONTROL;
 
 	if (MFC_FEATURE_SUPPORT(dev, dev->pdata->color_aspect_enc))
 		val |= ENC_SET_COLOR_ASPECT;
@@ -941,10 +975,7 @@ static int __mfc_enc_get_ctrl_val(struct mfc_ctx *ctx, struct v4l2_control *ctrl
 					mfc_debug(5, "[CTRLS] Control value "
 							"is not up to date: "
 							"0x%08x\n", ctrl->id);
-					if (ctrl->id == V4L2_CID_MPEG_MFC51_VIDEO_FRAME_TAG)
-						ctrl->value = IGNORE_TAG;
-					else
-						return -EINVAL;
+					return -EINVAL;
 				}
 
 				found = 1;
@@ -1767,9 +1798,6 @@ static int __mfc_enc_set_param(struct mfc_ctx *ctx, struct v4l2_control *ctrl)
 	case V4L2_CID_MPEG_VIDEO_SEI_DISPLAY_PRIMARIES_2:
 		p->display_primaries_2 = ctrl->value;
 		break;
-	case V4L2_CID_MPEG_VIDEO_DROP_CONTROL:
-		p->drop_control = ctrl->value;
-		break;
 	case V4L2_CID_MPEG_MFC_HDR_USER_SHARED_HANDLE:
 		if (enc->sh_handle_hdr.fd == -1) {
 			enc->sh_handle_hdr.fd = ctrl->value;
@@ -1856,7 +1884,6 @@ static int __mfc_enc_set_ctrl_val(struct mfc_ctx *ctx, struct v4l2_control *ctrl
 	case V4L2_CID_MPEG_VIDEO_ROI_CONTROL:
 	case V4L2_CID_MPEG_VIDEO_YSUM:
 	case V4L2_CID_MPEG_VIDEO_RATIO_OF_INTRA:
-	case V4L2_CID_MPEG_VIDEO_DROP_CONTROL:
 		list_for_each_entry(ctx_ctrl, &ctx->ctrls, list) {
 			if (!(ctx_ctrl->type & MFC_CTRL_TYPE_SET))
 				continue;
@@ -1864,6 +1891,13 @@ static int __mfc_enc_set_ctrl_val(struct mfc_ctx *ctx, struct v4l2_control *ctrl
 			if (ctx_ctrl->id == ctrl->id) {
 				ctx_ctrl->has_new = 1;
 				ctx_ctrl->val = ctrl->value;
+				if (ctx_ctrl->id == \
+					V4L2_CID_MPEG_MFC51_VIDEO_FRAME_RATE_CH) {
+					ctx_ctrl->val &= ~(0xFFFF << 16);
+					ctx_ctrl->val |= ctx_ctrl->val << 16;
+					ctx_ctrl->val &= ~(0xFFFF);
+					ctx_ctrl->val |= p->rc_frame_delta & 0xFFFF;
+				}
 				if ((ctx_ctrl->id == \
 					V4L2_CID_MPEG_VIDEO_H264_HIERARCHICAL_CODING_LAYER_CH) ||
 					(ctx_ctrl->id == \

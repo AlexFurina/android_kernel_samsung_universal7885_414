@@ -21,7 +21,7 @@
 #define __S2MU004_MUIC_H__
 
 #include <linux/wakelock.h>
-#include <linux/muic/muic_core.h>
+#include <linux/muic/muic.h>
 #include <linux/muic/muic_interface.h>
 #include <linux/muic/s2mu004-muic-hv.h>
 
@@ -52,7 +52,7 @@
 #define CTRL_WAIT_MASK			(0x1 << CTRL_WAIT_SHIFT)
 #define CTRL_INT_MASK_MASK		(0x1 << CTRL_INT_MASK_SHIFT)
 
-#if defined(CONFIG_MUIC_S2MU004_ENABLE_AUTOSW)
+#ifdef CONFIG_MUIC_S2MU004_ENABLE_AUTOSW
 #define CTRL_MASK			(CTRL_SWITCH_OPEN_MASK | \
 						CTRL_MANUAL_SW_MASK | CTRL_WAIT_MASK | \
 						CTRL_INT_MASK_MASK)
@@ -135,7 +135,7 @@
 
 /* S2MU004 ADC register */
 #define ADC_MASK				(0x1f)
-#define ADC_CONVERSION_ERR_MASK		(0x1 << 7)
+#define ADC_CONVERSION_MASK		(0x1 << 7)
 
 /* S2MU004 Timing Set 1 & 2 register Timing table */
 #define KEY_PRESS_TIME_100MS		(0x00)
@@ -203,8 +203,8 @@
 #define DEV_TYPE_CHG_TYPE		(CHG_TYPE_VBUS_R255 | DEV_TYPE_U200 | DEV_TYPE_SDP_1P8S)
 
 /* S2MU004 MUIC AFC STATUS register (0x48) */
-#define MUIC_AFC_STATUS_VDNMON_SHIFT	4
-#define MUIC_AFC_STATUS_VDNMON_MASK	(MASK_1BIT << MUIC_AFC_STATUS_VDNMON_SHIFT)
+#define MUIC_AFC_STATUS_VDNMON_SHIFT 	4
+#define MUIC_AFC_STATUS_VDNMON_MASK 	(MASK_1BIT << MUIC_AFC_STATUS_VDNMON_SHIFT)
 
 /* S2MU004 MUIC AFC CTRL1 register (0x49) */
 #define MUIC_AFC_CTRL1_AFC_EN_SHIFT			7
@@ -232,7 +232,7 @@
 #define MUIC_AFC_LOGIC_CTRL2_AFC_REQUEST_OPT_REDUMP_MASK (MASK_1BIT << MUIC_AFC_LOGIC_CTRL2_AFC_REQUEST_OPT_REDUMP_SHIFT)
 #define MUIC_AFC_LOGIC_CTRL2_UI_MASTER_SLAVE_SEL_MASK (MASK_1BIT << MUIC_AFC_LOGIC_CTRL2_UI_MASTER_SLAVE_SEL_SHIFT)
 #define MUIC_AFC_LOGIC_CTRL2_PROTOCOL_SW_ON_MASK (MASK_1BIT << MUIC_AFC_LOGIC_CTRL2_PROTOCOL_SW_ON_SHFIT)
-#define MUIC_AFC_LOGIC_CTRL2_RX_COMPHY_MASK	(MASK_2BIT << MUIC_AFC_LOGIC_CTRL2_RX_COMPHY_SHIFT)
+#define MUIC_AFC_LOGIC_CTRL2_RX_COMPHY_MASK 	(MASK_2BIT << MUIC_AFC_LOGIC_CTRL2_RX_COMPHY_SHIFT)
 
 /* S2MU004 MUIC BCD RESCAN (0x6A) */
 #define MUIC_BCD_RESCAN_SHIFT		0
@@ -244,9 +244,9 @@
 #define TIMER_SET3_ADC_PERIOD_SHIFT			3
 #define TIMER_SET3_DCDTMRSET_SHIFT			0
 
-#define TIMER_SET3_JIG_WAIT_TIME_MASK	(MASK_3BIT << TIMER_SET3_JIG_WAIT_TIME_SHIFT)
-#define TIMER_SET3_ADC_PERIOD_MASK	(MASK_2BIT << TIMER_SET3_ADC_PERIOD_SHIFT)
-#define TIMER_SET3_DCDTMRSET_MASK	(MASK_3BIT << TIMER_SET3_DCDTMRSET_SHIFT)
+#define TIMER_SET3_JIG_WAIT_TIME_MASK		(MASK_3BIT << TIMER_SET3_JIG_WAIT_TIME_SHIFT)
+#define TIMER_SET3_ADC_PERIOD_MASK		(MASK_2BIT << TIMER_SET3_ADC_PERIOD_SHIFT)
+#define TIMER_SET3_DCDTMRSET_MASK 		(MASK_3BIT << TIMER_SET3_DCDTMRSET_SHIFT)
 
 /* S2MU004 MUIC CTRL2 register (0xCC) */
 #define MUIC_CTRL2_ADCEN_CNTR_SHIFT		4
@@ -262,9 +262,9 @@
 #define MUIC_CTRL2_CPEN_MASK			(MASK_1BIT << MUIC_CTRL2_CPEN_SHIFT)
 
 /* S2MU004 CHARGER DET OTP register (0xCE) */
-#define CHARGER_DET_OTP_VDAT_REF_SHIFT 0
+#define CHARGER_DET_OTP_VDAT_REF_SHIFT 		0
 
-#define CHARGER_DET_OTP_VDAT_REF_MASK (MASK_4BIT << CHARGER_DET_OTP_VDAT_REF_SHIFT)
+#define CHARGER_DET_OTP_VDAT_REF_MASK  		(MASK_4BIT << CHARGER_DET_OTP_VDAT_REF_SHIFT)
 
 /* S2MU004 AFC_OTP6(RGB) register (0xDA) */
 #define MUIC_AFC_OTP6_JIG_QBAT_OFF_SHIFT		7
@@ -302,13 +302,14 @@
 #define MANUAL_SW_USB			(0x1 << MANUAL_SW_DM_SHIFT | 0x1 << MANUAL_SW_DP_SHIFT)
 #define MANUAL_SW_UART			(0x2 << MANUAL_SW_DM_SHIFT | 0x2 << MANUAL_SW_DP_SHIFT)
 #define MANUAL_SW_UART2			(0x3 << MANUAL_SW_DM_SHIFT | 0x3 << MANUAL_SW_DP_SHIFT)
-#define MANUAL_SW_AUDIO			(0x0 << MANUAL_SW_DM_SHIFT | 0x0 << MANUAL_SW_DP_SHIFT)	/* Not Used */
+#define MANUAL_SW_AUDIO			(0x0 << MANUAL_SW_DM_SHIFT | 0x0 << MANUAL_SW_DP_SHIFT) /* Not Used */
 
 #define MANUAL_SW_OTGEN			(0x1)
+#define MANUAL_SW_CHARGER		(0x1 << MANUAL_SW_CHG_SHIFT)
 
 /* S2MU004_REG_MUIC_RID_CTRL */
 #define RID_CTRL_ADC_OFF_SHIFT	1
-#define RID_CTRL_ADC_OFF_MASK	(0x1 << RID_CTRL_ADC_OFF_SHIFT)
+#define RID_CTRL_ADC_OFF_MASK	0x1 << RID_CTRL_ADC_OFF_SHIFT
 
 #define WATER_DET_RETRY_CNT				10
 #define WATER_CCIC_WAIT_DURATION_MS		4000
@@ -320,11 +321,9 @@
 #define WATER_TOGGLE_WA_DURATION_US		20000
 
 /* s2mu004-muic macros */
-#define ENUM_STR(x, r) { case x: r = #x; break; }
-
-#define REQUEST_IRQ(_irq, _dev_id, _name, _func)				\
+#define REQUEST_IRQ(_irq, _dev_id, _name)				\
 do {									\
-	ret = request_threaded_irq(_irq, NULL, _func,	\
+	ret = request_threaded_irq(_irq, NULL, s2mu004_muic_irq_thread,	\
 				0, _name, _dev_id);	\
 	if (ret < 0) {							\
 		pr_err("%s:%s Failed to request IRQ #%d: %d\n",		\
@@ -343,15 +342,19 @@ do {									\
 } while (0)
 
 #define IS_WATER_ADC(adc)\
-		(((adc) > (ADC_GND)) && ((adc) < (ADC_OPEN)) \
-		? 1 : 0)
+		( ((adc) > (ADC_GND)) && ((adc) < (ADC_OPEN)) \
+		? 1 : 0 )
 #define IS_AUDIO_ADC(adc)\
-		(((adc) >= (ADC_SEND_END)) && ((adc) <= (ADC_REMOTE_S12)) \
-		? 1 : 0)
+		( ((adc) >= (ADC_SEND_END)) && ((adc) <= (ADC_REMOTE_S12)) \
+		? 1 : 0 )
 #define IS_ACC_ADC(adc)\
-		(((adc) >= (ADC_RESERVED_VZW)) \
+		( ((adc) >= (ADC_RESERVED_VZW)) \
 		&& ((adc) <= (ADC_AUDIOMODE_W_REMOTE)) \
-		? 1 : 0)
+		? 1 : 0 )
+#define IS_WATER_STATUS(x)\
+		( ((x) == (S2MU004_WATER_MUIC_CCIC_DET)) \
+		|| ((x) == (S2MU004_WATER_MUIC_CCIC_STABLE)) \
+		? 1 : 0 )
 /* end of macros */
 
 /* S2MU004_REG_LDOADC_VSETH register */
@@ -370,24 +373,26 @@ do {									\
 #define LDOADC_VSET_1_4V	0x02
 #define LDOADC_VSET_1_2V	0x00
 #define LDOADC_VSETH_WAKE_HYS_SHIFT	6
-#define LDOADC_VSETH_WAKE_HYS_MASK	(0x1 << LDOADC_VSETH_WAKE_HYS_SHIFT)
+#define LDOADC_VSETH_WAKE_HYS_MASK	0x1 << LDOADC_VSETH_WAKE_HYS_SHIFT
 
 #define MANSW_OPEN				(MANUAL_SW_OPEN)
-#define MANSW_USB					(MANUAL_SW_USB)
-#define MANSW_AUDIO				(MANUAL_SW_AUDIO)
+#define MANSW_OPEN_WITH_VBUS	(MANUAL_SW_CHARGER)
+#define MANSW_USB					(MANUAL_SW_USB | MANUAL_SW_CHARGER)
+#define MANSW_AUDIO				(MANUAL_SW_AUDIO | MANUAL_SW_CHARGER)
 #define MANSW_OTG					(MANUAL_SW_USB | MANUAL_SW_OTGEN)
-#define MANSW_UART_AP				(MANUAL_SW_UART)
+#define MANSW_UART_AP				(MANUAL_SW_UART | MANUAL_SW_CHARGER)
 #if IS_ENABLED(CONFIG_PMU_UART_SWITCH)
-#define MANSW_UART_CP				(MANUAL_SW_UART)
+#define MANSW_UART_CP				(MANUAL_SW_UART | MANUAL_SW_CHARGER)
 #else
-#define MANSW_UART_CP				(MANUAL_SW_UART2)
+#define MANSW_UART_CP				(MANUAL_SW_UART2 | MANUAL_SW_CHARGER)
 #endif
-#define MANSW_HICCUP				(MANUAL_SW_UART2)
-#define MANSW_OPEN_RUSTPROOF	(MANUAL_SW_OPEN)
+#define MANSW_HICCUP				(MANUAL_SW_UART2 | MANUAL_SW_CHARGER)
+#define MANSW_OPEN_RUSTPROOF	(MANUAL_SW_OPEN | MANUAL_SW_CHARGER)
 
 enum s2mu004_muic_mode {
 	S2MU004_NONE_CABLE,
-	S2MU004_MUIC_ATTACH,
+	S2MU004_FIRST_ATTACH,
+	S2MU004_SECOND_ATTACH,
 	S2MU004_MUIC_DETACH,
 	S2MU004_MUIC_OTG,
 	S2MU004_MUIC_JIG,
@@ -411,7 +416,7 @@ typedef enum {
 	S2MU004_WATER_DRY_MUIC_DET,
 	S2MU004_WATER_DRY_MUIC_CCIC_DET,
 	S2MU004_WATER_DRY_MUIC_CCIC_INVALID,
-} t_water_dry_status;
+}t_water_dry_status;
 
 enum s2mu004_muic_enable {
 	S2MU004_DISABLE,
@@ -419,25 +424,26 @@ enum s2mu004_muic_enable {
 };
 
 typedef enum {
-	S2MU004_DETECT_NONE,
 	S2MU004_DETECT_DONE,
-} t_detect_status;
+	S2MU004_DETECT_JIG,
+	S2MU004_DETECT_SKIP,
+}t_detect_status;
 
 typedef enum {
 	S2MU004_IRQ_CHECK_DONE,
 	S2MU004_IRQ_SKIP,
-} t_irq_status;
+}t_irq_status;
 
 enum s2mu004_muic_detect_dev_read_val {
-	DEVICE_TYPE1 = 0,
-	DEVICE_TYPE2,
-	DEVICE_TYPE3,
-	REV_ID,
-	ADC,
-	DEVICE_APPLE,
-	CHG_TYPE,
-	SC_STATUS2,
-	MAX_NUM,
+	READ_VAL_DEVICE_TYPE1 = 0,
+	READ_VAL_DEVICE_TYPE2,
+	READ_VAL_DEVICE_TYPE3,
+	READ_VAL_REV_ID,
+	READ_VAL_ADC,
+	READ_VAL_DEVICE_APPLE,
+	READ_VAL_CHG_TYPE,
+	READ_VAL_SC_STATUS2,
+	READ_VAL_MAX_NUM,
 };
 
 /* muic chip specific internal data structure
@@ -446,21 +452,17 @@ enum s2mu004_muic_detect_dev_read_val {
 struct s2mu004_muic_data {
 	struct device *dev;
 	struct device *switch_device;
-	struct i2c_client *i2c;	/* i2c addr: 0x7A; MUIC */
-	struct s2mu004_dev *s2mu004_dev;
-
+	struct i2c_client *i2c; /* i2c addr: 0x7A; MUIC */
 	struct mutex muic_mutex;
 	struct mutex afc_mutex;
 	struct mutex switch_mutex;
-
-	/* struct wakeup_source wakeup_src; */
-	struct wake_lock wake_lock;
+	struct mutex water_det_mutex;
+	struct mutex water_dry_mutex;
+	struct s2mu004_dev *s2mu004_dev;
+	wait_queue_head_t wait;
 
 	/* model dependant mfd platform data */
-	struct s2mu004_platform_data *mfd_pdata;
-
-	/* model dependant muic platform data */
-	struct muic_platform_data *pdata;
+	struct s2mu004_platform_data	*mfd_pdata;
 
 	void *if_data;
 
@@ -472,50 +474,40 @@ struct s2mu004_muic_data {
 	int irq_adc_change;
 	int irq_av_charge;
 	int irq_vbus_off;
-
+	int temp;
+	bool jig_state;
+	struct delayed_work muic_pdic_work;
+	int re_detect;
 	bool afc_check;
 	bool otg_state;
-	bool is_dcd_recheck;
-	bool is_otg_vboost;
-	bool is_otg_reboost;
-
-	muic_attached_dev_t new_dev;
-
-	int rev_id;
-	int adc;
-	int vbvolt;
-	int vmid;
-	int reg[MAX_NUM];
-	int re_detect;
-	int bcd_rescan_cnt;
-
-#if defined(CONFIG_MUIC_S2MU004_HV)
-	int retry_cnt;
-	int retry_qc_cnt;
-	int qc_prepare;
-	int afc_irq;
+#if defined(CONFIG_HV_MUIC_S2MU004_AFC)
 	int irq_dnres;
 	int irq_mrxrdy;
 	int irq_mpnack;
 	int irq_vbadc;
 	int irq_vdnmon;
 #endif
-
+	int retry_cnt;
+	int retry_qc_cnt;
+	int qc_prepare;
 	/* muic common callback driver internal data */
 	struct sec_switch_data *switch_data;
+
+	/* model dependant muic platform data */
+	struct muic_platform_data *pdata;
 
 	/* muic support vps list */
 	bool muic_support_list[ATTACHED_DEV_NUM];
 
 	/* muic Device ID */
-	u8 muic_vendor;		/* Vendor ID */
-	u8 muic_version;	/* Version ID */
-	u8 ic_rev_id;		/* Rev ID */
+	u8 muic_vendor;			/* Vendor ID */
+	u8 muic_version;		/* Version ID */
+	u8 ic_rev_id;			/* Rev ID */
 
 	/* W/A waiting for the charger ic */
-	struct delayed_work dcd_recheck;
-	struct delayed_work incomplete_check;
-#if defined(CONFIG_MUIC_S2MU004_HV)
+	struct workqueue_struct *muic_wqueue;
+	struct workqueue_struct *cable_type_wq;
+
 	struct delayed_work afc_check_vbadc;
 	struct delayed_work afc_cable_type_work;
 	struct delayed_work afc_irq_detect;
@@ -524,9 +516,35 @@ struct s2mu004_muic_data {
 	struct delayed_work afc_qc_retry;
 	struct delayed_work afc_after_prepare;
 	struct delayed_work afc_check_interrupt;
+	struct delayed_work dcd_recheck;
+	struct delayed_work incomplete_check;
+	struct delayed_work water_detect_handler;
+	struct delayed_work water_dry_handler;
 	struct delayed_work afc_mrxrdy;
 
-	muic_afc_data_t afc_data;
+	struct notifier_block pdic_nb;
+
+	//struct wakeup_source wakeup_src;
+	struct wake_lock wake_lock;
+
+	bool is_dcd_recheck;
+	bool is_otg_vboost;
+	bool is_otg_reboost;
+
+	int rev_id;
+	int afc_irq;
+	int attach_mode;
+	int bcd_rescan_cnt;
+
+#ifdef CONFIG_CCIC_S2MU004
+	struct wake_lock water_wake_lock;
+	struct wake_lock water_dry_wake_lock;
+	t_water_status water_status;
+	t_water_dry_status water_dry_status;
+#endif
+
+#if defined(CONFIG_HV_MUIC_S2MU004_AFC)
+	muic_afc_data_t		afc_data;
 
 	bool is_afc_muic_ready;
 	bool is_afc_handshaking;
@@ -534,7 +552,7 @@ struct s2mu004_muic_data {
 	bool is_charger_ready;
 	bool is_mrxrdy;
 
-	int afc_count;
+	int	afc_count;
 
 	u8 tx_data;
 	u8 qc_hv;
@@ -561,22 +579,18 @@ int s2mu004_muic_com_to_uart(struct s2mu004_muic_data *muic_data);
 int s2mu004_muic_com_to_audio(struct s2mu004_muic_data *muic_data);
 int s2mu004_muic_recheck_adc(struct s2mu004_muic_data *muic_data);
 int s2mu004_muic_get_vbus_state(struct s2mu004_muic_data *muic_data);
-void s2mu004_muic_control_vbus_det(struct s2mu004_muic_data *muic_data,
-				   bool enable);
+void s2mu004_muic_control_vbus_det(struct s2mu004_muic_data *muic_data, bool enable);
 int s2mu004_i2c_read_byte(struct i2c_client *client, u8 command);
-int s2mu004_i2c_write_byte(struct i2c_client *client, u8 command, u8 value);
+int s2mu004_i2c_write_byte(struct i2c_client *client,
+			u8 command, u8 value);
 extern void s2mu004_muic_dcd_rescan(struct s2mu004_muic_data *muic_data);
-extern int s2mu004_muic_control_rid_adc(struct s2mu004_muic_data *muic_data,
-					bool enable);
+extern int s2mu004_muic_control_rid_adc(struct s2mu004_muic_data *muic_data, bool enable);
 extern int s2mu004_muic_bcd_rescan(struct s2mu004_muic_data *muic_data);
 int s2mu004_muic_jig_on(struct s2mu004_muic_data *muic_data);
-void s2mu004_muic_control_vbus_det(struct s2mu004_muic_data *muic_data,
-				   bool enable);
+void s2mu004_muic_control_vbus_det(struct s2mu004_muic_data *muic_data, bool enable);
 
-int s2mu004_set_gpio_uart_sel(struct s2mu004_muic_data *muic_data,
-			      int uart_sel);
-int s2mu004_init_interface(struct s2mu004_muic_data *muic_data,
-			   struct muic_interface_t *muic_if);
+int s2mu004_set_gpio_uart_sel(struct s2mu004_muic_data *muic_data, int uart_sel);
+int s2mu004_init_interface(struct s2mu004_muic_data *muic_data, struct muic_interface_t *muic_if);
 #if IS_ENABLED(CONFIG_CCIC_S2MU004)
 int s2mu004_muic_refresh_adc(struct s2mu004_muic_data *muic_data);
 #endif

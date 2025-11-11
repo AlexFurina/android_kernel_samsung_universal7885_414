@@ -30,12 +30,6 @@
 #include <linux/device.h>
 #include <linux/power_supply.h>
 
-enum sec_battery_rp_curr {
-	RP_CURRENT1 = 500,
-	RP_CURRENT2 = 1500,
-	RP_CURRENT3 = 3000,
-};
-
 enum s2mu00x_battery_voltage_mode {
 	S2MU00X_BATTERY_VOLTAGE_AVERAGE = 0,
 	S2MU00X_BATTERY_VOLTAGE_OCV,
@@ -52,17 +46,6 @@ enum s2mu00x_battery_charger_mode {
 	S2MU00X_BAT_CHG_MODE_BUCK_OFF,
 };
 
-enum s2mu00x_battery_factory_mode {
-	S2MU00X_BAT_FAC_MODE_VBAT = 0,
-	S2MU00X_BAT_FAC_MODE_VBUS,
-	S2MU00X_BAT_FAC_MODE_NORMAL,
-};
-
-enum s2mu00x_battery_charge_mode {
-	S2MU00X_POWEROFF_CHG_MODE = 0,
-	S2MU00X_FAC_MODE,
-	S2MU00X_NOR_MODE,
-};
 struct s2mu00x_charging_current {
 #ifdef CONFIG_OF
 	unsigned int input_current_limit;

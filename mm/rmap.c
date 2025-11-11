@@ -1418,6 +1418,10 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 		subpage = page - page_to_pfn(page) + pte_pfn(*pvmw.pte);
 		address = pvmw.address;
 
+#ifdef CONFIG_RKP_DMAP_PROT
+		dmap_prot((u64)page_to_phys(page), (u64)compound_order(page), 0);
+#endif
+
 		if (PageHuge(page)) {
 			if (huge_pmd_unshare(mm, &address, pvmw.pte)) {
 				/*
@@ -1462,6 +1466,10 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 			swp_pte = swp_entry_to_pte(entry);
 			if (pte_soft_dirty(pteval))
 				swp_pte = pte_swp_mksoft_dirty(swp_pte);
+
+#ifdef CONFIG_RKP_DMAP_PROT
+			dmap_prot((u64)pte_val(swp_pte), 0, 0);
+#endif
 			set_pte_at(mm, pvmw.address, pvmw.pte, swp_pte);
 			goto discard;
 		}
@@ -1510,6 +1518,9 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 						     vma_mmu_pagesize(vma));
 			} else {
 				dec_mm_counter(mm, mm_counter(page));
+#ifdef CONFIG_RKP_DMAP_PROT
+				dmap_prot((u64)pte_val(pteval), 0, 0);
+#endif
 				set_pte_at(mm, address, pvmw.pte, pteval);
 			}
 
@@ -1539,6 +1550,9 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 			swp_pte = swp_entry_to_pte(entry);
 			if (pte_soft_dirty(pteval))
 				swp_pte = pte_swp_mksoft_dirty(swp_pte);
+#ifdef CONFIG_RKP_DMAP_PROT
+			dmap_prot((u64)pte_val(swp_pte), 0, 0);
+#endif
 			set_pte_at(mm, address, pvmw.pte, swp_pte);
 		} else if (PageAnon(page)) {
 			swp_entry_t entry = { .val = page_private(subpage) };
@@ -1562,6 +1576,9 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 					goto discard;
 				}
 
+#ifdef CONFIG_RKP_DMAP_PROT
+				dmap_prot((u64)pte_val(pteval), 0, 0);
+#endif
 				/*
 				 * If the page was redirtied, it cannot be
 				 * discarded. Remap the page to page table.
@@ -1574,6 +1591,9 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 			}
 
 			if (swap_duplicate(entry) < 0) {
+#ifdef CONFIG_RKP_DMAP_PROT
+				dmap_prot((u64)pte_val(pteval), 0, 0);
+#endif
 				set_pte_at(mm, address, pvmw.pte, pteval);
 				ret = false;
 				page_vma_mapped_walk_done(&pvmw);
@@ -1590,6 +1610,9 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 			swp_pte = swp_entry_to_pte(entry);
 			if (pte_soft_dirty(pteval))
 				swp_pte = pte_swp_mksoft_dirty(swp_pte);
+#ifdef CONFIG_RKP_DMAP_PROT
+			dmap_prot((u64)pte_val(swp_pte), 0, 0);
+#endif
 			set_pte_at(mm, address, pvmw.pte, swp_pte);
 		} else
 			dec_mm_counter(mm, mm_counter_file(page));
@@ -1633,19 +1656,24 @@ static int page_mapcount_is_zero(struct page *page)
  * try_to_unmap - try to remove all page table mappings to a page
  * @page: the page to get unmapped
  * @flags: action and flags
+ * @vma : target vma for reclaim
  *
  * Tries to remove all the page table entries which are mapping this
  * page, used in the pageout path.  Caller must hold the page lock.
+ * If @vma is not NULL, this function try to remove @page from only @vma
+ * without peeking all mapped vma for @page.
  *
  * If unmap is successful, return true. Otherwise, false.
  */
-bool try_to_unmap(struct page *page, enum ttu_flags flags)
+bool try_to_unmap(struct page *page, enum ttu_flags flags,
+				struct vm_area_struct *vma)
 {
 	struct rmap_walk_control rwc = {
 		.rmap_one = try_to_unmap_one,
 		.arg = (void *)flags,
 		.done = page_mapcount_is_zero,
 		.anon_lock = page_lock_anon_vma_read,
+		.target_vma = vma,
 	};
 
 	/*
@@ -1689,6 +1717,7 @@ void try_to_munlock(struct page *page)
 		.arg = (void *)TTU_MUNLOCK,
 		.done = page_not_mapped,
 		.anon_lock = page_lock_anon_vma_read,
+		.target_vma = NULL,
 
 	};
 
@@ -1750,6 +1779,13 @@ static void rmap_walk_anon(struct page *page, struct rmap_walk_control *rwc,
 	pgoff_t pgoff_start, pgoff_end;
 	struct anon_vma_chain *avc;
 
+	if (rwc->target_vma) {
+		unsigned long address = vma_address(page, rwc->target_vma);
+
+		rwc->rmap_one(page, rwc->target_vma, address, rwc->arg);
+		return;
+	}
+
 	if (locked) {
 		anon_vma = page_anon_vma(page);
 		/* anon_vma disappear under us? */
@@ -1757,6 +1793,7 @@ static void rmap_walk_anon(struct page *page, struct rmap_walk_control *rwc,
 	} else {
 		anon_vma = rmap_walk_anon_lock(page, rwc);
 	}
+
 	if (!anon_vma)
 		return;
 
@@ -1801,6 +1838,7 @@ static void rmap_walk_file(struct page *page, struct rmap_walk_control *rwc,
 	struct address_space *mapping = page_mapping(page);
 	pgoff_t pgoff_start, pgoff_end;
 	struct vm_area_struct *vma;
+	unsigned long address;
 
 	/*
 	 * The page lock not only makes sure that page->mapping cannot
@@ -1817,6 +1855,13 @@ static void rmap_walk_file(struct page *page, struct rmap_walk_control *rwc,
 	pgoff_end = pgoff_start + hpage_nr_pages(page) - 1;
 	if (!locked)
 		i_mmap_lock_read(mapping);
+
+	if (rwc->target_vma) {
+		address = vma_address(page, rwc->target_vma);
+		rwc->rmap_one(page, rwc->target_vma, address, rwc->arg);
+		goto done;
+	}
+
 	vma_interval_tree_foreach(vma, &mapping->i_mmap,
 			pgoff_start, pgoff_end) {
 		unsigned long address = vma_address(page, vma);

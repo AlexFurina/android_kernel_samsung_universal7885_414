@@ -88,6 +88,7 @@ obj-$(CONFIG_ACPI_CPPC_CPUFREQ) += cppc_cpufreq.o
 obj-$(CONFIG_MACH_MVEBU_V7)		+= mvebu-cpufreq.o
 obj-$(CONFIG_ARM_EXYNOS_FF)		+= exynos-ff.o
 obj-$(CONFIG_ARM_EXYNOS_ACME)		+= exynos-acme.o
+obj-$(CONFIG_ARM_EXYNOS_UFC)		+= exynos-ufc.o
 
 
 ##################################################################################
