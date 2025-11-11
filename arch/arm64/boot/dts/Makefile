@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0
-dtbo-y += samsung/exynos7884B-a10eu_jpn_dcm_01.dtbo
-dtbo-y += samsung/exynos7884B-a10eu_jpn_dcm_00.dtbo
+dtb-y += exynos/exynos7885-jackpotlte_eur_open_07.dtb
 dtb-y += exynos/exynos7885.dtb
 
 targets += dtbs

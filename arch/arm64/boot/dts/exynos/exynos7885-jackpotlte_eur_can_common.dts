@@ -1,0 +1,11 @@
+/ {
+	/* USIM DETECTION FOR CP */
+	usim_det {
+		pinctrl-names = "default";
+		pinctrl-0 = <&sim0_det_gpio &sim1_det_gpio>;
+		mif,num_of_usim_det = <2>;
+		mif,usim-det0-gpio = <&gpa2 6 0>;
+		mif,usim-det1-gpio = <&gpa2 5 0>;
+	};
+};
+

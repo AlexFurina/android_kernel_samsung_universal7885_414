@@ -1,5 +1,6 @@
 /dts-v1/;
 
+/memreserve/	0x00000000e0000000 0x0000000000d00000;
 / {
 	compatible = "samsung,armv8", "samsung,exynos7885";
 	dtb-hw_rev = <0x0>;
@@ -133,32 +134,42 @@
 
 			header {
 				compatible = "debug-snapshot,header";
-				reg = <0x0 0x92000000 0x7000>;
-			};
-
-			log_kevents {
-				compatible = "debug-snapshot,log_kevents";
-				reg = <0x0 0x92007000 0x7f9000>;
+				reg = <0x0 0x92000000 0x10000>;
 			};
 
 			log_kernel {
 				compatible = "debug-snapshot,log_kernel";
-				reg = <0x0 0x92800000 0x200000>;
+				reg = <0x0 0x92010000 0x200000>;
 			};
 
 			log_platform {
 				compatible = "debug-snapshot,log_platform";
-				reg = <0x0 0x92a00000 0x400000>;
+				reg = <0x0 0x92210000 0x400000>;
 			};
 
 			log_sfr {
 				compatible = "debug-snapshot,log_sfr";
-				reg = <0x0 0x92e00000 0x400000>;
+				reg = <0x0 0x92610000 0x0>;
+			};
+
+			log_cachedump {
+				compatible = "debug-snapshot,log_cachedump";
+				reg = <0x0 0x92610000 0x0>;
+			};
+
+			log_bcm {
+				compatible = "debug-snapshot,log_bcm";
+				reg = <0x0 0x92610000 0x0>;
 			};
 
 			log_pstore {
 				compatible = "debug-snapshot,log_pstore";
-				reg = <0x0 0x93200000 0x8000>;
+				reg = <0x0 0x92610000 0x8000>;
+			};
+
+			log_kevents {
+				compatible = "debug-snapshot,log_kevents";
+				reg = <0x0 0x92618000 0x400000>;
 			};
 		};
 
