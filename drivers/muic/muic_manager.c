@@ -1025,8 +1025,9 @@ static int muic_manager_set_property(struct power_supply *psy,
 	struct muic_interface_t *muic_if =
 		power_supply_get_drvdata(psy);
 	int ret;
+#if defined(CONFIG_MFD_S2MU106)
 	enum power_supply_lsi_property lsi_prop = (enum power_supply_lsi_property)psp;
-
+#endif
 	switch (psp) {
 		case POWER_SUPPLY_PROP_ONLINE:
 			break;
@@ -1044,6 +1045,7 @@ static int muic_manager_set_property(struct power_supply *psy,
 		case POWER_SUPPLY_PROP_PD_SUPPORT:
 			muic_if->is_pdic_probe = true;
 		case POWER_SUPPLY_EXT_PROP_MAX ... POWER_SUPPLY_LSI_PROP_MAX:
+#if defined(CONFIG_MFD_S2MU106)
 			switch (lsi_prop) {
 			case POWER_SUPPLY_LSI_PROP_WATER_STATUS:
 				if (muic_if->set_water_state)
@@ -1058,6 +1060,7 @@ static int muic_manager_set_property(struct power_supply *psy,
 			default:
 				ret = -EINVAL;
 			}
+#endif
 			break;
 		default:
 			return -EINVAL;

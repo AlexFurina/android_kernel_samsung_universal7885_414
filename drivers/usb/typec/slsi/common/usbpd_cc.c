@@ -722,7 +722,9 @@ static int typec_dr_set(const struct typec_capability *cap, enum typec_data_role
 
 int typec_get_pd_support(void *_data)
 {
-#if defined(CONFIG_PDIC_S2MU106)
+#if defined(CONFIG_PDIC_S2MU004)
+	struct s2mu004_usbpd_data *pdic_data = _data;
+#elif defined(CONFIG_PDIC_S2MU106)
 	struct s2mu106_usbpd_data *pdic_data = _data;
 #elif defined(CONFIG_PDIC_S2MU107)
 	struct s2mu107_usbpd_data *pdic_data = _data;

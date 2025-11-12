@@ -147,13 +147,18 @@ typedef enum {
 } dpdnvden_t;
 #endif
 
+/*
+ * Had to be removed for 4.14
+ * VDNMON_HIGH is different, but not used
+ */
+/*
 typedef enum {
 	VDNMON_LOW		= 0x00,
 	VDNMON_HIGH		= (0x1 << STATUS_VDNMON_SHIFT),
 
 	VDNMON_DONTCARE		= 0xff,
 } vdnmon_t;
-
+*/
 typedef enum {
 //	VBADC_VBDET		= 0x00,
 	VBADC_5_3V		= 0x00,
@@ -198,14 +203,14 @@ enum {
 #endif
 
 /* MUIC afc irq type */
-typedef enum {
+/*typedef enum {
 	MUIC_AFC_IRQ_VDNMON = 0,
 	MUIC_AFC_IRQ_MRXRDY,
 	MUIC_AFC_IRQ_VBADC,
 	MUIC_AFC_IRQ_MPNACK,
 	MUIC_AFC_IRQ_DONTCARE = 0xff,
 } muic_afc_irq_t;
-
+*/
 /* muic chip specific internal data structure */
 typedef struct s2mu004_muic_afc_data {
 	muic_attached_dev_t		new_dev;
@@ -283,7 +288,7 @@ extern void s2mu004_muic_set_adcmode_oneshot(struct s2mu004_muic_data *muic_data
 #endif /* !CONFIG_SEC_FACTORY */
 extern void s2mu004_hv_muic_adcmode_oneshot(struct s2mu004_muic_data *muic_data);
 #endif
-extern void s2mu004_muic_prepare_afc_charger(struct s2mu004_muic_data *muic_data);
+//extern void s2mu004_muic_prepare_afc_charger(struct s2mu004_muic_data *muic_data);
 extern bool s2mu004_muic_check_change_dev_afc_charger
 	(struct s2mu004_muic_data *muic_data, muic_attached_dev_t new_dev);
 

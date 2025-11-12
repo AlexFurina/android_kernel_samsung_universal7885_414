@@ -1,3 +1,4 @@
+obj-$(CONFIG_PDIC_S2MU004)		+= s2mu004/
 obj-$(CONFIG_PDIC_S2MU107)		+= s2mu107/
 obj-$(CONFIG_PDIC_S2MU106)		+= s2mu106/
 obj-$(CONFIG_PDIC_SLSI_NON_MCU)		+= common/
