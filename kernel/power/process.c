@@ -130,7 +130,9 @@ static int try_to_freeze_tasks(bool user_only)
 			if (p != current && !freezer_should_skip(p)
 			    && freezing(p) && !frozen(p)) {
 				sched_show_task(p);
+#ifdef CONFIG_SEC_DEBUG_EXTRA_INFO
 				sec_debug_set_extra_info_backtrace_task(p);
+#endif
 				sec_debug_set_extra_info_unfz(p->comm);
 			}
 		}

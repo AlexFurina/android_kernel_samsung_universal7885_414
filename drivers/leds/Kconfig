@@ -702,6 +702,13 @@ config LEDS_S2MPB02
 	help
 	  This option enables support for the LEDs on the S2MPB02.
 
+config LEDS_S2MU004_RGB
+	bool "RGB LED support for the S2MU004"
+	depends on LEDS_CLASS
+	help
+	 If you say yes here you will get support for
+	 for the S2MU004 RGB led chip.
+
 config LEDS_S2MU106_FLASH
 	bool "FLASH LED support for the S2MU106"
 	depends on (MFD_S2MU106) && I2C

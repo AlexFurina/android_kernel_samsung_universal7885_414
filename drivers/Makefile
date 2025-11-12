@@ -195,6 +195,9 @@ obj-$(CONFIG_SWITCH)     	+= switch/
 # Vibrator
 obj-y                           += vibrator/
 
+# Fingerprint
+obj-$(CONFIG_SENSORS_FINGERPRINT) += fingerprint/
+
 obj-$(CONFIG_VISION_SUPPORT)    += vision/
 
 obj-$(CONFIG_SEC_EXT)           += samsung/
@@ -205,6 +208,9 @@ obj-$(CONFIG_FIVE_TEE_DRIVER)	+= security/samsung/five_tee_driver/
 obj-$(CONFIG_ICD)		+= security/samsung/icdrv/
 #TZIC
 obj-y  += security/samsung/tzic/
+
+#Sensorhub
+obj-$(CONFIG_SENSORS_SSP)       += sensorhub/
 
 #Sensor
 obj-$(CONFIG_SENSORS)		+= sensors/

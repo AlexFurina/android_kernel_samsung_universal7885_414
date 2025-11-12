@@ -1645,9 +1645,9 @@ static int sec_ts_pinctrl_configure(struct sec_ts_data *ts, bool enable)
 
 static int sec_ts_power(void *data, bool on)
 {
-	/*struct sec_ts_data *ts = (struct sec_ts_data *)data;
+	struct sec_ts_data *ts = (struct sec_ts_data *)data;
 	const struct sec_ts_plat_data *pdata = ts->plat_data;
-	struct regulator *regulator_dvdd;
+	//struct regulator *regulator_dvdd;
 	struct regulator *regulator_avdd;
 	static bool enabled;
 	int ret = 0;
@@ -1662,13 +1662,13 @@ static int sec_ts_power(void *data, bool on)
 		return PTR_ERR(regulator_avdd);
 	}
 
-	regulator_dvdd = regulator_get(NULL, pdata->regulator_dvdd);
+/*	regulator_dvdd = regulator_get(NULL, pdata->regulator_dvdd);
 	if (IS_ERR(regulator_dvdd)) {
 		input_err(true, &ts->client->dev, "%s: Failed to get %s regulator.\n",
 			 __func__, pdata->regulator_dvdd);
 		return PTR_ERR(regulator_dvdd);
 	}
-
+*/
 	if (on) {
 		ret = regulator_enable(regulator_avdd);
 		if (ret) {
@@ -1676,28 +1676,30 @@ static int sec_ts_power(void *data, bool on)
 			return ret;
 		}
 
-		sec_ts_delay(1);
+/*		sec_ts_delay(1);
 
 		ret = regulator_enable(regulator_dvdd);
 		if (ret) {
 			input_err(true, &ts->client->dev, "%s: Failed to enable vdd: %d\n", __func__, ret);
 			return ret;
 		}
-
+*/
 		sec_ts_delay(5);
 	} else {
 		regulator_disable(regulator_avdd);
-		regulator_disable(regulator_dvdd);
+//		regulator_disable(regulator_dvdd);
 	}
 
-	input_info(true, &ts->client->dev, "%s: %s: avdd:%s, dvdd:%s\n", __func__, on ? "on" : "off",
-		regulator_is_enabled(regulator_avdd) ? "on" : "off",
-		regulator_is_enabled(regulator_dvdd) ? "on" : "off");
+//	input_info(true, &ts->client->dev, "%s: %s: avdd:%s, dvdd:%s\n", __func__, on ? "on" : "off",
+		//regulator_is_enabled(regulator_avdd) ? "on" : "off",
+		//regulator_is_enabled(regulator_dvdd) ? "on" : "off");
+	input_info(true, &ts->client->dev, "%s: %s: avdd:%s\n", __func__, on ? "on" : "off",
+		regulator_is_enabled(regulator_avdd) ? "on" : "off");
 
 	enabled = on;
 
 	regulator_put(regulator_avdd);
-	regulator_put(regulator_dvdd);*/
+//	regulator_put(regulator_dvdd);
 
 	return 0;
 }
@@ -1853,12 +1855,12 @@ static int sec_ts_parse_dt(struct i2c_client *client)
 	/*if (of_property_read_string(np, "sec,regulator_dvdd", &pdata->regulator_dvdd)) {
 		input_err(true, dev, "Failed to get regulator_dvdd name property\n");
 		return -EINVAL;
-	}
+	}*/
 
 	if (of_property_read_string(np, "sec,regulator_avdd", &pdata->regulator_avdd)) {
 		input_err(true, dev, "Failed to get regulator_avdd name property\n");
 		return -EINVAL;
-	}*/
+	}
 
 	pdata->power = sec_ts_power;
 
