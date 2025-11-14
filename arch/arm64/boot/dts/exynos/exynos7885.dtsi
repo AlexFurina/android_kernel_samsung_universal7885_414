@@ -2068,14 +2068,11 @@
 		dfs_id = <ACPM_DVFS_FSYS>;
 	};
 
-	fmp: fmp {
-		compatible = "samsung,exynos-fmp";
-		// Not in 4.14
-/*		exynos,host-type = "mmc";
-		exynos-host = <&dwmmc_0>;*/
-		exynos,block-type = "mmcblk0p";
-		exynos,fips-block_offset = <5>;
-	};
+        fmp {
+                compatible = "samsung,exynos-fmp";
+                linux,phandle = <0x193>;
+                phandle = <0x193>;
+        };
 
 	/* Only in 4.4
 	smu_0: smu {

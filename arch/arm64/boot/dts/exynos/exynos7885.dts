@@ -3379,13 +3379,11 @@
 		phandle = <0x100>;
 	};
 
-	fmp {
-		compatible = "samsung,exynos-fmp";
-		exynos,block-type = "mmcblk0p";
-		exynos,fips-block_offset = <0x5>;
-		linux,phandle = <0x101>;
-		phandle = <0x101>;
-	};
+        fmp {
+                compatible = "samsung,exynos-fmp";
+                linux,phandle = <0x193>;
+                phandle = <0x193>;
+        };
 
 	dwmmc0@13500000 {
 		compatible = "samsung,exynos-dw-mshc";
@@ -5001,7 +4999,7 @@
 		devfreq_3 = "/devfreq_cam@17000050";
 		devfreq_4 = "/devfreq_aud@17000060";
 		devfreq_5 = "/devfreq_fsys@17000070";
-		fmp = "/fmp";
+		fmp_0 = "/fmp";
 		dwmmc_0 = "/dwmmc0@13500000";
 		dwmmc_1 = "/dwmmc1@13510000";
 		dwmmc_2 = "/dwmmc2@13550000";
