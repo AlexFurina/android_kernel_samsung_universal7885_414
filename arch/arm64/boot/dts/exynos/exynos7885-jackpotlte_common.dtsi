@@ -685,6 +685,39 @@
 		udc = <&udc>;
 	};
 
+	spi_2: spi@13920000 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		num-cs = <1>;
+
+		/delete-property/ dma-mode;
+		/delete-property/ dmas;
+		/delete-property/ dma-names;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&spi2_bus &spi2_bus_clk &spi2_cs>;
+		status = "okay";
+
+		dbmd4_spi: dbmd4_interface@0 {
+			compatible = "dspg,dbmd4-spi";
+			reg = <0x0>;
+			spi-max-frequency = <1000000>;
+			read-chunk-size = <0x2000>;
+			write-chunk-size = <0x40000>;
+
+			interrupts = <2 0 0>;
+			interrupt-parent = <&gpa0>;
+
+			gpio-controller;
+			#gpio-cells = <2>;
+
+			controller-data {
+				cs-gpio = <&gpc2 2 0>;
+				samsung,spi-feedback-delay = <0>;
+			};
+		};
+	};
+
 	dbmdx_event {
 		status = "okay";
 		compatible = "samsung,dbmdx-event";
@@ -1228,6 +1261,63 @@ or "hsi2c0_hsi2c1" or "uart_hsi2c1"
 		samsung,pin-pud = <3>;
 		samsung,pin-pud-pdn = <0>;
 		samsung,pin-drv = <0>;
+	};
+
+	pinctrl@139B0000 {
+		ssp_ap_int: ssp-ap-int {
+			samsung,pins = "gpg1-6";
+			samsung,pin-function = <1>;
+			samsung,pin-pud = <3>;
+			samsung,pin-drv = <3>;
+		};
+		ssp_boot0: ssp-boot0 {
+			samsung,pins = "gpg1-3";
+			samsung,pin-function = <1>;
+			samsung,pin-pud = <1>;
+			samsung,pin-drv = <3>;
+		};
+		ssp_rst: ssp-rst {
+			samsung,pins = "gpg3-5";
+			samsung,pin-function = <1>;
+			samsung,pin-pud = <1>;
+			samsung,pin-drv = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+
+		spi4_clk: spi4-clk {
+			samsung,pins = "gpp8-1";
+			samsung,pin-function = <2>;
+			samsung,pin-pud = <1>;
+			samsung,pin-drv = <2>;
+		};
+		spi4_miso: spi4-miso {
+			samsung,pins = "gpp7-0";
+			samsung,pin-function = <2>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <2>;
+		};
+		spi4_mosi: spi4-mosi {
+			samsung,pins = "gpp7-1";
+			samsung,pin-function = <2>;
+			samsung,pin-pud = <1>;
+			samsung,pin-drv = <2>;
+		};
+	};
+
+	pinctrl@11CB0000 {
+		ssp_mcu_int1: ssp-mcu-int1 {
+			samsung,pins = "gpa1-2";
+			samsung,pin-function = <0>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <0>;
+		};
+
+		ssp_mcu_int2: ssp-mcu-int2 {
+			samsung,pins = "gpa1-3";
+			samsung,pin-function = <0>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <0>;
+		};
 	};
 
 	aud_dmic_on: aud_dmic_on {
