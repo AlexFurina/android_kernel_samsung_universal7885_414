@@ -1440,6 +1440,8 @@ static const struct of_device_id samsung_pinctrl_dt_match[] = {
 		.data = &exynos7_of_data },
 	{ .compatible = "samsung,exynos9610-pinctrl",
 		.data = &exynos9610_of_data },
+        { .compatible = "samsung,exynos7885-pinctrl",
+                .data = &exynos7885_of_data },
 
 #endif
 #ifdef CONFIG_PINCTRL_S3C64XX
@@ -1864,5 +1866,31 @@ static struct gpio_dvs_t exynos9610_secgpio_dvs = {
 const struct secgpio_dvs_data exynos9610_secgpio_dvs_data __initconst = {
 	.gpio_dvs = &exynos9610_secgpio_dvs,
 	.get_nr_gpio = exynos9610_secgpio_get_nr_gpio,
+};
+
+static int __init exynos7885_secgpio_get_nr_gpio(void)
+{
+        unsigned int i, j;
+        int nr_gpio = 0;
+        const struct samsung_pin_ctrl *pin_ctrl = exynos7885_of_data.ctrl;
+        unsigned int num_ctrl = exynos7885_of_data.num_ctrl;
+
+        for (i = 0; i < num_ctrl; i++) {
+                for (j = 0; j < pin_ctrl[i].nr_banks; j++)
+                        nr_gpio += pin_ctrl[i].pin_banks[j].nr_pins;
+        }
+
+        return nr_gpio;
+}
+
+static struct gpio_dvs_t exynos7885_secgpio_dvs = {
+        .result = &gpiomap_result,
+        .check_gpio_status = check_gpio_status,
+        .skip_grps = "gpb",
+};
+
+const struct secgpio_dvs_data exynos7885_secgpio_dvs_data __initconst = {
+        .gpio_dvs = &exynos7885_secgpio_dvs,
+        .get_nr_gpio = exynos7885_secgpio_get_nr_gpio,
 };
 #endif /* CONFIG_SEC_GPIO_DVS */
