@@ -22,4 +22,14 @@ config SENSORS_ET7XX
 	help
 	  If you say yes here you get support for Egistec's
 	  fingerprint sensor ET7XX.
+
+config SENSORS_FP_SPI_NUMBER
+	depends on SENSORS_FINGERPRINT && SPI_S3C64XX
+	int "Fingerprint spi port number"
+	default -1
+
+config SENSORS_FP_USI_NUMBER
+	depends on SENSORS_FINGERPRINT && USI_V2
+	int "Fingerprint usi gpio number"
+	default 0
 endif

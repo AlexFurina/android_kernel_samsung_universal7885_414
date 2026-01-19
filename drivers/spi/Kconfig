@@ -759,12 +759,6 @@ config SPI_ZYNQMP_GQSPI
 	help
 	  Enables Xilinx GQSPI controller driver for Zynq UltraScale+ MPSoC.
 
-config SENSORS_FP_SPI_NUMBER
-	int "Fingerprint spi port number"
-	default -1
-	help
-	  Exclude setting of the Fingerprint Sensor
-
 #
 # Add new SPI master controllers in alphabetical order above this line
 #
