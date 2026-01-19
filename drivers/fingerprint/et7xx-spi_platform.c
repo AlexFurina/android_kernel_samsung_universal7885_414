@@ -40,13 +40,13 @@ int et7xx_register_platform_variable(struct et7xx_data *etspi)
 
 	pr_info("Entry\n");
 #ifdef ENABLE_SENSORS_FPRINT_SECURE
-	etspi->fp_spi_pclk = devm_clk_get(etspi->dev, "gate_spi_clk");
+	etspi->fp_spi_pclk = devm_clk_get(etspi->dev, "spi");
 	if (IS_ERR(etspi->fp_spi_pclk)) {
 		pr_err("Can't get gate_spi_clk\n");
 		return PTR_ERR(etspi->fp_spi_pclk);
 	}
 
-	etspi->fp_spi_sclk = devm_clk_get(etspi->dev, "ipclk_spi");
+	etspi->fp_spi_sclk = devm_clk_get(etspi->dev, "spi_busclk0");
 	if (IS_ERR(etspi->fp_spi_sclk)) {
 		pr_err("Can't get ipclk_spi\n");
 		return PTR_ERR(etspi->fp_spi_sclk);
