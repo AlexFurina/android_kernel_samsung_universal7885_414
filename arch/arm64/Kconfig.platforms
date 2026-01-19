@@ -58,6 +58,13 @@ config ARCH_BRCMSTB
 	help
 	  This enables support for Broadcom's ARMv8 Set Top Box SoCs
 
+config ARCH_EXYNOS7
+        bool "SAMSUNG EXYNOS7"
+        select HAVE_ARM_SCU if SMP
+        select HAVE_SMP
+        help
+          Samsung EXYNOS7 (A57/A53) SoC based systems
+
 config ARCH_EXYNOS
 	bool "ARMv8 based Samsung Exynos SoC family"
 	select COMMON_CLK_SAMSUNG
@@ -293,6 +300,27 @@ config ARCH_EXYNOS9
 	select HAVE_SMP
 	help
 	  Samsung EXYNOS9 (Meercat/Ananke) SoC based systems
+
+config SOC_EXYNOS7885
+	bool "Samsung EXYNOS7885"
+	select ARCH_EXYNOS
+	select ARCH_HAS_CPUFREQ
+	select HAVE_S3C2410_I2C if I2C
+	select HAVE_S3C2410_WATCHDOG if WATCHDOG
+	select HAVE_S3C_RTC if RTC_CLASS
+	select ARCH_SUPPORTS_MSI
+	select ARM_AMBA
+	select SAMSUNG_DMADEV
+	select CLKSRC_OF
+	select USE_OF
+	select COMMON_CLK_SAMSUNG
+	select CLKSRC_EXYNOS_MCT
+	select PINCTRL
+
+config SOC_EXYNOS7884A
+        bool "Samsung EXYNOS7884A"
+        help
+          This enables support for Lassen (A73/A53)
 
 endmenu
 endmenu
