@@ -42,6 +42,10 @@
 /* maximum number of the memory resources */
 #define	SAMSUNG_PINCTRL_NUM_RESOURCES	2
 
+#if defined(ENABLE_SENSORS_FPRINT_SECURE)
+extern int fps_resume_set(void);
+#endif
+
 /* list of all possible config options supported */
 static struct pin_config {
 	const char *property;
@@ -1317,6 +1321,10 @@ static void samsung_pinctrl_resume_dev(struct samsung_pinctrl_drv_data *drvdata)
 		/* Registers without a powerdown config aren't lost */
 		if (!widths[PINCFG_TYPE_CON_PDN])
 			continue;
+
+#if defined(ENABLE_SENSORS_FPRINT_SECURE)
+		fps_resume_set();
+#endif
 
 		if (widths[PINCFG_TYPE_FUNC] * bank->nr_pins > 32) {
 			/* Some banks have two config registers */

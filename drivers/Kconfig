@@ -236,4 +236,6 @@ source "drivers/sensors/Kconfig"
 
 source "drivers/vibrator/Kconfig"
 
+source "drivers/fingerprint/Kconfig"
+
 endmenu
