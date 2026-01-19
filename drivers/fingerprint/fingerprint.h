@@ -56,4 +56,12 @@ enum {
 	DETECT_ADM,			/* Always on Detect Mode */
 };
 
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+#define MC_FC_FP_PM_SUSPEND ((uint32_t)(0x83000021))
+#define MC_FC_FP_PM_RESUME ((uint32_t)(0x83000022))
+#define MC_FC_FP_PM_SUSPEND_RETAIN ((uint32_t)(0x83000026))
+#define MC_FC_FP_CS_SET ((uint32_t)(0x83000027))
+#define MC_FC_FP_PM_SUSPEND_CS_HIGH ((uint32_t)(0x83000028))
+#endif
+
 #endif
