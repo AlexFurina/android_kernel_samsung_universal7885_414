@@ -968,6 +968,9 @@ static void exynos9610_tmu_set_emulation(struct exynos_tmu_data *data,
 	writel(val, data->base + emul_con);
 }
 
+#define exynos9810_tmu_set_emulation NULL
+#define exynos9610_tmu_set_emulation NULL
+#define exynos8895_tmu_set_emulation NULL
 static int exynos_tmu_set_emulation(void *drv_data, int temp)
 {
 	struct exynos_tmu_data *data = drv_data;
