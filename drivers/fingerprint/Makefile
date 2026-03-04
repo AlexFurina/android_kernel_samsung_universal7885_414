@@ -9,3 +9,4 @@ ccflags-y := -DENABLE_SENSORS_FPRINT_SECURE
 obj-$(CONFIG_SENSORS_FINGERPRINT)		+= fingerprint_sysfs.o
 obj-$(CONFIG_SENSORS_ET5XX)			+= et5xx-spi.o et5xx-spi_data_transfer.o
 obj-$(CONFIG_SENSORS_ET7XX)			+= et7xx-spi.o et7xx-spi_data_transfer.o et7xx-spi_platform.o
+obj-$(CONFIG_SENSORS_GW32X)			+= gf_common.o gf_platform.o
