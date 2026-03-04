@@ -23,6 +23,12 @@ config SENSORS_ET7XX
 	  If you say yes here you get support for Egistec's
 	  fingerprint sensor ET7XX.
 
+config SENSORS_GW32X
+	tristate "generic goodix fingerprint driver"
+	default n
+	help
+	  add support for goodix fingerprint driver.
+
 config SENSORS_FP_SPI_NUMBER
 	depends on SENSORS_FINGERPRINT && SPI_S3C64XX
 	int "Fingerprint spi port number"

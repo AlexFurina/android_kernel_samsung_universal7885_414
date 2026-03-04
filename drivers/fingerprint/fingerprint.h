@@ -25,6 +25,16 @@
 /* fingerprint debug timer */
 #define FPSENSOR_DEBUG_TIMER_SEC (10 * HZ)
 
+#if defined(ENABLE_SENSORS_FPRINT_SECURE) && defined(CONFIG_TZDEV)
+#define FP_CSMC_HANDLER_ID 0xB2000201
+#define FP_HANDLER_MAIN 100
+
+enum fp_control_case {
+	FP_SET_POWEROFF = 1,//fp_set_poweroff_regs
+	FP_SET_POWERON_INACTIVE,
+};
+#endif
+
 #if defined(CONFIG_FINGERPRINT_SECURE) && !defined(CONFIG_SEC_FACTORY)
 #define ENABLE_SENSORS_FPRINT_SECURE
 #endif
