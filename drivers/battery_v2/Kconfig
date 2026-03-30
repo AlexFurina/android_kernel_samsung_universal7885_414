@@ -672,17 +672,3 @@ config A10_FACTORY_MAX_SOC
 	default n
 	help
 	  Say Y to enable  maximum store mode SOC in factory binary
-
-config LSI_AGING_FUELGAUGE
-	bool "enable LSI fuelgauge specific aging features"
-	default n
-	help
-	  Say Y to enable LSI fuelgauge aging features which 
-	  are different from other solutions
-
-config LSI_IFPMIC
-	bool "enable LSI IFPMIC specific factory mode features"
-	default n
-	help
-	  Say Y to enable LSI IFPMIC factory mode features which
-	  are different from other solutions

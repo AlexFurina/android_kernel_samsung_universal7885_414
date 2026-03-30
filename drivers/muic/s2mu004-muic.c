@@ -36,15 +36,15 @@
 #include <linux/muic/s2mu004-muic.h>
 #include <linux/muic/s2mu004-muic-sysfs.h>
 
-#include "../battery_v2/include/sec_charging_common.h"
+#include <linux/battery/sec_charging_common.h>
 #include <linux/power_supply.h>
-#include <linux/usb/typec/slsi/s2mu004/usbpd-s2mu004.h>
+#include <linux/ccic/usbpd-s2mu004.h>
 #include <linux/muic/s2mu004-muic-hv.h>
 
 #include <linux/sec_debug.h>
 #include <linux/sec_ext.h>
 #include <linux/muic/muic_notifier.h>
-#include <linux/usb/typec/common/pdic_notifier.h>
+#include <linux/ccic/ccic_notifier.h>
 #include <linux/usb_notify.h>
 #include <linux/muic/muic_interface.h>
 #include <linux/sec_batt.h>
@@ -61,9 +61,6 @@
 #if IS_ENABLED(CONFIG_MUIC_SUPPORT_CCIC)
 #include <linux/fb.h>
 #endif
-
-extern void s2mu004_if_change_afc_voltage(void *mdata, int tx_data);
-extern int s2mu004_if_afc_set_voltage(void *mdata, int vol);
 
 #define ENUM_STR(x) {case(x): return #x; }
 static const char *mode_to_str(enum s2mu004_muic_mode n)
@@ -500,7 +497,7 @@ static void s2mu004_if_set_cable_state(void *mdata, muic_attached_dev_t new_dev)
 		} else if (muic_data->jig_state)
 			muic_data->jig_state = false;
 
-		if (muic_core_get_pdic_cable_state(muic_data->pdata)) {
+		if (muic_core_get_ccic_cable_state(muic_data->pdata)) {
 			pdata->attached_dev = ATTACHED_DEV_NONE_MUIC;
 			muic_core_handle_detach(muic_data->pdata);
 		}
@@ -1813,7 +1810,7 @@ static int s2mu004_muic_detect_with_ccic(struct s2mu004_muic_data *muic_data,
 		* Since the vbvolt can be set in case of the array,
 		* this first attach should be running only when it's not the array status.
 		*/
-		if ((muic_if->opmode & OPMODE_PDIC) && ((adc == ADC_GND) || vbvolt)) {
+		if ((muic_if->opmode & OPMODE_CCIC) && ((adc == ADC_GND) || vbvolt)) {
 			pr_info("%s change mode to first attach!\n", __func__);
 			*intr = MUIC_INTR_ATTACH;
 			*new_dev = ATTACHED_DEV_TYPE3_MUIC;
@@ -2276,7 +2273,7 @@ static void s2mu004_muic_detect_dev(struct s2mu004_muic_data *muic_data)
 		return;
 
 #if defined(CONFIG_MUIC_MANAGER)
-	if (!(muic_if->opmode & OPMODE_PDIC)) {
+	if (!(muic_if->opmode & OPMODE_CCIC)) {
 		s2mu004_muic_detect_jig_dev_type(muic_data,	read_val, vbvolt, &intr, &new_dev);
 	}
 #endif
@@ -2304,8 +2301,8 @@ jig:
 		if (muic_data->attach_mode == S2MU004_SECOND_ATTACH)
 			return;
 #ifdef	CONFIG_MUIC_MANAGER
-		if (muic_if->opmode & OPMODE_PDIC) {
-			if (muic_core_get_pdic_cable_state(muic_data->pdata) && (muic_if->is_pdic_attached == true)) {
+		if (muic_if->opmode & OPMODE_CCIC) {
+			if (muic_core_get_ccic_cable_state(muic_data->pdata) && (muic_if->is_ccic_attached == true)) {
 				pr_info("[muic] %s, skipped handle detach!\n", __func__);
 				return;
 			}
@@ -2335,7 +2332,7 @@ static int s2mu004_muic_check_irq_exeptions(struct s2mu004_muic_data *muic_data,
 {
 #if !IS_ENABLED(CONFIG_SEC_FACTORY)
 	if ((irq_num == S2MU004_MUIC_IRQ2_VBUS_OFF) &&
-		(muic_if->opmode & OPMODE_PDIC) &&
+		(muic_if->opmode & OPMODE_CCIC) &&
 		!muic_data->jig_state &&
 		s2mu004_muic_get_otg_state())
 		MUIC_SEND_NOTI_TO_CCIC_ATTACH(ATTACHED_DEV_CHECK_OCP);
@@ -2344,7 +2341,7 @@ static int s2mu004_muic_check_irq_exeptions(struct s2mu004_muic_data *muic_data,
 #if !IS_ENABLED(CONFIG_NONE_WATERPROOF_MODEL)
 	if (((adc > 0 && adc < ADC_OPEN) || (adc & 0x80))
 		&& !muic_data->re_detect && !vbvolt
-		&& (muic_if->opmode & OPMODE_PDIC)
+		&& (muic_if->opmode & OPMODE_CCIC)
 		&& ((irq_num == S2MU004_MUIC_IRQ2_ADC_CHANGE)
 			|| (irq_num == S2MU004_MUIC_IRQ1_ATTATCH))) {
 		adc = s2mu004_muic_water_judge(muic_data);
@@ -2363,7 +2360,7 @@ static int s2mu004_muic_check_irq_exeptions(struct s2mu004_muic_data *muic_data,
 		__func__, adc, vbvolt, irq_num);
 	adc &= ADC_MASK;
 	if (((irq_num == S2MU004_MUIC_IRQ2_ADC_CHANGE) || (irq_num == S2MU004_MUIC_IRQ1_ATTATCH))
-			&& !vbvolt && adc != ADC_GND && (muic_if->opmode & OPMODE_PDIC)) {
+			&& !vbvolt && adc != ADC_GND && (muic_if->opmode & OPMODE_CCIC)) {
 		pr_info("%s:%d adc : 0x%X, water_status : %d, vbvolt : %d\n",
 					__func__, __LINE__, adc, muic_data->water_status, vbvolt);
 #if !IS_ENABLED(CONFIG_NONE_WATERPROOF_MODEL)
@@ -3012,8 +3009,6 @@ static void s2mu004_muic_init_interface(struct s2mu004_muic_data *muic_data,
 	muic_if->check_afc_ready = s2mu004_if_check_afc_ready;
 	muic_if->reset_afc_register = s2mu004_if_reset_afc_register;
 	muic_if->set_afc_ready = s2mu004_if_set_afc_ready;
-	muic_if->change_afc_voltage = s2mu004_if_change_afc_voltage;
-	muic_if->afc_set_voltage = s2mu004_if_afc_set_voltage;
 #endif
 	muic_if->check_usb_killer = s2mu004_if_check_usb_killer;
 #if defined(CONFIG_CCIC_S2MU004)
@@ -3139,12 +3134,12 @@ static int s2mu004_muic_probe(struct platform_device *pdev)
 		goto fail_init_gpio;
 	}
 
-/*	ret = s2mu004_muic_init_sysfs(muic_data);
+	ret = s2mu004_muic_init_sysfs(muic_data);
 	if (ret) {
 		pr_err("failed to create sysfs\n");
 		goto fail_init_sysfs;
 	}
-*/
+
 	ret = s2mu004_init_rev_info(muic_data);
 	if (ret) {
 		pr_err("failed to init muic(%d)\n", ret);
@@ -3218,7 +3213,7 @@ static int s2mu004_muic_probe(struct platform_device *pdev)
 	s2mu004_muic_irq_thread(-1, muic_data);
 
 #if IS_ENABLED(CONFIG_NONE_WATERPROOF_MODEL)
-	if (muic_if->opmode & OPMODE_PDIC) {
+	if (muic_if->opmode & OPMODE_CCIC) {
 		cancel_delayed_work(&muic_data->bad_cable_checker);
 		schedule_delayed_work(&muic_data->bad_cable_checker,
 			msecs_to_jiffies(3000));
@@ -3237,7 +3232,7 @@ fail:
 #ifdef CONFIG_SEC_SYSFS
 	s2mu004_muic_deinit_sysfs(muic_data);
 #endif
-//fail_init_sysfs:
+fail_init_sysfs:
 fail_init_gpio:
 	mutex_destroy(&muic_data->muic_mutex);
 #if IS_ENABLED(CONFIG_MUIC_MANAGER)

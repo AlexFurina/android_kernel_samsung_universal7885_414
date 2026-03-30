@@ -1,7 +1,7 @@
 /*
  * s2mu106_charger.h - Header of S2MU106 Charger Driver
  *
- * Copyright (C) 2020 Samsung Electronics Co.Ltd
+ * Copyright (C) 2016 Samsung Electronics Co.Ltd
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -28,8 +28,6 @@
 #endif /* CONFIG_MUIC_NOTIFIER */
 
 #include "../sec_charging_common.h"
-
-extern bool mfc_fw_update;
 
 /* define function if need */
 #define ENABLE_MIVR 0
@@ -94,6 +92,45 @@ extern bool mfc_fw_update;
 #define S2MU106_CHG_CTRL23		0x2F
 #define S2MU106_CHG_CTRL24		0x30
 
+
+/* S2MU106_CHG_CTRL0 */
+#define REG_MODE_SHIFT		0
+#define REG_MODE_WIDTH		4
+#define REG_MODE_MASK		MASK(REG_MODE_WIDTH, REG_MODE_SHIFT)
+
+#define CHARGER_OFF_MODE	0
+#define BUCK_MODE		1
+#define BST_MODE		2
+#define CHG_MODE		3
+#define OTG_BST_MODE		6
+
+/* S2MU106_CHG_CTRL1 */
+#define INPUT_CURRENT_LIMIT_SHIFT	0
+#define INPUT_CURRENT_LIMIT_WIDTH	7
+#define INPUT_CURRENT_LIMIT_MASK	MASK(INPUT_CURRENT_LIMIT_WIDTH,\
+					INPUT_CURRENT_LIMIT_SHIFT)
+
+/* S2MU106_CHG_CTRL5 */
+#define SET_VF_VBAT_SHIFT	0
+#define SET_VF_VBAT_WIDTH	7
+#define SET_VF_VBAT_MASK	MASK(SET_VF_VBAT_WIDTH, SET_VF_VBAT_SHIFT)
+
+/* S2MU106_CHG_CTRL7 */
+#define FAST_CHARGING_CURRENT_SHIFT	0
+#define FAST_CHARGING_CURRENT_WIDTH	6
+#define FAST_CHARGING_CURRENT_MASK	MASK(FAST_CHARGING_CURRENT_WIDTH,\
+					FAST_CHARGING_CURRENT_SHIFT)
+/* S2MU106_CHG_CTRL10 */
+#define FIRST_TOPOFF_CURRENT_SHIFT	4
+#define FIRST_TOPOFF_CURRENT_WIDTH	4
+#define FIRST_TOPOFF_CURRENT_MASK	MASK(FIRST_TOPOFF_CURRENT_WIDTH,\
+					FIRST_TOPOFF_CURRENT_SHIFT)
+
+#define SECOND_TOPOFF_CURRENT_SHIFT	0
+#define SECOND_TOPOFF_CURRENT_WIDTH	4
+#define SECOND_TOPOFF_CURRENT_MASK	MASK(SECOND_TOPOFF_CURRENT_WIDTH,\
+					SECOND_TOPOFF_CURRENT_SHIFT)
+
 /* S2MU106_CHG_STATUS0 */
 #define WCIN_STATUS_SHIFT	4
 #define WCIN_STATUS_WIDTH	3
@@ -154,31 +191,7 @@ extern bool mfc_fw_update;
 #define IVR_STATUS_SHIFT	3
 #define IVR_STATUS_MASK		BIT(IVR_STATUS_SHIFT)
 
-#define IVR_M_SHIFT	1
-#define IVR_M_MASK	BIT(IVR_M_SHIFT)
-#define IVR_STATUS	0x08
-
-/* S2MU106_CHG_CTRL0 */
-#define REG_MODE_SHIFT		0
-#define REG_MODE_WIDTH		4
-#define REG_MODE_MASK		MASK(REG_MODE_WIDTH, REG_MODE_SHIFT)
-
-#define CHARGER_OFF_MODE	0
-#define BUCK_MODE		1
-#define BST_MODE		2
-#define CHG_MODE		3
-#define OTG_BST_MODE		6
-
-/* S2MU106_CHG_CTRL1, S2MU106_CHG_CTRL2 */
-#define INPUT_CURRENT_LIMIT_SHIFT	0
-#define INPUT_CURRENT_LIMIT_WIDTH	7
-#define INPUT_CURRENT_LIMIT_MASK	MASK(INPUT_CURRENT_LIMIT_WIDTH,\
-					INPUT_CURRENT_LIMIT_SHIFT)
-
 /* S2MU106_CHG_CTRL3 */
-#define SEL_PRIO_WCIN_SHIFT		6
-#define SEL_PRIO_WCIN_SHIFT_MASK	BIT(SEL_PRIO_WCIN_SHIFT)
-
 #define OTG_OCP_SW_ON_SHIFT		5
 #define OTG_OCP_SW_ON_MASK		BIT(OTG_OCP_SW_ON_SHIFT)
 
@@ -189,15 +202,7 @@ extern bool mfc_fw_update;
 #define SET_OTG_OCP_WIDTH	2
 #define SET_OTG_OCP_MASK	MASK(SET_OTG_OCP_WIDTH, SET_OTG_OCP_SHIFT)
 
-#define SET_TX_OCP_SHIFT	0
-#define SET_TX_OCP_WIDTH	2
-#define SET_TX_OCP_MASK	MASK(SET_TX_OCP_WIDTH, SET_TX_OCP_SHIFT)
-
 /* S2MU106_CHG_CTRL5 */
-#define SET_VF_VBAT_SHIFT	0
-#define SET_VF_VBAT_WIDTH	7
-#define SET_VF_VBAT_MASK	MASK(SET_VF_VBAT_WIDTH, SET_VF_VBAT_SHIFT)
-
 #define SET_CHGIN_IVR_SHIFT	2
 #define SET_CHGIN_IVR_WIDTH	2
 #define SET_CHGIN_IVR_MASK	MASK(SET_CHGIN_IVR_WIDTH,\
@@ -207,19 +212,6 @@ extern bool mfc_fw_update;
 #define SET_WCIN_IVR_WIDTH	2
 #define SET_WCIN_IVR_MASK	MASK(SET_WCIN_IVR_WIDTH,\
 				SET_WCIN_IVR_SHIFT)
-
-/* S2MU106_CHG_CTRL6 */
-#define COOL_CHARGING_CURRENT_SHIFT	0
-#define COOL_CHARGING_CURRENT_WIDTH	6
-#define COOL_CHARGING_CURRENT_MASK	MASK(COOL_CHARGING_CURRENT_WIDTH,\
-					COOL_CHARGING_CURRENT_SHIFT)
-
-/* S2MU106_CHG_CTRL7 */
-#define FAST_CHARGING_CURRENT_SHIFT	0
-#define FAST_CHARGING_CURRENT_WIDTH	6
-#define FAST_CHARGING_CURRENT_MASK	MASK(FAST_CHARGING_CURRENT_WIDTH,\
-					FAST_CHARGING_CURRENT_SHIFT)
-
 /* S2MU106_CHG_CTRL8 */
 #define SET_VSYS_SHIFT	0
 #define SET_VSYS_WIDTH	3
@@ -229,28 +221,11 @@ extern bool mfc_fw_update;
 #define EN_JIG_REG_AP_WIDTH		1
 #define EN_JIG_REG_AP_MASK	MASK(EN_JIG_REG_AP_WIDTH, EN_JIG_REG_AP_SHIFT)
 
-/* S2MU106_CHG_CTRL9 */
-#define SET_BAT_OCP_SHIFT	0
-#define SET_BAT_OCP_WIDTH	3
-#define SET_BAT_OCP_MASK	MASK(SET_BAT_OCP_WIDTH, SET_BAT_OCP_SHIFT)
-
-#define BAT_OCP_QBATOFF_MASK	0x10
-
-/* S2MU106_CHG_CTRL10 */
-#define FIRST_TOPOFF_CURRENT_SHIFT	4
-#define FIRST_TOPOFF_CURRENT_WIDTH	4
-#define FIRST_TOPOFF_CURRENT_MASK	MASK(FIRST_TOPOFF_CURRENT_WIDTH,\
-					FIRST_TOPOFF_CURRENT_SHIFT)
-
-#define SECOND_TOPOFF_CURRENT_SHIFT	0
-#define SECOND_TOPOFF_CURRENT_WIDTH	4
-#define SECOND_TOPOFF_CURRENT_MASK	MASK(SECOND_TOPOFF_CURRENT_WIDTH,\
-					SECOND_TOPOFF_CURRENT_SHIFT)
-
-/* S2MU106_CHG_CTRL11 */
-#define SET_VF_BOOST_SHIFT	0
-#define SET_VF_BOOST_WIDTH	8
-#define SET_VF_BOOST_MASK	MASK(SET_VF_BOOST_WIDTH, SET_VF_BOOST_SHIFT)
+/* S2MU106_CHG_CTRL6 */
+#define COOL_CHARGING_CURRENT_SHIFT	0
+#define COOL_CHARGING_CURRENT_WIDTH	6
+#define COOL_CHARGING_CURRENT_MASK	MASK(COOL_CHARGING_CURRENT_WIDTH,\
+					COOL_CHARGING_CURRENT_SHIFT)
 
 /* S2MU106_CHG_CTRL12 */
 #define WDT_TIME_SHIFT        1
@@ -276,11 +251,19 @@ extern bool mfc_fw_update;
 #define TOP_OFF_TIME_WIDTH    3
 #define TOP_OFF_TIME_MASK    MASK(TOP_OFF_TIME_WIDTH, TOP_OFF_TIME_SHIFT)
 
+#define IVR_M_SHIFT	1
+#define IVR_M_MASK	BIT(IVR_M_SHIFT)
+#define IVR_STATUS	0x08
+
 #define REDUCE_CURRENT_STEP         25
 #define MINIMUM_INPUT_CURRENT           300
 #define SLOW_CHARGING_CURRENT_STANDARD      400
 
 #define FAKE_BAT_LEVEL          50
+
+enum {
+	CHIP_ID = 0,
+};
 
 ssize_t s2mu106_chg_show_attrs(struct device *dev,
 		struct device_attribute *attr, char *buf);
@@ -332,41 +315,21 @@ enum {
 };
 
 enum {
-	S2MU106_SET_OTG_TX_OCP_500mA   = 0x0,
-	S2MU106_SET_OTG_TX_OCP_900mA   = 0x1,
-	S2MU106_SET_OTG_TX_OCP_1200mA  = 0x2,
-	S2MU106_SET_OTG_TX_OCP_1500mA  = 0x3,
-};
-
-enum {
-	S2MU106_SET_BAT_OCP_3500mA	= 0x0,
-	S2MU106_SET_BAT_OCP_4000mA	= 0x1,
-	S2MU106_SET_BAT_OCP_4500mA	= 0x2,
-	S2MU106_SET_BAT_OCP_5000mA	= 0x3,
-	S2MU106_SET_BAT_OCP_5500mA	= 0x4,
-	S2MU106_SET_BAT_OCP_6000mA	= 0x5,
-	S2MU106_SET_BAT_OCP_6500mA	= 0x6,
-	S2MU106_SET_BAT_OCP_7000mA	= 0x7,
+	S2MU106_SET_OTG_OCP_500mA   = 0x0,
+	S2MU106_SET_OTG_OCP_900mA   = 0x1,
+	S2MU106_SET_OTG_OCP_1200mA  = 0x2,
+	S2MU106_SET_OTG_OCP_1500mA  = 0x3,
 };
 
 typedef struct s2mu106_charger_platform_data {
 	int chg_float_voltage;
 	char *charger_name;
 	char *fuelgauge_name;
-	char *wireless_charger_name;
 	bool chg_eoc_dualpath;
-	bool chg_ocp_disable;
-	bool chg_sido_ovp;
-	int mrstbtmr_factory;
-	int vsys_factory;
-	bool always_vssh_ldo_en;
 	int recharge_vcell;
 	uint32_t is_1MHz_switching:1;
 	int chg_switching_freq;
 	int slow_charging_current;
-	int wireless_cc_cv;
-	bool block_otg_psk_mode_en;
-	bool reduce_async_debounce_time;
 } s2mu106_charger_platform_data_t;
 
 
@@ -376,19 +339,13 @@ struct s2mu106_charger_data {
 	struct s2mu106_platform_data *s2mu106_pdata;
 	struct delayed_work otg_vbus_work;
 	struct delayed_work ivr_work;
-	struct delayed_work pmeter_3lv_work;
-	struct delayed_work pmeter_2lv_work;
 	struct wake_lock ivr_wake_lock;
-	struct delayed_work wc_current_work;
-	struct wake_lock wc_current_wake_lock;
 
 	struct workqueue_struct *charger_wqueue;
 	struct power_supply *psy_chg;
 	struct power_supply_desc psy_chg_desc;
 	struct power_supply *psy_otg;
 	struct power_supply_desc psy_otg_desc;
-	struct power_supply *psy_bat;
-	struct power_supply *psy_fg;
 
 	s2mu106_charger_platform_data_t *pdata;
 	int dev_id;
@@ -397,8 +354,8 @@ struct s2mu106_charger_data {
 	int topoff_current;
 	int cable_type;
 	bool is_charging;
-	unsigned int charge_mode;
 	struct mutex charger_mutex;
+
 
 	bool ovp;
 	bool otg_on;
@@ -422,11 +379,11 @@ struct s2mu106_charger_data {
 	int irq_bat;
 	int irq_ivr;
 
+	int charge_mode;
+
 	int irq_ivr_enabled;
 	int ivr_on;
 	bool slow_charging;
-	int wc_current;
-	int wc_pre_current;
 
 	/* efficiency 9V charging */
 	unsigned char reg_0x9E;
@@ -434,9 +391,7 @@ struct s2mu106_charger_data {
 #if defined(CONFIG_MUIC_NOTIFIER)
 	struct notifier_block cable_check;
 #endif
-	bool uno_on;
 	struct mutex regmode_mutex;
-	u8 read_reg;
 };
 
 #endif /*S2MU106_CHARGER_H*/
