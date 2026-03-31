@@ -16,3 +16,5 @@ obj-$(and $(CONFIG_SMCDSD_LCD_DEBUG),$(subst undefined,y,$(origin CONFIG_SAMSUNG
 obj-$(CONFIG_EXYNOS_DECON_LCD_HX83102D_A10EU)	+= hx83102d_a10eu_lcd_ctrl.o
 obj-$(CONFIG_EXYNOS_DECON_LCD_S6E3FA7_JACKPOT2)	+= s6e3fa7_jackpot_lcd_ctrl.o dynamic_aid.o
 obj-$(CONFIG_EXYNOS_DECON_LCD_S6E3FA7_JACKPOT)	+= s6e3fa7_jackpot_lcd_ctrl.o dynamic_aid.o
+obj-$(CONFIG_EXYNOS_DECON_LCD_S6E8FC0_A40)	+= s6e8fc0_a40_lcd_ctrl.o
+obj-$(CONFIG_EXYNOS_DECON_LCD_S6D7AA0_XCOVER4S)	+= s6d7aa0_xcover4s_lcd_ctrl.o
