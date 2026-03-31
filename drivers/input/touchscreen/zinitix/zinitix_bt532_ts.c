@@ -34,7 +34,7 @@
 
 #include <linux/i2c/zinitix_bt532_ts.h>
 #include <linux/input/mt.h>
-#include <linux/sec_sysfs.h>
+#include <linux/sec_class.h>
 #include <linux/input/sec_cmd.h>
 #include <linux/of_gpio.h>
 #include <linux/firmware.h>
