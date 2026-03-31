@@ -20,6 +20,13 @@ fw-shipped-$(CONFIG_FIVE_TEE_DRIVER) += five/ffffffff000000000000000000000072.tl
 # Touchscreen Firmware
 fw-external-$(CONFIG_TOUCHSCREEN_HIMAX_INCELL) += tsp_himax/hx83102d_a20e.bin tsp_himax/hx83102d_a10eu.bin
 fw-external-$(CONFIG_TOUCHSCREEN_SEC_TS) += tsp_sec/y661_a5y18.fw tsp_sec/y661_a7y18.fw
+fw-external-$(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX) += tsp_zinitix/zt7538_xcover4s.fw
+fw-external-$(CONFIG_TOUCHSCREEN_ZINITIX_ZT75XX_TCLM) += tsp_zinitix/zt7548_a40.fw
+fw-external-$(CONFIG_TOUCHSCREEN_IST3038H) += tsp_imagis/ist3038h_a40.fw tsp_imagis/ist3038h_a40_cmcs.bin
+
+fw-external-$(CONFIG_SENSORS_A96T3X6) += abov/a96t346_xcover4s.fw
+fw-external-$(CONFIG_SENSORS_TC3XXK_A40) += coreriver/tc305k_a40_grip.fw
+fw-external-$(CONFIG_SENSORS_A96T3X6_A40) += abov/a96t346_a405f.fw abov/a96t346_a405s.fw
 
 quiet_cmd_ihex  = IHEX    $@
       cmd_ihex  = $(OBJCOPY) -Iihex -Obinary $< $@
