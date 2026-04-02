@@ -153,6 +153,9 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_TAS5720 if I2C
 	select SND_SOC_TFA9872 if I2C
 	select SND_SOC_TFA9879 if I2C
+	select SND_SOC_TFA9896 if I2C
+	select SND_SOC_TFA9896_DUAL if I2C
+	select SND_SOC_TFA9896_QUAD if I2C
 	select SND_SOC_TLV320AIC23_I2C if I2C
 	select SND_SOC_TLV320AIC23_SPI if SPI_MASTER
 	select SND_SOC_TLV320AIC26 if SPI_MASTER
@@ -903,6 +906,21 @@ config SND_SOC_TFA9872
 config SND_SOC_TFA9879
 	tristate "NXP Semiconductors TFA9879 amplifier"
 	depends on I2C
+
+config SND_SOC_TFA9896
+	tristate "NXP Semiconductors TFA9896 amplifier"
+	depends on I2C
+
+config SND_SOC_TFA9896_DUAL
+	tristate "NXP Semiconductors TFA9896 amplifier"
+	depends on I2C
+	select SND_SOC_SPK_DUAL
+	select SND_SOC_TFA9896
+
+config SND_SOC_TFA9896_QUAD
+	tristate "NXP Semiconductors TFA9896 amplifier"
+	depends on I2C
+	select SND_SOC_TFA9896
 
 config SND_SOC_TLV320AIC23
 	tristate
