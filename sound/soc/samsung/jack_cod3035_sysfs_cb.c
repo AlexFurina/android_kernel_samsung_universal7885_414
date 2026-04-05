@@ -19,6 +19,8 @@
  */
 
 #include <linux/input.h>
+#include <linux/extcon/extcon-madera.h>
+#include <linux/mfd/madera/core.h>
 #include <sound/soc.h>
 #include <sound/samsung/sec_audio_sysfs.h>
 #include "jack_cod3035_sysfs_cb.h"
@@ -35,9 +37,9 @@ static int get_jack_status(void)
 	struct cod3035x_jack_det *jackdet = &cod3035x->jack_det;
 	int status = jackdet->jack_det;
 	int report = 0;
-
+	
 	if (status) {
-		report = 1;
+	    report = 1;
 	}
 
 	dev_info(codec->dev, "%s: %d\n", __func__, report);
@@ -75,8 +77,6 @@ static int get_mic_adc(void)
 
 void register_cod3035_jack_cb(struct snd_soc_codec *codec)
 {
-	dev_info(codec->dev, "%s\n", __func__);
-
 	cod3035_codec = codec;
 
 	audio_register_jack_state_cb(get_jack_status);
