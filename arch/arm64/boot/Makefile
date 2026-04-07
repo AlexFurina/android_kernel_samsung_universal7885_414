@@ -18,7 +18,7 @@ include $(srctree)/arch/arm64/boot/dts/Makefile
 
 OBJCOPYFLAGS_Image :=-O binary -R .note -R .note.gnu.build-id -R .comment -S
 
-targets := Image Image.gz
+targets := Image Image.gz dtb.img
 
 DTB_NAMES := $(subst $\",,$(CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES))
 ifneq ($(DTB_NAMES),)
@@ -26,7 +26,9 @@ DTB_LIST := $(addsuffix .dtb,$(DTB_NAMES))
 else
 DTB_LIST := $(dtb-y) $(dtbo-y)
 endif
+
 DTB_OBJS := $(addprefix $(obj)/dts/,$(DTB_LIST))
+DTB_OBJS := $(shell find $(obj)/dts/ -name \*.dtb)
 
 $(obj)/Image: vmlinux FORCE
 	$(call if_changed,objcopy)
@@ -36,6 +38,9 @@ $(obj)/Image.bz2: $(obj)/Image FORCE
 
 $(obj)/Image-dtb: $(obj)/Image $(DTB_OBJS) FORCE
 	$(call if_changed,cat)
+
+$(obj)/dtb.img: $(DTB_OBJS) FORCE
+	$(call if_changed,mkdtimg)
 
 $(obj)/Image.gz: $(obj)/Image FORCE
 	$(call if_changed,gzip)

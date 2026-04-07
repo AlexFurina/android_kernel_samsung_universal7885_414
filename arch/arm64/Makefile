@@ -155,6 +155,8 @@ endif
 
 KBUILD_DTBS	:= dtbs
 
+KBUILD_DTB_IMG := dtb.img
+
 all:	Image.gz $(KBUILD_DTBS) $(subst $\",,$(CONFIG_BUILD_ARM64_APPENDED_KERNEL_IMAGE_NAME))
 
 
@@ -186,6 +188,11 @@ Image-dtb: vmlinux scripts dtbs
 
 Image.gz-dtb: vmlinux scripts dtbs Image.gz
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
+
+$(KBUILD_DTB_IMG): dtbs
+	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
+
+all: $(KBUILD_DTB_IMG)
 
 PHONY += vdso_install
 vdso_install:
