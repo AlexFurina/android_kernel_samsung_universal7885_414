@@ -250,7 +250,7 @@ config SND_SOC_SAMSUNG_AUDIO
 	help
 	  Say Y here to enable audio support for the Samsung Audio.
 
-source "sound/soc/samsung/abox/Kconfig"
+source "sound/soc/samsung/abox-9610/Kconfig"
 source "sound/soc/samsung/vts/Kconfig"
 
 endif #SND_SOC_SAMSUNG

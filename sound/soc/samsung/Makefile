@@ -20,7 +20,8 @@ obj-$(CONFIG_SND_SAMSUNG_I2S) += snd-soc-i2s.o
 obj-$(CONFIG_SND_SAMSUNG_I2S) += snd-soc-idma.o
 obj-$(CONFIG_SND_SOC_SAMSUNG_DISPLAYPORT) += snd-soc-dp_dma.o
 obj-$(CONFIG_SND_SOC_SAMSUNG_VTS) += vts/
-obj-$(CONFIG_SND_SOC_SAMSUNG_ABOX) += abox/
+obj-$(CONFIG_SOC_EXYNOS9610) += abox-9610/
+obj-$(CONFIG_SOC_EXYNOS7885) += abox-7885/
 
 # S3C24XX Machine Support
 snd-soc-jive-wm8750-objs := jive_wm8750.o
