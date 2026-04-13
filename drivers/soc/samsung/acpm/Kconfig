@@ -45,6 +45,13 @@ config EXYNOS9610_ACPM
 	help
 	  Enable ACPM support
 
+config EXYNOS7885_ACPM
+        bool "EXYNOS7885_ACPM support"
+        default y
+        depends on SOC_EXYNOS7885
+        help
+          Enable ACPM support
+
 config EXYNOS_ACPM_MFD
 	bool "EXYNOS_ACPM_MFD support"
 	default y
