@@ -11,7 +11,7 @@
 #ifndef __EXYNOS_BTS_H_
 #define __EXYNOS_BTS_H_
 
-#if defined(CONFIG_EXYNOS9610_BTS)
+#if defined(CONFIG_EXYNOS9610_BTS)||(CONFIG_EXYNOS9810_BTS)
 #define BUS_WIDTH		16
 #define DISP_UTIL		75
 
