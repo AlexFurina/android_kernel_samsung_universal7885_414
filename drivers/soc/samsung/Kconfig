@@ -75,6 +75,13 @@ config PMUCAL
 	help
 	Support PMUCAL for Exynos SoC.
 
+config FLEXPMU
+	bool "Exynos FLEXPMU"
+	depends on PMUCAL
+	default n
+	help
+	Support PMUCAL for Exynos SoC.
+
 config CP_PMUCAL
 	bool "Exynos PMU(for CP) Chip Abstraction Layer"
 	depends on CAL_IF
