@@ -521,7 +521,7 @@ config SND_SOC_CX20442
 	depends on TTY
 config SND_SOC_COD3035X
     tristate
-    default y
+    default n
 
 config SND_SOC_JZ4740_CODEC
 	select REGMAP_MMIO
