@@ -15,6 +15,7 @@ fw-external-y := $(subst $(quote),,$(CONFIG_EXTRA_FIRMWARE))
 fw-external-$(CONFIG_EXYNOS9610_ACPM) += exynos9610_acpm_fvp.fw
 fw-external-$(CONFIG_EXYNOS9610_ACPM) += exynos9610_acpm_tmu.fw
 fw-external-$(CONFIG_EXYNOS7885_ACPM) += exynos7885_acpm_fvp.fw
+fw-external-$(CONFIG_EXYNOS9810_ACPM) += exynos9810_acpm_tmu.fw
 fw-shipped-$(CONFIG_FIVE_TEE_DRIVER) += five/ffffffff000000000000000000000072.tlbin
 
 # Touchscreen Firmware
