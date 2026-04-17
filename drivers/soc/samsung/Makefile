@@ -25,7 +25,8 @@ obj-$(CONFIG_EXYNOS_ACPM)       += acpm/
 
 obj-$(CONFIG_EXYNOS_RGT)        += exynos-rgt.o
 
-obj-$(CONFIG_EXYNOS_REBOOT)     += exynos-reboot.o
+obj-$(CONFIG_SOC_EXYNOS9610)     += exynos-reboot.o
+obj-$(CONFIG_SOC_EXYNOS7885)     += exynos-reboot_7885.o
 
 # DEBUG
 obj-$(CONFIG_EXYNOS_DEBUG)      += debug/
