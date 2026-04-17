@@ -344,5 +344,6 @@ extern const struct samsung_pinctrl_of_match_data s3c2440_of_data;
 extern const struct samsung_pinctrl_of_match_data s3c2450_of_data;
 extern const struct samsung_pinctrl_of_match_data s5pv210_of_data;
 extern const struct samsung_pinctrl_of_match_data exynos9610_of_data;
+extern const struct samsung_pinctrl_of_match_data exynos9810_of_data;
 
 #endif /* __PINCTRL_SAMSUNG_H */
