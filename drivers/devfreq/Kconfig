@@ -126,6 +126,15 @@ config ARM_EXYNOS7885_BUS_DEVFREQ
         help
           This adds the DEVFREQ driver for Exynos7885 memory and int.
 
+config ARM_EXYNOS9810_BUS_DEVFREQ
+	bool "ARM Exynos9810 Memory Bus DEVFREQ Driver"
+	default y
+	depends on ARM_EXYNOS_DEVFREQ
+	depends on SOC_EXYNOS9810
+	select DEVFREQ_GOV_SIMPLE_INTERACTIVE
+	help
+	  This adds the DEVFREQ driver for Exynos9810 memory and int.
+
 config ARM_TEGRA_DEVFREQ
 	tristate "Tegra DEVFREQ Driver"
 	depends on ARCH_TEGRA_124_SOC
