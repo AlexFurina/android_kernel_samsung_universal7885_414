@@ -122,6 +122,7 @@ config ARM_EXYNOS7885_BUS_DEVFREQ
         bool "ARM Exynos7885 Memory Bus DEVFREQ Driver"
         default y
         depends on ARM_EXYNOS_DEVFREQ
+        depends on SOC_EXYNOS7885
         select DEVFREQ_GOV_SIMPLE_INTERACTIVE
         help
           This adds the DEVFREQ driver for Exynos7885 memory and int.
