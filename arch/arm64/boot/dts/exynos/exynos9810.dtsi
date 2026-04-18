@@ -194,6 +194,12 @@
 		scaler0 = &scaler_0;
 	};
 
+	chosen: chosen {
+	        bootargs = "";
+		linux,initrd-start = <0x84000000>;
+		linux,initrd-end = <0x841FFFFF>;
+	};
+
 	chipid@10000000 {
 		compatible = "samsung,exynos9810-chipid";
 		reg = <0x0 0x10000000 0x100>;
