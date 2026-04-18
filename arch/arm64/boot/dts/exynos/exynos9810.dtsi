@@ -154,7 +154,6 @@
 		spi19 = &spi_19;
 		spi20 = &spi_20;
 		spi21 = &spi_21;
-		ecduart = &serial_0;
 		uart0 = &serial_0;
 		dpp0 = &idma_g0;
 		dpp1 = &idma_g1;
