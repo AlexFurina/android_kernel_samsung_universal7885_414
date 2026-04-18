@@ -189,6 +189,7 @@
 		uart21 = &serial_21;
 		uart22 = &serial_22;
 
+		fmp0 = &fmp_0;
 		mfc0 = &mfc_0;
 		scaler0 = &scaler_0;
 	};
@@ -2968,16 +2969,8 @@
 		status = "disabled";
 	};
 
-	smu: smu {
-		compatible = "samsung,exynos-smu";
-	};
-
-	fmp: fmp {
+	fmp_0: fmp {
 		compatible = "samsung,exynos-fmp";
-		exynos,host-type = "ufs";
-		exynos-host = <&ufs>;
-		exynos,block-type = "sda";
-		exynos,fips-block_offset = <5>;
 	};
 
 	ufs: ufs@0x11120000 {
@@ -3044,8 +3037,8 @@
 		/* board type for UFS CAL */
 		brd-for-cal = <0>;
 
-		/* smu */
-		ufs-exynos-smu = <&smu>;
+		fmp-id = <0>;
+		smu-id = <0>;
 
 		/* ----------------------- */
 		/* 4. ADDITIONAL NODES     */
