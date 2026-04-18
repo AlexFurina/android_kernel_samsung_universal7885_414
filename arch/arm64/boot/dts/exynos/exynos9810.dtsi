@@ -673,6 +673,8 @@
 	exynos-pmu {
 		compatible = "samsung,exynos-pmu";
 		samsung,syscon-phandle = <&pmu_system_controller>;
+		reg = <0x0 0x14060000 0x10000>;
+		reg-names = "pmu_alive";
 	};
 
 	pmu_system_controller: system-controller@14060000 {
