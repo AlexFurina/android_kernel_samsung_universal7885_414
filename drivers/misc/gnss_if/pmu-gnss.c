@@ -20,7 +20,9 @@
 #define EXYNOS_SET_CONN_TZPC	(0)
 
 static int gnss_request_tzpc(void);
+#ifdef CONFIG_SOC_EXYNOS9610
 static void gnss_request_gnss2ap_baaw(void);
+#endif
 
 #ifdef USE_IOREMAP_NOPMU
 #if defined(CONFIG_SOC_EXYNOS7870)
@@ -331,6 +333,7 @@ static int gnss_request_tzpc(void)
 	return ret;
 }
 
+#ifdef CONFIG_SOC_EXYNOS9610
 static void gnss_request_gnss2ap_baaw(void)
 {
 	gif_info("Config GNSS2AP BAAW\n");
@@ -390,6 +393,7 @@ static void gnss_request_gnss2ap_baaw(void)
 	gnss_cmgp_write(0x68, 0x00011c00);
 	gnss_cmgp_write(0x6C, 0x80000003);
 }
+#endif
 
 static int gnss_pmu_power_on(enum gnss_mode mode)
 {
@@ -492,7 +496,9 @@ static struct gnssctl_pmu_ops pmu_ops = {
 	.power_on = gnss_pmu_power_on,
 	.clear_int = gnss_pmu_clear_interrupt,
 	.req_security = gnss_request_tzpc,
+#ifdef CONFIG_SOC_EXYNOS9610
 	.req_baaw = gnss_request_gnss2ap_baaw,
+#endif
 };
 
 void gnss_get_pmu_ops(struct gnss_ctl *gc)
