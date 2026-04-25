@@ -234,7 +234,10 @@ static void exynos_cpu_err_parse(u32 reg_idx, u64 reg)
 
 static void exynos_early_panic(void *val)
 {
+#ifdef CONFIG_SOC_EXYNOS9610
 	exynos_bcm_dbg_stop(PANIC_HANDLE);
+#endif
+// better to guard this (disabled on 7885 kernel)
 }
 
 static void exynos_prepare_panic_entry(void *val)
