@@ -36,7 +36,7 @@
 
 #include <linux/sec_debug.h>
 #include <sound/samsung/abox.h>
-#include "abox/abox.h"
+#include "abox-9610/abox.h"
 
 #define DBG_STR_BUFF_SZ 256
 #define LOG_MSG_BUFF_SZ 512
