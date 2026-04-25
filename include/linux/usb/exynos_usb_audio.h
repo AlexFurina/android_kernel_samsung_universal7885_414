@@ -20,8 +20,6 @@
 #define USB_AUDIO_XHCI_BASE	0x10C00000
 #elif defined(CONFIG_SOC_EXYNOS9610)
 #define USB_AUDIO_XHCI_BASE	0x13200000
-#else
-#error
 #endif
 
 struct host_data {
