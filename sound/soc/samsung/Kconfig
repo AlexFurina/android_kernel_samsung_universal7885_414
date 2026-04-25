@@ -209,6 +209,15 @@ config SND_SOC_SAMSUNG_EXYNOS9610_RT5665_ALC5665
         select MFD_CS35L41_SPI
         select SND_SOC_CS35L41
 
+config SND_SOC_SAMSUNG_EXYNOS7885
+	tristate "Audio support on exynos7885"
+	select SND_SOC_SAMSUNG_ABOX
+	select SND_SOC_SAMSUNG_MAILBOX
+
+config SND_SOC_SAMSUNG_EXYNOS7885_COD3035
+	tristate "S.LSI audio codec COD3035 support on exynos7885"
+	select SND_SOC_COD3035X
+
 config SND_SOC_SAMSUNG_VOGUE_RT5665
         tristate "Audio support for RT5665 on VOGUE"
         select SND_SOC_RT5665
