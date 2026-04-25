@@ -51,7 +51,7 @@ void mfc_perf_boost_enable(struct mfc_dev *dev)
 				qos_boost_table->freq_mif);
 	}
 
-#ifdef CONFIG_EXYNOS_BTS
+#ifdef CONFIG_SOC_EXYNOS9610
 	if (perf_boost_mode & MFC_PERF_BOOST_MO) {
 		if (pdata->mo_control) {
 			bts_update_scen(BS_MFC_UHD_10BIT, 1);
@@ -83,7 +83,7 @@ void mfc_perf_boost_disable(struct mfc_dev *dev)
 		mfc_debug(3, "[QoS][BOOST] DVFS off\n");
 	}
 
-#ifdef CONFIG_EXYNOS_BTS
+#ifdef CONFIG_SOC_EXYNOS9610
 	if (perf_boost_mode & MFC_PERF_BOOST_MO) {
 		if (pdata->mo_control) {
 			bts_update_scen(BS_MFC_UHD_10BIT, 0);
@@ -118,7 +118,7 @@ static void __mfc_qos_operate(struct mfc_dev *dev, int opr_type, int idx)
 				PM_QOS_BUS_THROUGHPUT,
 				qos_table[idx].freq_mif);
 
-#ifdef CONFIG_EXYNOS_BTS
+#ifdef CONFIG_SOC_EXYNOS9610
 		if (pdata->mo_control) {
 			bts_update_scen(BS_MFC_UHD_ENC60, qos_table[idx].mo_uhd_enc60_value);
 			bts_update_scen(BS_MFC_UHD_10BIT, qos_table[idx].mo_10bit_value);
@@ -149,7 +149,7 @@ static void __mfc_qos_operate(struct mfc_dev *dev, int opr_type, int idx)
 		pm_qos_update_request(&dev->qos_req_mif,
 				qos_table[idx].freq_mif);
 
-#ifdef CONFIG_EXYNOS_BTS
+#ifdef CONFIG_SOC_EXYNOS9610
 		if (pdata->mo_control) {
 			bts_update_scen(BS_MFC_UHD_ENC60, qos_table[idx].mo_uhd_enc60_value);
 			bts_update_scen(BS_MFC_UHD_10BIT, qos_table[idx].mo_10bit_value);
@@ -177,7 +177,7 @@ static void __mfc_qos_operate(struct mfc_dev *dev, int opr_type, int idx)
 		pm_qos_remove_request(&dev->qos_req_int);
 		pm_qos_remove_request(&dev->qos_req_mif);
 
-#ifdef CONFIG_EXYNOS_BTS
+#ifdef CONFIG_SOC_EXYNOS9610
 		if (pdata->mo_control) {
 			bts_update_scen(BS_MFC_UHD_ENC60, 0);
 			bts_update_scen(BS_MFC_UHD_10BIT, 0);
