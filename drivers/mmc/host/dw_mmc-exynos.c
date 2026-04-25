@@ -27,8 +27,10 @@
 #include "dw_mmc-pltfm.h"
 #include "dw_mmc-exynos.h"
 
+#ifdef CONFIG_SOC_EXYNOS9610
 extern int cal_pll_mmc_set_ssc(unsigned int mfr, unsigned int mrr, unsigned int ssc_on);
 extern int cal_pll_mmc_check(void);
+#endif
 
 static void dw_mci_exynos_register_dump(struct dw_mci *host)
 {
@@ -218,6 +220,7 @@ static int dw_mci_exynos_priv_init(struct dw_mci *host)
 	return 0;
 }
 
+#ifdef CONFIG_SOC_EXYNOS9610
 static void dw_mci_exynos_ssclk_control(struct dw_mci *host, int enable)
 {
 	u32 err;
@@ -261,6 +264,7 @@ out:
 	if (host->pdata->qos_dvfs_mif_level)
 		pm_qos_update_request(&host->pm_qos_mif_lock, 0);
 }
+#endif
 
 static void dw_mci_exynos_set_clksel_timing(struct dw_mci *host, u32 timing)
 {
@@ -480,13 +484,14 @@ static void dw_mci_exynos_set_ios(struct dw_mci *host, struct mmc_ios *ios)
 		clksel = priv->sdr_timing;
 	}
 
+#ifdef CONFIG_SOC_EXYNOS9610
 	if (host->pdata->quirks & DW_MCI_QUIRK_USE_SSC) {
 		if ((ios->clock > 0) && (ios->clock < 100 * MHZ))
 			dw_mci_exynos_ssclk_control(host, 0);
 		else if (ios->clock)
 			dw_mci_exynos_ssclk_control(host, 1);
 	}
-
+#endif
 	if ((ios->clock > 0) && (ios->clock <= 400 * KHZ))
 		sample_path_sel_dis(host, AXI_BURST_LEN);
 
@@ -1645,7 +1650,9 @@ static const struct dw_mci_drv_data exynos_drv_data = {
 	.execute_tuning = dw_mci_exynos_execute_tuning,
 	.hwacg_control = dw_mci_card_int_hwacg_ctrl,
 	.misc_control = dw_mci_exynos_misc_control,
+#ifdef CONFIG_SOC_EXYNOS9610
 	.ssclk_control = dw_mci_exynos_ssclk_control,
+#endif
 };
 
 static const struct of_device_id dw_mci_exynos_match[] = {
