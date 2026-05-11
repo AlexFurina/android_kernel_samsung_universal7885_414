@@ -13,35 +13,20 @@
  * published by the Free Software Foundation.
  */
 
-#ifndef NO_DTBO
-/dts-v1/;
-#endif
-
 #include <dt-bindings/soc/samsung/exynos7885.h>
 #include <dt-bindings/clock/exynos7885.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/sysmmu/sysmmu.h>
 #include <dt-bindings/thermal/thermal.h>
+#include <dt-bindings/camera/fimc_is.h>
 #include "exynos7885-rmem.dtsi"
 #include "exynos7885-pinctrl.dtsi"
-//#include "exynos7885-pm-domains.dtsi"
-#include "exynos7885-ess.dtsi"
-//#include "exynos7885-camera.dtsi"
-//#include "exynos7885-inputbooster.dtsi"
-//#include "exynos7885-mali_common.dtsi"
-//#include "exynos7885-pm-extra.dtsi"
-
-// From 4.14
-#include "exynos7885-coresight.dtsi"
-#include "exynos7885-mali_common.dtsi"
+#include "exynos7885-debug.dtsi"
 #include "exynos7885-pm-domains.dtsi"
-
+#include "exynos7885-mali_common.dtsi"
+#include "exynos7885-mfc.dtsi"
 / {
 	compatible = "samsung,armv8", "samsung,exynos7885";
-#ifndef NO_DTBO
-	dtb-hw_rev = <0>;
-	dtb-hw_rev_end = <255>;
-#endif
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
 	#size-cells = <1>;
@@ -456,7 +441,6 @@
 		};
 	};
 
-
 	arm-pmu {
 		compatible = "arm,armv8-pmuv3";
 		interrupts = <0 82 4>,
@@ -483,8 +467,6 @@
 		pinctrl1 = &pinctrl_1;
 		pinctrl2 = &pinctrl_2;
 		pinctrl3 = &pinctrl_3;
-		// Not in 4.14
-		//ecduart = &serial_2;
 		uart0 = &serial_0;
 		uart1 = &serial_1;
 		uart2 = &serial_2;
@@ -550,15 +532,6 @@
 		linux,initrd-end = <0x840FFFFF>;
 	};
 
-	// Not in 4.14
-#if 0
-	rtc@11C90000 {
-		compatible = "samsung,exynos8-rtc";
-		reg = <0x0 0x11C90000 0x100>;
-		interrupts = <0 27 0>, <0 28 0>, <0 36 0>;
-	};
-#endif
-
 	chipid@10000000 {
 		compatible = "samsung,exynos9-chipid";
 		reg = <0x0 0x10000000 0x100>;
@@ -572,26 +545,6 @@
 	cpus {
 		#address-cells = <2>;
 		#size-cells = <0>;
-
-		// Not in 4.14
-#if 0
-		auto_cpu_mapping {
-			enabled;
-		};
-
-		hmp {
-			up_threshold = <524>;
-			down_threshold = <214>;
-			semiboost_up_threshold = <254>;
-			semiboost_down_threshold = <163>;
-			bootboost-duration-us = <40000000>;
-			down_compensation_timeout = <30>;               /* ms */
-			down_compensation_high_freq = <1500000>;        /* min qos lock for little cpu */
-			down_compensation_mid_freq = <1000000>;          /* min qos lock for little cpu */
-			down_compensation_low_freq = <800000>;          /* min qos lock for little cpu */
-			little-id = <1>;
-		};
-#endif
 
 		cpu-map {
 			cluster0 {
@@ -630,9 +583,6 @@
 			reg = <0x0 0x100>;
 			enable-method = "psci";
 			cpu-idle-states = <&BOOTCL_CPU_SLEEP>;
-			// Not in 4.14
-			//#cooling-cells = <2>; /* min followed by max */
-			//logical-id = <0>;
 			sched-energy-data = <&A53_ENERGY>;
 		};
 
@@ -642,8 +592,6 @@
 			reg = <0x0 0x101>;
 			enable-method = "psci";
 			cpu-idle-states = <&BOOTCL_CPU_SLEEP>;
-			// Not in 4.14
-			//logical-id = <1>;
 			sched-energy-data = <&A53_ENERGY>;
 		};
 
@@ -653,8 +601,6 @@
 			reg = <0x0 0x102>;
 			enable-method = "psci";
 			cpu-idle-states = <&BOOTCL_CPU_SLEEP>;
-			// Not in 4.14
-			//logical-id = <2>;
 			sched-energy-data = <&A53_ENERGY>;
 		};
 
@@ -664,8 +610,6 @@
 			reg = <0x0 0x103>;
 			enable-method = "psci";
 			cpu-idle-states = <&BOOTCL_CPU_SLEEP>;
-			// Not in 4.14
-			//logical-id = <3>;
 			sched-energy-data = <&A53_ENERGY>;
 		};
 
@@ -677,9 +621,6 @@
 			// bootcl in 4.14, nonbootcl in 4.4
 			//cpu-idle-states = <&NONBOOTCL_CPU_SLEEP>;
 			cpu-idle-states = <&BOOTCL_CPU_SLEEP>;
-			// Not in 4.14
-			//logical-id = <4>;
-			//sched_skip = <1>;
 			sched-energy-data = <&A53_ENERGY>;
 		};
 
@@ -691,9 +632,6 @@
 			// bootcl in 4.14, nonbootcl in 4.4
 			//cpu-idle-states = <&NONBOOTCL_CPU_SLEEP>;
 			cpu-idle-states = <&BOOTCL_CPU_SLEEP>;
-			// Not in 4.14
-			//logical-id = <5>;
-			//sched_skip = <1>;
 			sched-energy-data = <&A53_ENERGY>;
 		};
 
@@ -703,9 +641,6 @@
 			reg = <0x0 0x0>;
 			enable-method = "psci";
 			cpu-idle-states = <&NONBOOTCL_CPU_SLEEP>;
-			// Not in 4.14
-			//#cooling-cells = <2>; /* min followed by max */
-			//logical-id = <6>;
 			sched-energy-data = <&A73_ENERGY>;
 		};
 
@@ -715,8 +650,6 @@
 			reg = <0x0 0x1>;
 			enable-method = "psci";
 			cpu-idle-states = <&NONBOOTCL_CPU_SLEEP>;
-			// Not in 4.14
-			//logical-id = <7>;
 			sched-energy-data = <&A73_ENERGY>;
 		};
 
@@ -784,21 +717,20 @@
 		};
 	};
 
-	// From 4.14
 	schedutil_gov {
 		schedutil_domain0: domain@0 {
 			device_type = "schedutil-domain";
 			shared-cpus = "0-5";
-			enabled = <0x0>;
-			qos_min_class = <0x3>;
+			enabled = <0>;          /* Disabled */
+			qos_min_class = <3>;
 		};
 
 		schedutil_domain1: domain@1 {
 			device_type = "schedutil-domain";
 			shared-cpus = "6-7";
-			enabled = <0x1>;
-			expired_time = <0x50>;
-			qos_min_class = <0x5>;
+			enabled = <1>;          /* Enabled */
+			expired_time = <80>;    /* 80ms */
+			qos_min_class = <5>;
 		};
 	};
 
@@ -823,37 +755,34 @@
 		};
 	};
 
-	// From 4.14
 	cpuidle-ucc {
 		ucc-config0 {
-			index = <0x0>;
+			index = <0>;
 			cstate = "6-7";
 		};
 
 		ucc-config1 {
-			index = <0x1>;
+			index = <1>;
 		};
 	};
 
 	cpufreq-ufc {
-		/* Completely different in 4.14 */
-		device_type = "cpufreq_ufc";
-		table-col = <4>;
-		table-row = <10>;
-		fill-flag = <1>;
-
 		/* Ctrl Type */
 		#define PM_QOS_MIN_LIMIT		0
 		#define PM_QOS_MIN_WO_BOOST_LIMIT	1
 		#define PM_QOS_MAX_LIMIT		2
 		/* Execution Mode */
-		#define AARCH64_MODE			0
+		#define	AARCH64_MODE			0
 		#define AARCH32_MODE			1
+
+		device_type = "cpufreq_ufc";
+		table-col = <4>;
+		table-row = <10>;
+		fill-flag = <1>;
 
 		domain@0 {
 			device_type = "ufc_domain";
 			shared-cpus = "0-5";
-
 			table-idx = <2>;
 			pm_qos-min-class = <3>;
 			pm_qos-max-class = <4>;
@@ -862,41 +791,72 @@
 		domain@1 {
 			device_type = "ufc_domain";
 			shared-cpus = "6-7";
-
-			table-idx = <0x1>;
-			pm_qos-min-class = <0x5>;
-			pm_qos-max-class = <0x6>;
+			table-idx = <1>;
+			pm_qos-min-class = <5>;
+			pm_qos-max-class = <6>;
 
 			max-limit {
 				device_type = "ufc_table";
 				ctrl-type = <PM_QOS_MAX_LIMIT>;
 				sse-mode = <AARCH64_MODE>;
-					/* wtf */
-				table = <0x215340 0x215340 0x19c990 0x0 0x1fbd00 0x1fbd00 0x19c990 0x0 0x1e26c0 0x1e26c0 0x19c990 0x0 0x1c9080 0x1c9080 0x19c990 0x0 0x1afa40 0x1afa40 0x19c990 0x0 0x196400 0x196400 0x19c990 0x0 0x17cdc0 0x17cdc0 0x19c990 0x0 0x14a140 0x14a140 0x19c990 0x0 0x1174c0 0x1174c0 0x19c990 0x0 0xe4840 0xe4840 0x19c990 0x0>;
+				table = <2184000 2184000 1690000 0
+					  2080000 2080000 1690000 0
+					  1976000 1976000 1690000 0
+					  1872000 1872000 1690000 0
+					  1768000 1768000 1690000 0
+					  1664000 1664000 1690000 0
+					  1560000 1560000 1690000 0
+					  1352000 1352000 1690000 0
+					  1144000 1144000 1690000 0
+					  936000 936000 1690000 0>;
 			};
 
 			max-limit-32 {
 				device_type = "ufc_table";
 				ctrl-type = <PM_QOS_MAX_LIMIT>;
 				sse-mode = <AARCH32_MODE>;
-					/* wtf */
-				table = <0x215340 0x215340 0x19c990 0x0 0x1fbd00 0x1fbd00 0x19c990 0x0 0x1e26c0 0x1e26c0 0x19c990 0x0 0x1c9080 0x1c9080 0x19c990 0x0 0x1afa40 0x1afa40 0x19c990 0x0 0x196400 0x196400 0x19c990 0x0 0x17cdc0 0x17cdc0 0x19c990 0x0 0x14a140 0x14a140 0x19c990 0x0 0x1174c0 0x1174c0 0x19c990 0x0 0xe4840 0xe4840 0x19c990 0x0>;
+				table = <2184000 2184000 1690000 0
+					  2080000 2080000 1690000 0
+					  1976000 1976000 1690000 0
+					  1872000 1872000 1690000 0
+					  1768000 1768000 1690000 0
+					  1664000 1664000 1690000 0
+					  1560000 1560000 1690000 0
+					  1352000 1352000 1690000 0
+					  1144000 1144000 1690000 0
+					  936000 936000 1690000 0>;
 			};
 
 			min-limit {
 				device_type = "ufc_table";
 				ctrl-type = <PM_QOS_MIN_LIMIT>;
 				sse-mode = <AARCH64_MODE>;
-					/* wtf */
-				table = <0x215340 0x215340 0x19c990 0x1 0x1fbd00 0x1fbd00 0x19c990 0x1 0x1e26c0 0x1e26c0 0x19c990 0x1 0x1c9080 0x1c9080 0x19c990 0x1 0x1afa40 0x1afa40 0x19c990 0x1 0x196400 0x196400 0x6d9e8 0x1 0x17cdc0 0x17cdc0 0x6d9e8 0x1 0x14a140 0x14a140 0x6d9e8 0x1 0x1174c0 0x1174c0 0x6d9e8 0x1 0xe4840 0xe4840 0x6d9e8 0x1>;
+				table = <2184000 2184000 1690000 1
+					  2080000 2080000 1690000 1
+					  1976000 1976000 1690000 1
+					  1872000 1872000 1690000 1
+					  1768000 1768000 1690000 1
+					  1664000 1664000 449000 1
+					  1560000 1560000 449000 1
+					  1352000 1352000 449000 1
+					  1144000 1144000 449000 1
+					  936000 936000 449000 1>;
 			};
 
 			min-limit-32 {
 				device_type = "ufc_table";
 				ctrl-type = <PM_QOS_MIN_LIMIT>;
 				sse-mode = <AARCH32_MODE>;
-					/* wtf */
-				table = <0x215340 0x215340 0x19c990 0x1 0x1fbd00 0x1fbd00 0x19c990 0x1 0x1e26c0 0x1e26c0 0x19c990 0x1 0x1c9080 0x1c9080 0x19c990 0x1 0x1afa40 0x1afa40 0x19c990 0x1 0x196400 0x196400 0x6d9e8 0x1 0x17cdc0 0x17cdc0 0x6d9e8 0x1 0x14a140 0x14a140 0x6d9e8 0x1 0x1174c0 0x1174c0 0x6d9e8 0x1 0xe4840 0xe4840 0x6d9e8 0x1>;
+				table = <2184000 2184000 1690000 1
+					  2080000 2080000 1690000 1
+					  1976000 1976000 1690000 1
+					  1872000 1872000 1690000 1
+					  1768000 1768000 1690000 1
+					  1664000 1664000 449000 1
+					  1560000 1560000 449000 1
+					  1352000 1352000 449000 1
+					  1144000 1144000 449000 1
+					  936000 936000 449000 1>;
 			};
 		};
 	};
@@ -1001,7 +961,6 @@
           					 728000  420000>;
 				};
 			};
-			// From 4.14
 			slack_timer {
 				device_type = "slack-timer-domain";
 				expired_time = <0x50>;
@@ -1009,7 +968,6 @@
 		};
 	};
 
-	// From 4.14
 	cpuhp {
 		compatible = "exynos,cpuhp";
 	};
@@ -1022,7 +980,6 @@
                 cpu_on = <0xC4000003>;
         };
 
-	// From 4.14
 	cpupm {
 
 		cpd_cl0 {
@@ -1363,7 +1320,20 @@
 		conn_req_offset = <0x00d4>;	/* PMU_ALIVE__CONNECT_REQ_STATUS */
 	};
 
-	#include "exynos7885-pm-extra.dtsi"
+	exynos-pm-extra {
+		compatible = "samsung,exynos-pm-extra";
+		wakeup_stat = <0x600 0x604>;
+
+		wakeup_stats {
+			wakeup_stat {
+				ws-name = "EINT", "RTC_ALARM", "RTC_TICK", "TRTC_ALARM", "TRTC_TICK", "PCIE_WIFI0", "PCIE_WIFI1", "EXT_PCIE_WIFI0", "EXT_PCIE_WIFI1", "MMC0", "MMC1", "MMC2", "DECON", "I2S", "TIMER", "USB_REWA", "CP_SCAN_DUMP_REQ", "NFC_CLK_REQ", "USB20_PHY", "WIFI_ACTIVE", "CP_RESET_REQ", "GNSS_WAKEUP_REQ", "GNSS_RESET_REQ", "GNSS_ACTIVE", "INT_MBOX_CP", "CP_ACTIVE", "INT_MBOX_GNSS", "INT_MBOX_WIFI_CM4", "CORTEXM0_APM", "WIFI_RESET_REQ", "Reserved";
+			};
+
+			wakeup2_stat {
+				ws-name = "EXT_GIC_CLUSTER0_IRQOUT0", "EXT_GIC_CLUSTER0_FIQOUT0", "EXT_GIC_CLUSTER0_IRQOUT1", "EXT_GIC_CLUSTER0_FIQOUT1", "EXT_GIC_CLUSTER2_IRQOUT0", "EXT_GIC_CLUSTER2_FIQOUT0", "EXT_GIC_CLUSTER2_IRQOUT1", "EXT_GIC_CLUSTER2_FIQOUT1", "INT_MBOX_CP_SECURE", "INT_MBOX_IN_APM", "INT_MBOX_WIFI_CR4";
+			};
+		};
+	};
 
 	exynos-powermode {
 		// Not in 4.14
@@ -1373,49 +1343,17 @@
 		cpd_enabled = <1 0 1>;
 		sicd_enabled = <1>;
 
-		idle-ip = "13970000.pwm",		/* [ 0] pwm      */
-			  "105a0000.adc",		/* [ 1] adc      */
-			  "138a0000.hsi2c",		/* [ 2] hsi2c_0  */
-			  "138b0000.hsi2c",		/* [ 3] hsi2c_1  */
-			  "138c0000.hsi2c",		/* [ 4] hsi2c_2  */
-			  "138d0000.hsi2c",		/* [ 5] hsi2c_3  */
-			  "13920000.hsi2c",		/* [ 6] hsi2c_4  */
-			  "13930000.hsi2c",		/* [ 7] hsi2c_5  */
-			  "13940000.hsi2c",		/* [ 8] hsi2c_6  */
-			  "13950000.hsi2c",		/* [ 9] hsi2c_7  */
-			  "13980000.hsi2c",		/* [10] hsi2c_8  */
-			  "13990000.hsi2c",		/* [11] hsi2c_9  */
-			  "13900000.spi",		/* [12] spi_0    */
-			  "13910000.spi",		/* [13] spi_1    */
-			  "13830000.i2c",		/* [14] i2c    */
-			  "13840000.i2c",		/* [15] i2c    */
-			  "13860000.i2c",		/* [16] i2c    */
-			  "13870000.i2c",		/* [17] i2c    */
-			  "13500000.dwmmc0",		/* [18] dwmmc0   */
-			  "13510000.dwmmc1",		/* [19] dwmmc1   */
-			  "13550000.dwmmc2",		/* [20] dwmmc2   */
-			  "13600000.usb",		/* [21] usb      */
-			  "14860000.decon_f",		/* [22] decon_f	*/
-			  "14a50000.abox",		/* [23] abox	*/
-			  /* index for power-domain */
-			  "pd-g3d",			/* [24] pd-g3d   */
-			  "pd-mfcmscl",			/* [25] pd-mfcmcsl */
-			  "pd-dispaud",			/* [26] pd-dispaud */
-			  "pd-isp",			/* [27] pd-isp   */
-			  "pd-cam";			/* [28] pd-cam	*/
+		idle-ip {
+			idle-ip-list = "13970000.pwm", "105a0000.adc", "138a0000.hsi2c", "138b0000.hsi2c", "138c0000.hsi2c", "138d0000.hsi2c", "13920000.hsi2c", "13930000.hsi2c", "13940000.hsi2c", "13950000.hsi2c", "13980000.hsi2c", "13990000.hsi2c", "13900000.spi", "13910000.spi", "13830000.i2c", "13840000.i2c", "13860000.i2c", "13870000.i2c", "13500000.dwmmc0", "13510000.dwmmc1", "13550000.dwmmc2", "13600000.usb", "14860000.decon_f", "14a50000.abox", "pd-g3d", "pd-mfcmscl", "pd-dispaud", "pd-isp", "pd-cam";
 
-		fix-idle-ip = "acpm_dvfs";
-		fix-idle-ip-index = <96>;
-		eint-wakeup-mask = <0x0648>;
+			fix-idle-ip = "acpm_dvfs";
+			fix-idle-ip-index = <96>;
 
-		idle_ip_mask {
-			sicd: SYS_SICD {
-				mode-index = <0>;
-				ref-idle-ip = <0>,  <1>,  <2>,  <3>,  <4>,  <5>,  <6>,  <7>,  <8>,  <9>,
-					     <10>, <11>, <12>, <13>, <14>, <15>,             <18>, <19>,
-					     <20>, <21>, <22>,       <24>, <25>,       <27>, <28>;
-			};
+			eint-wakeup-mask = <1608>;
+
+			idle-ip-mask = <0x0 0x1 0x2 0x3 0x4 0x5 0x6 0x7 0x8 0x9 0xa 0xb 0xc 0xd 0xe 0xf 0x12 0x13 0x14 0x15 0x16 0x18 0x19 0x1b 0x1c>;
 		};
+	};
 #endif
 
 		wakeup-masks {
@@ -2130,19 +2068,9 @@
 		dfs_id = <ACPM_DVFS_FSYS>;
 	};
 
-	fmp: fmp {
-		compatible = "samsung,exynos-fmp";
-		// Not in 4.14
-/*		exynos,host-type = "mmc";
-		exynos-host = <&dwmmc_0>;*/
-		exynos,block-type = "mmcblk0p";
-		exynos,fips-block_offset = <5>;
-	};
-
-	/* Only in 4.4
-	smu_0: smu {
-		compatible = "samsung,exynos-smu";
-	};*/
+        fmp: fmp {
+                compatible = "samsung,exynos-fmp";
+        };
 
 	dwmmc_0: dwmmc0@13500000 {
 		compatible = "samsung,exynos-dw-mshc";
@@ -2156,11 +2084,6 @@
 		clocks = <&clock MMC_EMBD>, <&clock GATE_MMC_EMBD>;
 		clock-names = "ciu", "ciu_gate";
 		status = "disabled";
-
-		/* smu */
-		/* mmc-exynos-smu = <&smu_0>; */
-
-		// 4.14
 		fmp-id = <0x0>;
 		smu-id = <0x0>;
 	};
@@ -2284,16 +2207,8 @@
 		#size-cells = <0>;
 		clocks = <&clock GATE_SPI1>, <&clock SPI_1>;
 		clock-names = "spi", "spi_busclk0";
-
-	/* pinctrl was removed, because specific module need to control
-	 * spi-pins directly by itself. If you want to use it, please
-	 * make spi module for yours, and define pinctrl for it.
-	 */
-	 // Not removed in 4.14
-
 		pinctrl-names = "default";
 		pinctrl-0 = <&spi1_bus>;
-
 		status = "disabled";
 	};
 
@@ -2380,16 +2295,10 @@
 		reg = <0x0 0x14851000 0x1000>, <0x0 0x148B1000 0x1000>, <0x0 0x148B0000 0x100>;
 		interrupts = <0 121 0>;
 		iommus = <&sysmmu_dpu>;
-
-		//Only in 4.14
 		dpp,hold-rpm-on-boot;
-
 		/* power domain */
 		samsung,power-domain = <&pd_dispaud>;
 		memory-region = <&fb_handover>;
-
-		//Only in 4.14
-		//Should be 0xEC000000 for 4.4 devices, 0xCA000000 for 4.14 (bootloader specific)
 		fb_reserved = <0xec000000 0x1400000>;
 	};
 
@@ -2434,7 +2343,6 @@
 		clock-names = "aclk";
 		clocks = <&clock GATE_SMMU_DPU>;
 		port-name = "DPU (GF, G0, G1, VG)";
-		//Only in 4.14
 		sysmmu,hold-rpm-on-boot;
 		sysmmu,secure-irq;
 		sysmmu,secure_base = <0x148D0000>;
@@ -2447,7 +2355,6 @@
 			<(SYSMMU_PORT_PREFETCH_PREDICTION_READ(0x1)	| SYSMMU_BL1) SYSMMU_ID_MASK(0x6, 0xFFFF)>,
 			<(SYSMMU_PORT_PREFETCH_PREDICTION_READ(0x1)	| SYSMMU_BL1) SYSMMU_ID_MASK(0x8, 0xFFFF)>;
 		#iommu-cells = <0>;
-		//Only in 4.14
 		samsung,power-domain = <&pd_dispaud>;
 	};
 
@@ -2470,12 +2377,10 @@
 		port-name = "ABOX";
 		sysmmu,tlb_property =
 			<(SYSMMU_PORT_PREFETCH_PREDICTION_READ(0x0)	| SYSMMU_BL1) SYSMMU_NOID>;
-		//Only in 4.14
 		sysmmu,hold-rpm-on-boot;
 		sysmmu,no-suspend;
 		sysmmu,no-rpm-control;
 		#iommu-cells = <0>;
-		//Only in 4.14
 		samsung,power-domain = <&pd_dispaud>;
 	};
 
@@ -2496,8 +2401,6 @@
 		pinctrl-names = "default", "idle";
 		pinctrl-0 = <&aud_codec_mclk &aud_codec_bus &aud_fm_bus &aud_spk_bus &aud_loopback_bus &aud_dmic_on>;
 		pinctrl-1 = <&aud_codec_mclk_idle &aud_codec_bus_idle	&aud_fm_bus_idle &aud_spk_bus_idle &aud_loopback_bus_idle &aud_dmic_off>;
-		// Not in 4.14
-		//samsung,power-domain = <&pd_dispaud>;
 		ipc_tx_offset = <0x22000>;
 		ipc_rx_offset = <0x22300>;
 		ipc_tx_ack_offset = <0x222FC>;
@@ -3322,4 +3225,3 @@
 };
 
 #include "exynos7885-camera.dtsi"
-#include "exynos7885-inputbooster.dtsi"
