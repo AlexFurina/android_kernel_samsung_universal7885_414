@@ -9,12 +9,11 @@
  * published by the Free Software Foundation.
 */
 
-#define NO_DTBO
-#include "exynos7885_4.4_bl.dts"
+#include "exynos7885.dtsi"
 #include "display-lcd_jackpotlte_common.dtsi"
 #include "modem-s327ap-sipc-pdata.dtsi"
 #include "battery_data_jackpotlte_common.dtsi"
-//#include "exynos7885-jackpotlte_motor.dtsi"
+#include "exynos7885-jackpotlte_motor.dtsi"
 #include "exynos7885-mali.dtsi"
 
 / {
@@ -434,7 +433,6 @@
 	sec_thermistor@6 {
 		compatible = "samsung,sec-thermistor";
 		status = "okay";
-		//cf? jackpotlte has wf
 		thermistor_name = "sec-wf-thermistor";
 		id = <1>;
 
@@ -525,6 +523,17 @@
 			aicl,label="battery aicl";
 			aicl,threshold_count=<5>;
 			aicl,threshold_time=<300>;
+		};
+	};
+
+	abc_hub {
+		compatible = "samsung,abc_hub";
+		status = "okay";
+
+		bootc {
+			bootc,time_spec_user = <100000>; /* user binary user build */
+			bootc,time_spec_eng = <100000>; /* user binary eng build */
+			bootc,time_spec_fac = <100000>; /* factory binary */
 		};
 	};
 
@@ -676,6 +685,68 @@
 		udc = <&udc>;
 	};
 
+	dbmdx_event {
+		status = "okay";
+		compatible = "samsung,dbmdx-event";
+	};
+
+	dbmdx-snd-soc-platform {
+		compatible = "dspg,dbmdx-snd-soc-platform";
+	};
+
+	snd-dbmdx-mach-drv {
+		compatible = "dspg,snd-dbmdx-mach-drv";
+	};
+
+	dbmdx {
+		status = "okay";
+		compatible = "dspg,dbmdx-codec";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&dbmdx_wakeup &dbmdx_reset>;
+
+		sv-gpio = <&gpa0 2 0>; /* VOICE_INT */
+		wakeup-gpio = <&gpg2 3 0>; /* VOICE_WAKE */
+		reset-gpio = <&gpg2 2 0>; /* VOICE_RST */
+		auto_buffering = <1>;
+		cmd-interface = <&dbmd4_spi>;
+		feature-va; /* enable VA */
+		va-firmware-name = "dbmd4_va_fw.bin";
+		va-config = <0x80000000
+			     0x80000000
+			     0x80000000
+			     0x80290020
+			     0x802210E0
+			     0x80158E8E
+			     0x801b0020
+			     0x801A0011
+			     0x80230001
+			     0x80108017
+			     0x80000000
+			     0x80000000
+			     0x80000000>;
+		va-speeds = <0x0000 460800  0 4800000
+			     0x0000 2000000 0 4800000
+			     0x0000 3000000 0 4800000>;
+		va-mic-config = <0xf041 0x1044 0x0008>;
+		va-mic-mode = <0>;
+		master-clk-rate = <32768>;
+		/* constant-clk-rate = <32768>; */
+		firmware_id = <0xdbd4>;
+		use_gpio_for_wakeup = <1>; /* Use wakeup gpio */
+		wakeup_set_value = <0>;  /* Value to write to wakeup gpio */
+		auto_detection = <1>;
+		detection_buffer_channels = <0>;
+		min_samples_chunk_size = <128>;
+		pcm_streaming_mode = <1>;
+		boot_options = <0x200>; /* Verify chip id */
+		send_uevent_after_buffering = <0>;
+		detection_after_buffering = <0>;
+		va_backlog_length = <1300>;
+		va_backlog_length_okg = <1000>;
+		send_uevent_on_detection = <1>;
+		amodel_options = <0x3>;
+	};
 	dummy_audio_codec: audio_codec_dummy {
 		status = "okay";
 		compatible = "snd-soc-dummy";
@@ -854,6 +925,79 @@
 			};
 		};
 	};
+
+	pinctrl@11CB0000 {
+		nfc_int: nfc-int {
+			samsung,pins = "gpa1-0";
+			samsung,pin-function = <0>;
+			samsung,pin-pud = <1>;
+		};
+
+		nfc_clk: nfc-clk {
+			samsung,pins = "gpq0-0";
+			samsung,pin-function = <2>;
+			samsung,pin-pud = <0>;
+		};
+	};
+
+	pinctrl@139B0000 {
+		nfc_pvdd_en: nfc_pvdd_en {
+				samsung,pins = "gpp6-4";
+				samsung,pin-function = <1>;
+				samsung,pin-pud = <0>;
+				samsung,pin-val = <0>;
+				samsung,pin-con-pdn = <3>;
+				samsung,pin-pud-pdn = <0>;
+		};
+
+		nfc_firm: nfc_firm {
+			samsung,pins = "gpp3-2";
+			samsung,pin-function = <1>;
+			samsung,pin-pud = <0>;
+			samsung,pin-val = <0>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+
+		nfc_pd: nfc_pd {
+			samsung,pins = "gpp2-2";
+			samsung,pin-function = <2>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <0>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+
+		nfc_clk_req: nfc_clk_req {
+			samsung,pins = "gpp2-3";
+			samsung,pin-function = <2>;
+			samsung,pin-pud = <1>;
+			samsung,pin-drv = <0>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+	};
+	i2c_2: i2c@13850000 {
+		status = "okay";
+		samsung,i2c-max-bus-freq = <400000>;
+		sec-nfc@27 {
+			compatible = "sec-nfc";
+			reg = <0x27>;
+
+			interrupts = <0 0 0>;
+			interrupt-parent = <&gpa1>;
+
+			sec-nfc,nfc_pd = <&gpp2 2 0x2>;
+			sec-nfc,firm-gpio = <&gpp3 2 1>;
+			sec-nfc,irq-gpio = <&gpa1 0 0>;
+			sec-nfc,nfc_clkreq = <&gpp2 3 0x2>;
+			sec-nfc,pvdd_en = <&gpp6 4 1>;
+			clkctrl-reg = <0x11C8600C>;
+
+			pinctrl-names = "default";
+			pinctrl-0 = <&nfc_pd &nfc_firm &nfc_int &nfc_clk &nfc_pvdd_en &nfc_clk_req>;
+            };
+	};
 };
 
 /* USI MODE SETTINGS
@@ -981,7 +1125,6 @@ or "hsi2c0_hsi2c1" or "uart_hsi2c1"
 		samsung,pin-con-pdn = <3>;
 	};
 
-#if 0
 	/* SPI_FP */
 	spi1_bus_inactive: spi1-bus-inactive {
 		samsung,pins = "gpp6-0", "gpp6-1", "gpp6-3";
@@ -1020,6 +1163,7 @@ or "hsi2c0_hsi2c1" or "uart_hsi2c1"
 		samsung,pin-drv = <2>;
 	};
 
+#if 0
 	fimc_is_flash_host: fimc-is-flash-host {
 		samsung,pins = "gpg1-2";
 		samsung,pin-function = <1>; /* 0: input, 1:output*/
@@ -1033,6 +1177,7 @@ or "hsi2c0_hsi2c1" or "uart_hsi2c1"
 		samsung,pin-drv = <0>;
 	};
 #endif
+
 
 	grip_ldo_en: grip-ldo-en {
 		samsung,pins = "gpg2-5";
@@ -1085,7 +1230,6 @@ or "hsi2c0_hsi2c1" or "uart_hsi2c1"
 		samsung,pin-drv = <0>;
 	};
 
-	// Override off val (done in stock but wtf?)
 	aud_dmic_on: aud_dmic_on {
 		samsung,pins = "gpg2-1";
 		samsung,pin-function = <1>;
@@ -1099,6 +1243,23 @@ or "hsi2c0_hsi2c1" or "uart_hsi2c1"
 		samsung,pin-con-pdn = <3>;
 		samsung,pin-val = <1>;
 	};
+	dbmdx_wakeup: dbmdx-wakeup {
+		samsung,pins ="gpg2-3";
+		samsung,pin-function = <1>;
+		samsung,pin-pud = <3>;
+		samsung,pin-con-pdn =<3>;
+		samsung,pin-pud-pdn = <3>;
+		samsung,pin-val = <1>;
+	};
+
+	dbmdx_reset: dbmdx-reset {
+		samsung,pins ="gpg2-2";
+		samsung,pin-function = <1>;
+		samsung,pin-pud = <3>;
+		samsung,pin-con-pdn =<3>;
+		samsung,pin-pud-pdn = <3>;
+		samsung,pin-val = <1>;
+	};
 };
 
 &dwmmc_0 {
@@ -1108,12 +1269,12 @@ or "hsi2c0_hsi2c1" or "uart_hsi2c1"
 	fixed_voltage;
 	supports-highspeed;
 	mmc-ddr-1_8v;
-//	mmc-hs200-1_8v;
-//	mmc-hs400-1_8v;
+	mmc-hs200-1_8v;
+	mmc-hs400-1_8v;
 	supports-8bit;
 	supports-cmd23;
 	supports-erase;
-//	supports-hs400-enhanced-strobe;
+	mmc-hs400-enhanced-strobe;
 	card-init-hwacg-ctrl;
 	support-cmdq;
 	qos-dvfs-level = <100000>;
@@ -1151,7 +1312,6 @@ or "hsi2c0_hsi2c1" or "uart_hsi2c1"
 		bus-width = <8>;
 	};
 
-	//Dunno, took this from a10eu 4.14
 	mmc-perf-v1 {
 		update = <0>;
 		policy-num = <1>;
@@ -1427,4 +1587,3 @@ or "hsi2c0_hsi2c1" or "uart_hsi2c1"
 
 };
 
-//TODO add everything else

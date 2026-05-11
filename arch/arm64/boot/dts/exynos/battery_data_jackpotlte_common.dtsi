@@ -83,7 +83,7 @@
 				44414 43777 43139 42505 41935 41393 40884 40425 39797 39508
 				39053 38582 38315 38113 37953 37819 37665 37471 37207 36964
 				36285 32208
-
+		
 				/***** battery data for 4.31 *****/
 				/* battery,battery_table3 */
 				136 11 5 11 131 10 1 10 140 9
@@ -327,7 +327,7 @@
 		battery,chg_high_temp = <460>;
 		battery,chg_high_temp_recovery = <440>;
 		battery,chg_input_limit_current = <1000>;
-		battery,chg_charging_limit_current = <1250>;
+		battery,chg_charging_limit_current = <1250>; 
 
 		battery,wpc_high_temp = <410>;
 		battery,wpc_high_temp_recovery = <400>;
@@ -559,11 +559,18 @@
 	};
 };
 
-&pinctrl_0 { //11CB0000
+&pinctrl_0 {
 	fuel_irq: fuel-irq {
 		samsung,pins = "gpa2-4";
 		samsung,pin-function = <0>;
 		samsung,pin-pud = <2>;
+		samsung,pin-drv = <0>;
+	};
+
+	if_pmic_irq: if-pmic-irq {
+		samsung,pins = "gpa2-2";
+		samsung,pin-function = <0>;
+		samsung,pin-pud = <0>;
 		samsung,pin-drv = <0>;
 	};
 

@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
-
-dtb-y += exynos/exynos7885.dtb
-dtb-y += exynos/exynos7885_4.4_bl.dtb
 dtb-y += exynos/exynos7885-jackpotlte_eur_open_07.dtb
+dtb-y += exynos/exynos7885.dtb
 
 targets += dtbs
 DTB_LIST  := $(dtb-y) $(dtbo-y)
