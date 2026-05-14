@@ -15,15 +15,6 @@
 #include "scsc_wlbtd.h"
 #endif
 
-#if IS_ENABLED(CONFIG_DEBUG_SNAPSHOT)
-#include <linux/uaccess.h>
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-#include <soc/samsung/debug-snapshot.h>
-#else
-#include <linux/debug-snapshot.h>
-#endif
-#endif
-
 #ifndef AID_MXPROC
 #define AID_MXPROC 0
 #endif
@@ -46,20 +37,45 @@
 	}
 
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 9))
 #define MX_PDE_DATA(inode) PDE_DATA(inode)
+#else
+#define MX_PDE_DATA(inode) (PDE(inode)->data)
+#endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 9))
 #define MX_PROCFS_SET_UID_GID(_entry) \
 	do { \
 		kuid_t proc_kuid = KUIDT_INIT(AID_MXPROC); \
 		kgid_t proc_kgid = KGIDT_INIT(AID_MXPROC); \
 		proc_set_user(_entry, proc_kuid, proc_kgid); \
 	} while (0)
+#else
+#define MX_PROCFS_SET_UID_GID(entry) \
+	do { \
+		(entry)->uid = AID_MXPROC; \
+		(entry)->gid = AID_MXPROC; \
+	} while (0)
+#endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 9))
 #define MX_PROCFS_ADD_FILE(_sdev, name, parent, mode)                      \
 	do {                                                               \
 		struct proc_dir_entry *entry = proc_create_data(# name, mode, parent, &mx_procfs_ ## name ## _fops, _sdev); \
 		MX_PROCFS_SET_UID_GID(entry);                              \
 	} while (0)
+#else
+#define MX_PROCFS_ADD_FILE(_data, name, parent, mode)                      \
+	do {                                                               \
+		struct proc_dir_entry *entry;                              \
+		entry = create_proc_entry(# name, mode, parent);           \
+		if (entry) {                                               \
+			entry->proc_fops = &mx_procfs_ ## name ## _fops; \
+			entry->data = _data;                               \
+			MX_PROCFS_SET_UID_GID(entry);                      \
+		}                                                          \
+	} while (0)
+#endif
 
 #define MX_PROCFS_REMOVE_FILE(name, parent) remove_proc_entry(# name, parent)
 
@@ -154,31 +170,15 @@ static ssize_t mx_procfs_mx_panic_read(struct file *file, char __user *user_buf,
 
 static ssize_t mx_procfs_mx_panic_write(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
 {
-	char value = 0;
 	struct mxproc *mxproc = file->private_data;
 
-	OS_UNUSED_PARAMETER(value);
 	OS_UNUSED_PARAMETER(file);
 	OS_UNUSED_PARAMETER(user_buf);
 	OS_UNUSED_PARAMETER(count);
 	OS_UNUSED_PARAMETER(ppos);
 
-#if IS_ENABLED(CONFIG_DEBUG_SNAPSHOT) && defined(GO_S2D_ID)
-	if (count != 2)
-		return -EFAULT;
-	if (copy_from_user(&value, user_buf, 1))
-		return -EFAULT;
-	if (value == '3') {
-		SCSC_TAG_INFO(MX_PROC, "Manual Scandump");
-		dbg_snapshot_do_dpm_policy(GO_S2D_ID);
-	} else if (mxproc) {
-		SCSC_TAG_INFO(MX_PROC, "Manual FW Panic");
-		mxman_force_panic(mxproc->mxman);
-	}
-#else
 	if (mxproc)
 		mxman_force_panic(mxproc->mxman);
-#endif
 	SCSC_TAG_INFO(MX_PROC, "OK\n");
 
 	return count;
@@ -331,8 +331,8 @@ static ssize_t mx_procfs_mx_status_read(struct file *file, char __user *user_buf
 	case MXMAN_STATE_FAILED:
 		pos += scnprintf(buf + pos, bufsz - pos, "%s\n", "MXMAN_STATE_FAILED");
 		break;
-	case MXMAN_STATE_FROZEN:
-		pos += scnprintf(buf + pos, bufsz - pos, "%s\n", "MXMAN_STATE_FROZEN");
+	case MXMAN_STATE_FREEZED:
+		pos += scnprintf(buf + pos, bufsz - pos, "%s\n", "MXMAN_STATE_FREEZED");
 		break;
 	default:
 		return 0;
@@ -356,34 +356,6 @@ static ssize_t mx_procfs_mx_services_read(struct file *file, char __user *user_b
 	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
 }
 
-static ssize_t mx_procfs_mx_wlbt_stat_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
-{
-	struct mxproc *mxproc = file->private_data;
-	struct scsc_mif_abs *mif_abs;
-	int pos = 0;
-	int r;
-	char buf[32];
-	const size_t bufsz = sizeof(buf);
-	u32 val = 0xff;
-
-	OS_UNUSED_PARAMETER(file);
-
-	if (!mxproc || !mxproc->mxman || !mxproc->mxman->mx)
-		return 0;
-
-	mif_abs = scsc_mx_get_mif_abs(mxproc->mxman->mx);
-
-	/* Read WLBT_STAT register */
-	if (mif_abs->mif_read_register) {
-		r = mif_abs->mif_read_register(mif_abs, SCSC_REG_READ_WLBT_STAT, &val);
-		if (r)
-			val = 0xff; /* failed */
-	}
-
-	pos += scnprintf(buf + pos, bufsz - pos, "0x%x\n", val);
-
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
-}
 
 MX_PROCFS_RW_FILE_OPS(mx_fail);
 MX_PROCFS_RW_FILE_OPS(mx_freeze);
@@ -395,7 +367,6 @@ MX_PROCFS_RO_FILE_OPS(mx_boot_count);
 MX_PROCFS_RO_FILE_OPS(mx_status);
 MX_PROCFS_RO_FILE_OPS(mx_services);
 MX_PROCFS_RO_FILE_OPS(mx_lastpanic);
-MX_PROCFS_RO_FILE_OPS(mx_wlbt_stat);
 
 static u32 proc_count;
 
@@ -418,14 +389,13 @@ int mxproc_create_ctrl_proc_dir(struct mxproc *mxproc, struct mxman *mxman)
 	mxproc->procfs_ctrl_dir_num = proc_count;
 	MX_PROCFS_ADD_FILE(mxproc, mx_fail, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 	MX_PROCFS_ADD_FILE(mxproc, mx_freeze, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
-	MX_PROCFS_ADD_FILE(mxproc, mx_panic, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+	MX_PROCFS_ADD_FILE(mxproc, mx_panic, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 	MX_PROCFS_ADD_FILE(mxproc, mx_suspend, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 	MX_PROCFS_ADD_FILE(mxproc, mx_suspend_count, parent, S_IRUSR | S_IRGRP | S_IROTH);
 	MX_PROCFS_ADD_FILE(mxproc, mx_recovery_count, parent, S_IRUSR | S_IRGRP | S_IROTH);
 	MX_PROCFS_ADD_FILE(mxproc, mx_status, parent, S_IRUSR | S_IRGRP | S_IROTH);
 	MX_PROCFS_ADD_FILE(mxproc, mx_services, parent, S_IRUSR | S_IRGRP | S_IROTH);
 	MX_PROCFS_ADD_FILE(mxproc, mx_lastpanic, parent, S_IRUSR | S_IRGRP | S_IROTH);
-	MX_PROCFS_ADD_FILE(mxproc, mx_wlbt_stat, parent, S_IRUSR | S_IRGRP | S_IROTH);
 
 	SCSC_TAG_DEBUG(MX_PROC, "created %s proc dir\n", dir);
 	proc_count++;
@@ -447,7 +417,6 @@ void mxproc_remove_ctrl_proc_dir(struct mxproc *mxproc)
 		MX_PROCFS_REMOVE_FILE(mx_status, mxproc->procfs_ctrl_dir);
 		MX_PROCFS_REMOVE_FILE(mx_services, mxproc->procfs_ctrl_dir);
 		MX_PROCFS_REMOVE_FILE(mx_lastpanic, mxproc->procfs_ctrl_dir);
-		MX_PROCFS_REMOVE_FILE(mx_wlbt_stat, mxproc->procfs_ctrl_dir);
 		(void)snprintf(dir, sizeof(dir), "%s%d", procdir_ctrl, mxproc->procfs_ctrl_dir_num);
 		remove_proc_entry(dir, NULL);
 		mxproc->procfs_ctrl_dir = NULL;
@@ -505,8 +474,8 @@ static ssize_t mx_procfs_mx_release_read(struct file *file, char __user *user_bu
 
 	memset(buf, '\0', sizeof(buf));
 
-	bytes = snprintf(buf, sizeof(buf), "Release: %d.%d.%d.%d.%d (f/w: %s)\n",
-		SCSC_RELEASE_PRODUCT, SCSC_RELEASE_ITERATION, SCSC_RELEASE_CANDIDATE, SCSC_RELEASE_POINT, SCSC_RELEASE_CUSTOMER,
+	bytes = snprintf(buf, sizeof(buf), "Release: %d.%d.%d.%d (f/w: %s)\n",
+		SCSC_RELEASE_PRODUCT, SCSC_RELEASE_ITERATION, SCSC_RELEASE_CANDIDATE, SCSC_RELEASE_POINT,
 		build_id ? build_id : "unknown");
 
 	if (bytes > sizeof(buf))
@@ -516,33 +485,6 @@ static ssize_t mx_procfs_mx_release_read(struct file *file, char __user *user_bu
 }
 
 MX_PROCFS_RO_FILE_OPS(mx_release);
-
-static ssize_t mx_procfs_mx_ttid_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
-{
-	char buf[256];
-	int bytes;
-	struct mxproc *mxproc = file->private_data;
-	char *id = 0;
-
-	OS_UNUSED_PARAMETER(file);
-
-	if (mxproc && mxproc->mxman)
-		id = mxproc->mxman->fw_ttid;
-
-	memset(buf, '\0', sizeof(buf));
-
-	if (id)
-		bytes = snprintf(buf, sizeof(buf), "%s\n", id);
-	else
-		bytes = snprintf(buf, sizeof(buf), "%s\n", "FW_TTID not defined");
-
-	if (bytes > sizeof(buf))
-		bytes = sizeof(buf);
-
-	return simple_read_from_buffer(user_buf, count, ppos, buf, bytes);
-}
-
-MX_PROCFS_RO_FILE_OPS(mx_ttid);
 
 int mxproc_create_info_proc_dir(struct mxproc *mxproc, struct mxman *mxman)
 {
@@ -564,7 +506,6 @@ int mxproc_create_info_proc_dir(struct mxproc *mxproc, struct mxman *mxman)
 	MX_PROCFS_ADD_FILE(mxproc, mx_rf_hw_ver, parent, S_IRUSR | S_IRGRP | S_IROTH);
 	MX_PROCFS_ADD_FILE(mxproc, mx_rf_hw_name, parent, S_IRUSR | S_IRGRP | S_IROTH);
 	MX_PROCFS_ADD_FILE(mxproc, mx_boot_count, parent, S_IRUSR | S_IRGRP | S_IROTH);
-	MX_PROCFS_ADD_FILE(mxproc, mx_ttid, parent, S_IRUSR | S_IRGRP | S_IROTH);
 	SCSC_TAG_DEBUG(MX_PROC, "created %s proc dir\n", dir);
 
 	return 0;
@@ -575,7 +516,6 @@ void mxproc_remove_info_proc_dir(struct mxproc *mxproc)
 	if (mxproc->procfs_info_dir) {
 		char dir[MX_DIRLEN];
 
-		MX_PROCFS_REMOVE_FILE(mx_ttid, mxproc->procfs_ctrl_dir);
 		MX_PROCFS_REMOVE_FILE(mx_boot_count, mxproc->procfs_ctrl_dir);
 		MX_PROCFS_REMOVE_FILE(mx_release, mxproc->procfs_info_dir);
 		MX_PROCFS_REMOVE_FILE(mx_rf_hw_ver, mxproc->procfs_info_dir);

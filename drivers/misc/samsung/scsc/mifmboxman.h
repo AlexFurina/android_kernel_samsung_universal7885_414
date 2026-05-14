@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Copyright (c) 2014 - 2017 Samsung Electronics Co., Ltd. All rights reserved
+ * Copyright (c) 2014 - 2016 Samsung Electronics Co., Ltd. All rights reserved
  *
  ****************************************************************************/
 
@@ -23,10 +23,8 @@ int mifmboxman_deinit(struct mifmboxman *mbox);
 
 #ifdef CONFIG_SOC_EXYNOS7570
 #define MIFMBOX_NUM	8
-#elif defined(CONFIG_SOC_EXYNOS7872) || defined(CONFIG_SOC_EXYNOS7885) || defined(CONFIG_SOC_EXYNOS9610) || defined(CONFIG_SOC_EXYNOS9630)
+#elif defined(CONFIG_SOC_EXYNOS7872) || defined(CONFIG_SOC_EXYNOS7885)
 #define MIFMBOX_NUM	4
-#else /* emulation */
-#define MIFMBOX_NUM	8
 #endif
 
 /* Inclusion in core.c treat it as opaque */

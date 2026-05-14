@@ -1,6 +1,6 @@
 /*****************************************************************************
  *
- * Copyright (c) 2012 - 2021 Samsung Electronics Co., Ltd. All rights reserved
+ * Copyright (c) 2012 - 2020 Samsung Electronics Co., Ltd. All rights reserved
  *
  ****************************************************************************/
 
@@ -229,10 +229,10 @@ static ssize_t slsi_procfs_big_data_read(struct file *file,  char __user *user_b
 	if (!dev)
 		goto exit;
 
+exit:
 	pos = slsi_get_sta_info(dev, buf, bufsz);
 	if (pos >= 0)
 		return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
-exit:
 	return 0;
 }
 
@@ -291,19 +291,19 @@ static int slsi_procfs_status_show(struct seq_file *m, void *v)
 			seq_printf(m, "Chip FAPI Version (v4): TEST SAP       : %d.%d\n",
 				   FAPI_MAJOR_VERSION(scsc_wifi_get_hip_config_version_4_u16(&sdev->hip4_inst.hip_control->config_v4, sap_test_ver)),
 				   FAPI_MINOR_VERSION(scsc_wifi_get_hip_config_version_4_u16(&sdev->hip4_inst.hip_control->config_v4, sap_test_ver)));
-		} else if (conf_hip4_ver == 5) {
-			seq_printf(m, "Chip FAPI Version (v5): MA SAP         : %d.%d\n",
-				   FAPI_MAJOR_VERSION(scsc_wifi_get_hip_config_version_5_u16(&sdev->hip4_inst.hip_control->config_v5, sap_ma_ver)),
-				   FAPI_MINOR_VERSION(scsc_wifi_get_hip_config_version_5_u16(&sdev->hip4_inst.hip_control->config_v5, sap_ma_ver)));
-			seq_printf(m, "Chip FAPI Version (v5): MLME SAP       : %d.%d\n",
-				   FAPI_MAJOR_VERSION(scsc_wifi_get_hip_config_version_5_u16(&sdev->hip4_inst.hip_control->config_v5, sap_mlme_ver)),
-				   FAPI_MINOR_VERSION(scsc_wifi_get_hip_config_version_5_u16(&sdev->hip4_inst.hip_control->config_v5, sap_mlme_ver)));
-			seq_printf(m, "Chip FAPI Version (v5): DEBUG SAP      : %d.%d\n",
-				   FAPI_MAJOR_VERSION(scsc_wifi_get_hip_config_version_5_u16(&sdev->hip4_inst.hip_control->config_v5, sap_debug_ver)),
-				   FAPI_MINOR_VERSION(scsc_wifi_get_hip_config_version_5_u16(&sdev->hip4_inst.hip_control->config_v5, sap_debug_ver)));
-			seq_printf(m, "Chip FAPI Version (v5): TEST SAP       : %d.%d\n",
-				   FAPI_MAJOR_VERSION(scsc_wifi_get_hip_config_version_5_u16(&sdev->hip4_inst.hip_control->config_v5, sap_test_ver)),
-				   FAPI_MINOR_VERSION(scsc_wifi_get_hip_config_version_5_u16(&sdev->hip4_inst.hip_control->config_v5, sap_test_ver)));
+		} else if (conf_hip4_ver == 3) {
+			seq_printf(m, "Chip FAPI Version (v3): MA SAP         : %d.%d\n",
+				   FAPI_MAJOR_VERSION(scsc_wifi_get_hip_config_version_3_u16(&sdev->hip4_inst.hip_control->config_v3, sap_ma_ver)),
+				   FAPI_MINOR_VERSION(scsc_wifi_get_hip_config_version_3_u16(&sdev->hip4_inst.hip_control->config_v3, sap_ma_ver)));
+			seq_printf(m, "Chip FAPI Version (v3): MLME SAP       : %d.%d\n",
+				   FAPI_MAJOR_VERSION(scsc_wifi_get_hip_config_version_3_u16(&sdev->hip4_inst.hip_control->config_v3, sap_mlme_ver)),
+				   FAPI_MINOR_VERSION(scsc_wifi_get_hip_config_version_3_u16(&sdev->hip4_inst.hip_control->config_v3, sap_mlme_ver)));
+			seq_printf(m, "Chip FAPI Version (v3): DEBUG SAP      : %d.%d\n",
+				   FAPI_MAJOR_VERSION(scsc_wifi_get_hip_config_version_3_u16(&sdev->hip4_inst.hip_control->config_v3, sap_debug_ver)),
+				   FAPI_MINOR_VERSION(scsc_wifi_get_hip_config_version_3_u16(&sdev->hip4_inst.hip_control->config_v3, sap_debug_ver)));
+			seq_printf(m, "Chip FAPI Version (v3): TEST SAP       : %d.%d\n",
+				   FAPI_MAJOR_VERSION(scsc_wifi_get_hip_config_version_3_u16(&sdev->hip4_inst.hip_control->config_v3, sap_test_ver)),
+				   FAPI_MINOR_VERSION(scsc_wifi_get_hip_config_version_3_u16(&sdev->hip4_inst.hip_control->config_v3, sap_test_ver)));
 		}
 	}
 
@@ -371,16 +371,32 @@ static int slsi_procfs_build_show(struct seq_file *m, void *v)
 #else
 	seq_puts(m, "CONFIG_SCSC_WLAN_KEY_MGMT_OFFLOAD                 : n\n");
 #endif
-#ifdef CONFIG_SCSC_WLAN_PRIORITISE_IMP_FRAMES
-	seq_puts(m, "CONFIG_SCSC_WLAN_PRIORITISE_IMP_FRAMES            : y\n");
-#else
-	seq_puts(m, "CONFIG_SCSC_WLAN_PRIORITISE_IMP_FRAMES            : n\n");
-#endif
+
 	seq_puts(m, "-------------------------------------------------\n");
 #ifdef CONFIG_SCSC_WLAN_DEBUG
 	seq_puts(m, "CONFIG_SCSC_WLAN_DEBUG                            : y\n");
 #else
 	seq_puts(m, "CONFIG_SCSC_WLAN_DEBUG                            : n\n");
+#endif
+#ifdef CONFIG_SCSC_WLAN_SKB_TRACKING
+	seq_puts(m, "CONFIG_SCSC_WLAN_SKB_TRACKING                     : y\n");
+#else
+	seq_puts(m, "CONFIG_SCSC_WLAN_SKB_TRACKING                     : n\n");
+#endif
+#ifdef CONFIG_SCSC_WLAN_OFFLINE_TRACE
+	seq_puts(m, "CONFIG_SCSC_WLAN_OFFLINE_TRACE                    : y\n");
+#else
+	seq_puts(m, "CONFIG_SCSC_WLAN_OFFLINE_TRACE                    : n\n");
+#endif
+#ifdef CONFIG_SCSC_WLAN_OFFLINE_TX_TRACE
+	seq_puts(m, "CONFIG_SCSC_WLAN_OFFLINE_TX_TRACE                 : y\n");
+#else
+	seq_puts(m, "CONFIG_SCSC_WLAN_OFFLINE_TX_TRACE                 : n\n");
+#endif
+#ifdef CONFIG_SCSC_WLAN_OFFLINE_DATA_PLANE_PROFILE_TRACE
+	seq_puts(m, "CONFIG_SCSC_WLAN_OFFLINE_DATA_PLANE_PROFILE_TRACE : y\n");
+#else
+	seq_puts(m, "CONFIG_SCSC_WLAN_OFFLINE_DATA_PLANE_PROFILE_TRACE : n\n");
 #endif
 #ifdef CONFIG_SCSC_WLAN_MUTEX_DEBUG
 	seq_puts(m, "CONFIG_SCSC_WLAN_MUTEX_DEBUG                      : y\n");
@@ -410,17 +426,12 @@ static int slsi_procfs_build_show(struct seq_file *m, void *v)
 #else
 	seq_puts(m, "CONFIG_SCSC_WIFI_NAN_ENABLE                       : n\n");
 #endif
-#ifdef CONFIG_SCSC_WLAN_RTT
-	seq_puts(m, "CONFIG_SCSC_WLAN_RTT                       : y\n");
-#else
-	seq_puts(m, "CONFIG_SCSC_WLAN_RTT                       : n\n");
-#endif
 #ifdef CONFIG_SCSC_WLAN_SET_PREFERRED_ANTENNA
 	seq_puts(m, "CONFIG_SCSC_WLAN_SET_PREFERRED_ANTENNA            : y\n");
 #else
 	seq_puts(m, "CONFIG_SCSC_WLAN_SET_PREFERRED_ANTENNA            : n\n");
 #endif
-#if defined(CONFIG_SLSI_WLAN_STA_FWD_BEACON) && (defined(SCSC_SEP_VERSION) && SCSC_SEP_VERSION >= 10)
+#ifdef CONFIG_SLSI_WLAN_STA_FWD_BEACON
 	seq_puts(m, "CONFIG_SLSI_WLAN_STA_FWD_BEACON                   : y\n");
 #else
 	seq_puts(m, "CONFIG_SLSI_WLAN_STA_FWD_BEACON                   : n\n");
@@ -430,18 +441,12 @@ static int slsi_procfs_build_show(struct seq_file *m, void *v)
 #else
 	seq_puts(m, "CONFIG_SCSC_WLAN_STA_ENHANCED_ARP_DETECT          : n\n");
 #endif
-#ifdef CONFIG_SCSC_WLAN_DYNAMIC_ITO
-	seq_puts(m, "CONFIG_SCSC_WLAN_DYNAMIC_ITO                      : y\n");
-#else
-	seq_puts(m, "CONFIG_SCSC_WLAN_DYNAMIC_ITO                      : n\n");
-#endif
-#ifdef CONFIG_SCSC_WLAN_AP_AUTO_RECOVERY
-	seq_puts(m, "CONFIG_SCSC_WLAN_AP_AUTO_RECOVERY                 : y\n");
-#else
-	seq_puts(m, "CONFIG_SCSC_WLAN_AP_AUTO_RECOVERY                 : n\n");
-#endif
 
-
+#ifdef CONFIG_SCSC_WLAN_BSS_SELECTION
+	seq_puts(m, "CONFIG_SCSC_WLAN_BSS_SELECTION                      : y\n");
+#else
+	seq_puts(m, "CONFIG_SCSC_WLAN_BSS_SELECTION                      : n\n");
+#endif
 	return 0;
 }
 
@@ -487,7 +492,7 @@ static int slsi_procfs_vifs_show(struct seq_file *m, void *v)
 			struct slsi_peer *peer = ndev_vif->peer_sta_record[peer_index];
 
 			if (peer && peer->valid)
-				seq_printf(m, "vif:%d %pM peer[%d] %pM \n", vif, dev->dev_addr, peer_index, peer->address);
+				seq_printf(m, "vif:%d %pM peer[%d] %pM\n", vif, dev->dev_addr, peer_index, peer->address);
 		}
 		SLSI_MUTEX_UNLOCK(ndev_vif->vif_mutex);
 	}
@@ -834,76 +839,6 @@ static ssize_t slsi_procfs_del_tspec_write(struct file *file, const char __user 
 	return count;
 }
 
-static ssize_t slsi_procfs_tput_read(struct file *file,  char __user *user_buf, size_t count, loff_t *ppos)
-{
-	struct slsi_dev *sdev = (struct slsi_dev *)file->private_data;
-	struct net_device *dev;
-	struct netdev_vif *ndev_vif;
-	int i;
-	char         buf[256];
-	int          pos = 0;
-	const size_t bufsz = sizeof(buf);
-
-	SLSI_MUTEX_LOCK(sdev->netdev_add_remove_mutex);
-	for (i = 1; i <= CONFIG_SCSC_WLAN_MAX_INTERFACES; i++) {
-		dev = sdev->netdev[i];
-		if (dev) {
-			ndev_vif = netdev_priv(dev);
-			pos += scnprintf(buf + pos, bufsz - pos, "%s:\t", dev->name);
-			if (ndev_vif->throughput_tx_bps < 1000)
-				pos += scnprintf(buf + pos, bufsz - pos, "TX:%u bps\t", ndev_vif->throughput_tx_bps);
-			else if ((ndev_vif->throughput_tx_bps >= 1000) && (ndev_vif->throughput_tx_bps < (1000 * 1000)))
-				pos += scnprintf(buf + pos, bufsz - pos, "TX:%u Kbps\t", (ndev_vif->throughput_tx_bps / 1000));
-			else
-				pos += scnprintf(buf + pos, bufsz - pos, "TX:%u Mbps\t", (ndev_vif->throughput_tx_bps / (1000 * 1000)));
-
-			if (ndev_vif->throughput_rx_bps < 1000)
-				pos += scnprintf(buf + pos, bufsz - pos, "RX:%u bps\n", ndev_vif->throughput_rx_bps);
-			else if ((ndev_vif->throughput_rx_bps >= 1000) && (ndev_vif->throughput_rx_bps < (1000 * 1000)))
-				pos += scnprintf(buf + pos, bufsz - pos, "RX:%u Kbps\n", (ndev_vif->throughput_rx_bps / 1000));
-			else
-				pos += scnprintf(buf + pos, bufsz - pos, "RX:%u Mbps\n", (ndev_vif->throughput_rx_bps / (1000 * 1000)));
-		}
-	}
-	SLSI_MUTEX_UNLOCK(sdev->netdev_add_remove_mutex);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
-}
-
-static ssize_t slsi_procfs_tput_write(struct file *file, const char __user *user_buf, size_t len, loff_t *ppos)
-{
-	struct slsi_dev *sdev = (struct slsi_dev *)file->private_data;
-	char			read_buf[2];
-
-	if (!sdev) {
-		SLSI_ERR(sdev, "invalid sdev\n");
-		return -ENOMEM;
-	}
-
-	if (!len || (len > sizeof(read_buf))) {
-		SLSI_ERR(sdev, "invalid len\n");
-		return -EINVAL;
-	}
-
-	simple_write_to_buffer(read_buf, len, ppos, user_buf, len);
-
-	switch (read_buf[0]) {
-	case '1':
-		if (!slsi_traffic_mon_is_running(sdev)) {
-			SLSI_DBG1(sdev, SLSI_HIP, "start Traffic monitor\n");
-			slsi_traffic_mon_client_register(sdev, sdev, 0, 0, 0, NULL);
-		}
-		break;
-	case '0':
-		SLSI_DBG1(sdev, SLSI_HIP, "stop Traffic monitor\n");
-		slsi_traffic_mon_client_unregister(sdev, sdev);
-		break;
-	default:
-		SLSI_DBG1(sdev, SLSI_HIP, "invalid value %c\n", read_buf[0]);
-		return -EINVAL;
-	}
-	return len;
-}
-
 static atomic_t fd_opened_count;
 
 void slsi_procfs_inc_node(void)
@@ -966,10 +901,10 @@ static int slsi_procfs_fcq_show(struct seq_file *m, void *v)
 			if (scsc_wifi_fcq_stat_queueset(&peer->data_qs, &queue_stat, &smod, &scod, &cp_state, &peer_ps_state_transitions) != 0)
 				continue;
 
-			seq_printf(m, "Interface: %-12s (vif: %d, type: %s)\n#%d\t|peer: %pM, qs: %2d, smod: %u, scod: %u, net_q_stops:%u, net_q_resumes:%u, PS transitions: %u, Controlled port: %s\n",
+			seq_printf(m, "|%-12s|%-6d|%-6s|\n%d). peer:%pM, qs:%2d, smod:%u, scod:%u, netq stops :%u, netq resumes :%u, PS transitions :%u Controlled port :%s\n",
 				   netdev_name(dev),
 				   vif,
-				   "UNICAST",
+				   "UCAST",
 				   i + 1,
 				   peer->address,
 				   peer->queueset,
@@ -980,23 +915,25 @@ static int slsi_procfs_fcq_show(struct seq_file *m, void *v)
 				   peer_ps_state_transitions,
 				   cp_state == SCSC_WIFI_FCQ_8021x_STATE_BLOCKED ? "Blocked" : "Opened");
 
-			seq_printf(m, "\t|%8s|%8s|%8s|%8s|%8s|%8s|%8s|\n",
+			seq_printf(m, "    |%-12s|%-17s|%4s|%8s|%8s|%8s|%8s|%10s|%8s|\n",
+				   "netdev",
+				   "peer",
 				   "AC index", "qcod", "qmod",
-				   "state", "stops", "resumes",
-				   "stop_percent");
+				   "nq_state", "nq_stop", "nq_resume",
+				   "tq_state");
 
 			for (ac = 0; ac < SLSI_NETIF_Q_PER_PEER; ac++) {
 				if (scsc_wifi_fcq_stat_queue(&peer->data_qs.ac_q[ac].head,
 							     &queue_stat,
 							     &qmod, &qcod) == 0)
-					seq_printf(m, "\t|%8d|%8u|%8u|%8u|%8u|%8u|%8u%%\n",
+					seq_printf(m, "    |%-12s|%pM|%4d|%8u|%8u|%8u|%8u\n",
+						   netdev_name(dev),
+						   peer->address,
 						   ac,
 						   qcod,
 						   qmod,
-						   queue_stat.netq_state,
 						   queue_stat.netq_stops,
-						   queue_stat.netq_resumes,
-						   queue_stat.netq_stop_percent);
+						   queue_stat.netq_resumes);
 				else
 					break;
 			}
@@ -1054,6 +991,32 @@ static int slsi_procfs_fcq_show(struct seq_file *m, void *v)
 
 	return 0;
 }
+
+#ifdef CONFIG_SCSC_WLAN_OFFLINE_TRACE
+/* To dump the offline hip dbg logs collected in a circular buffer */
+static int slsi_procfs_offline_dbg_dump_show(struct seq_file *m, void *v)
+{
+	struct slsi_dev *sdev = (struct slsi_dev *)m->private;
+
+	SLSI_UNUSED_PARAMETER(v);
+
+	slsi_offline_dbg_dump_to_seq_file(sdev, m);
+	return 0;
+}
+
+static int slsi_procfs_offline_dbg_dump_klog_show(struct seq_file *m, void *v)
+{
+	struct slsi_dev *sdev = (struct slsi_dev *)m->private;
+
+	SLSI_UNUSED_PARAMETER(v);
+
+	slsi_offline_dbg_dump_to_klog(sdev);
+
+	seq_puts(m, "Dumped the offline debug buffer to the kernel logs\n");
+	return 0;
+}
+
+#endif
 
 static int slsi_procfs_tcp_ack_suppression_show(struct seq_file *m, void *v)
 {
@@ -1128,36 +1091,34 @@ static ssize_t slsi_procfs_nan_info_read(struct file *file,  char __user *user_b
 
 	SLSI_MUTEX_LOCK(ndev_vif->vif_mutex);
 	nan_data = &ndev_vif->nan;
-	memset(buf, 0, sizeof(buf));
 
 	pos += scnprintf(buf, bufsz, "NANMACADDRESS,");
 	pos += scnprintf(buf + pos, bufsz - pos, "%pM", nan_data->local_nmi);
-	pos += scnprintf(buf + pos, bufsz, ",CLUSTERID,");
+	pos += scnprintf(buf, bufsz, ",CLUSTERID,");
 	pos += scnprintf(buf + pos, bufsz - pos, "%pM", nan_data->cluster_id);
-	pos += scnprintf(buf + pos, bufsz, ",OPERATINGCHANNEL,");
+	pos += scnprintf(buf, bufsz, ",OPERATINGCHANNEL,");
 	if (nan_data->operating_channel[0])
 		pos += scnprintf(buf + pos, bufsz - pos, "%d ", nan_data->operating_channel[0]);
 	if (nan_data->operating_channel[1])
 		pos += scnprintf(buf + pos, bufsz - pos, "%d", nan_data->operating_channel[1]);
-	pos += scnprintf(buf + pos, bufsz, ",ROLE,");
+	pos += scnprintf(buf, bufsz, ",ROLE,");
 	pos += scnprintf(buf + pos, bufsz - pos, "%d", nan_data->role);
-	pos += scnprintf(buf + pos, bufsz, ",STATE,");
+	pos += scnprintf(buf, bufsz, ",STATE,");
 	pos += scnprintf(buf + pos, bufsz - pos, "%d", nan_data->state);
-	pos += scnprintf(buf + pos, bufsz, ",MASTERPREFVAL,");
+	pos += scnprintf(buf, bufsz, ",MASTERPREFVAL,");
 	pos += scnprintf(buf + pos, bufsz - pos, "%d", nan_data->master_pref_value);
-	pos += scnprintf(buf + pos, bufsz, ",AMR,");
-	pos += scnprintf(buf + pos, bufsz - pos, "0x%08x%08x", nan_data->amr_higher,
-			 nan_data->amr_lower);
-	pos += scnprintf(buf + pos, bufsz, ",HOPCOUNT,");
+	pos += scnprintf(buf, bufsz, ",AMT,");
+	pos += scnprintf(buf + pos, bufsz - pos, "%d", nan_data->amt);
+	pos += scnprintf(buf, bufsz, ",HOPCOUNT,");
 	pos += scnprintf(buf + pos, bufsz - pos, "%d", nan_data->hopcount);
-	pos += scnprintf(buf + pos, bufsz, ",NMIRANDOMINTERVAL,");
+	pos += scnprintf(buf, bufsz, ",NMIRANDOMINTERVAL,");
 	pos += scnprintf(buf + pos, bufsz - pos, "%d", nan_data->random_mac_interval_sec);
 
 	SLSI_MUTEX_UNLOCK(ndev_vif->vif_mutex);
 	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
 }
 
-static ssize_t slsi_procfs_nan_disable_cluster_merge_write(struct file *file, const char __user *user_buf, size_t len,
+static ssize_t slsi_procfs_nan_exclude_ipv6_addr_tlv_write(struct file *file, const char __user *user_buf, size_t len,
 							   loff_t *ppos)
 {
 	struct slsi_dev *sdev = (struct slsi_dev *)file->private_data;
@@ -1177,34 +1138,8 @@ static ssize_t slsi_procfs_nan_disable_cluster_merge_write(struct file *file, co
 		ret = sizeof(read_string) - 1;
 	}
 
+	kfree(read_string);
 	return ret;
-}
-
-static ssize_t slsi_procfs_nan_discovery_data_read(struct file *file,  char __user *user_buf, size_t count, loff_t *ppos)
-{
-	char              buf[500];
-	int               pos = 0;
-	const size_t      bufsz = sizeof(buf);
-	struct slsi_dev   *sdev = (struct slsi_dev *)file->private_data;
-	struct net_device *dev = slsi_nan_get_netdev(sdev);
-	struct netdev_vif *ndev_vif = netdev_priv(dev);
-	struct slsi_vif_nan *nan_data;
-	struct slsi_nan_discovery_info *traverse;
-
-	SLSI_UNUSED_PARAMETER(file);
-
-	SLSI_MUTEX_LOCK(ndev_vif->vif_mutex);
-	nan_data = &ndev_vif->nan;
-	memset(buf, 0, sizeof(buf));
-	traverse = nan_data->disc_info;
-
-	while (traverse) {
-		pos += scnprintf(buf + pos, bufsz - pos, "%pM,", nan_data->disc_info->peer_addr);
-		pos += scnprintf(buf + pos, bufsz - pos, "%d\n", nan_data->disc_info->match_id);
-		traverse = traverse->next;
-	}
-	SLSI_MUTEX_UNLOCK(ndev_vif->vif_mutex);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
 }
 
 #endif
@@ -1229,11 +1164,15 @@ SLSI_PROCFS_RW_FILE_OPS(confg_tspec);
 SLSI_PROCFS_RW_FILE_OPS(send_addts);
 SLSI_PROCFS_RW_FILE_OPS(send_delts);
 SLSI_PROCFS_RW_FILE_OPS(del_tspec);
-SLSI_PROCFS_RW_FILE_OPS(tput);
 SLSI_PROCFS_READ_FILE_OPS(fd_opened);
 SLSI_PROCFS_SEQ_FILE_OPS(build);
 SLSI_PROCFS_SEQ_FILE_OPS(status);
 SLSI_PROCFS_SEQ_FILE_OPS(fcq);
+#ifdef CONFIG_SCSC_WLAN_OFFLINE_TRACE
+SLSI_PROCFS_SEQ_FILE_OPS(offline_dbg_dump);
+SLSI_PROCFS_SEQ_FILE_OPS(offline_dbg_dump_klog);
+#endif
+
 #ifdef CONFIG_SCSC_WLAN_MUTEX_DEBUG
 SLSI_PROCFS_READ_FILE_OPS(mutex_stats);
 #endif
@@ -1244,9 +1183,7 @@ SLSI_PROCFS_SEQ_FILE_OPS(tcp_ack_suppression);
 SLSI_PROCFS_READ_FILE_OPS(nan_mac_addr);
 #ifdef CONFIG_SCSC_WIFI_NAN_ENABLE
 SLSI_PROCFS_READ_FILE_OPS(nan_info);
-SLSI_PROCFS_WRITE_FILE_OPS(nan_disable_cluster_merge);
-SLSI_PROCFS_READ_FILE_OPS(nan_discovery_data);
-
+SLSI_PROCFS_WRITE_FILE_OPS(nan_exclude_ipv6_addr_tlv);
 #endif
 SLSI_PROCFS_READ_FILE_OPS(dscp_mapping);
 
@@ -1258,6 +1195,9 @@ int slsi_create_proc_dir(struct slsi_dev *sdev)
 	(void)snprintf(dir, sizeof(dir), "driver/unifi%d", sdev->procfs_instance);
 	parent = proc_mkdir(dir, NULL);
 	if (parent) {
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(3, 4, 0))
+		parent->data = sdev;
+#endif
 		sdev->procfs_dir = parent;
 
 		SLSI_PROCFS_SEQ_ADD_FILE(sdev, build, parent, S_IRUSR | S_IRGRP | S_IROTH);
@@ -1273,8 +1213,12 @@ int slsi_create_proc_dir(struct slsi_dev *sdev)
 		SLSI_PROCFS_ADD_FILE(sdev, send_addts, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 		SLSI_PROCFS_ADD_FILE(sdev, send_delts, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 		SLSI_PROCFS_ADD_FILE(sdev, del_tspec, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-		SLSI_PROCFS_ADD_FILE(sdev, tput, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 		SLSI_PROCFS_ADD_FILE(sdev, fd_opened, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+#ifdef CONFIG_SCSC_WLAN_OFFLINE_TRACE
+		SLSI_PROCFS_SEQ_ADD_FILE(sdev, offline_dbg_dump, sdev->procfs_dir, S_IRUSR | S_IRGRP);
+		SLSI_PROCFS_SEQ_ADD_FILE(sdev, offline_dbg_dump_klog, sdev->procfs_dir, S_IRUSR | S_IRGRP);
+#endif
+
 #ifdef CONFIG_SCSC_WLAN_MUTEX_DEBUG
 		SLSI_PROCFS_ADD_FILE(sdev, mutex_stats, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 #endif
@@ -1285,8 +1229,7 @@ int slsi_create_proc_dir(struct slsi_dev *sdev)
 		SLSI_PROCFS_ADD_FILE(sdev, nan_mac_addr, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 #ifdef CONFIG_SCSC_WIFI_NAN_ENABLE
 		SLSI_PROCFS_ADD_FILE(sdev, nan_info, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-		SLSI_PROCFS_ADD_FILE(sdev, nan_disable_cluster_merge, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-		SLSI_PROCFS_ADD_FILE(sdev, nan_discovery_data, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+		SLSI_PROCFS_ADD_FILE(sdev, nan_exclude_ipv6_addr_tlv, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 #endif
 		SLSI_PROCFS_ADD_FILE(sdev, dscp_mapping, parent, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 		return 0;
@@ -1315,8 +1258,11 @@ void slsi_remove_proc_dir(struct slsi_dev *sdev)
 		SLSI_PROCFS_REMOVE_FILE(send_addts, sdev->procfs_dir);
 		SLSI_PROCFS_REMOVE_FILE(send_delts, sdev->procfs_dir);
 		SLSI_PROCFS_REMOVE_FILE(del_tspec, sdev->procfs_dir);
-		SLSI_PROCFS_REMOVE_FILE(tput, sdev->procfs_dir);
 		SLSI_PROCFS_REMOVE_FILE(fd_opened, sdev->procfs_dir);
+#ifdef CONFIG_SCSC_WLAN_OFFLINE_TRACE
+		SLSI_PROCFS_REMOVE_FILE(offline_dbg_dump, sdev->procfs_dir);
+		SLSI_PROCFS_REMOVE_FILE(offline_dbg_dump_klog, sdev->procfs_dir);
+#endif
 #ifdef CONFIG_SCSC_WLAN_MUTEX_DEBUG
 		SLSI_PROCFS_REMOVE_FILE(mutex_stats, sdev->procfs_dir);
 #endif
@@ -1327,8 +1273,7 @@ void slsi_remove_proc_dir(struct slsi_dev *sdev)
 		SLSI_PROCFS_REMOVE_FILE(nan_mac_addr, sdev->procfs_dir);
 #ifdef CONFIG_SCSC_WIFI_NAN_ENABLE
 		SLSI_PROCFS_REMOVE_FILE(nan_info, sdev->procfs_dir);
-		SLSI_PROCFS_REMOVE_FILE(nan_disable_cluster_merge, sdev->procfs_dir);
-		SLSI_PROCFS_REMOVE_FILE(nan_discovery_data, sdev->procfs_dir);
+		SLSI_PROCFS_REMOVE_FILE(nan_exclude_ipv6_addr_tlv, sdev->procfs_dir);
 #endif
 		SLSI_PROCFS_REMOVE_FILE(dscp_mapping, sdev->procfs_dir);
 		(void)snprintf(dir, sizeof(dir), "driver/unifi%d", sdev->procfs_instance);

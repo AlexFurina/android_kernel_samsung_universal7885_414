@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Copyright (c) 2014 - 2019 Samsung Electronics Co., Ltd. All rights reserved
+ * Copyright (c) 2014 - 2018 Samsung Electronics Co., Ltd. All rights reserved
  *
  ****************************************************************************/
 
@@ -8,7 +8,7 @@
 #define __SCSC_LOG_COLLECTOR_H__
 
 /* High nibble is Major, Low nibble is Minor */
-#define SCSC_LOG_HEADER_VERSION_MAJOR	0x03
+#define SCSC_LOG_HEADER_VERSION_MAJOR	0x01
 #define SCSC_LOG_HEADER_VERSION_MINOR	0x00
 /* Magic string. 4 bytes "SCSC"*/
 /* Header version. 1 byte */
@@ -17,13 +17,12 @@
 /* Collection reason. 1 byte */
 /* Reserved. 1 byte */
 /* Reason Code . 2 bytes */
-/* Observer present . 1 bytes */
-#define SCSC_LOG_HEADER_SIZE		(13)
-#define SCSC_LOG_FW_VERSION_SIZE	(128)
+#define SCSC_LOG_HEADER_SIZE		(12)
+#define SCSC_LOG_FW_VERSION_SIZE	(64)
 #define SCSC_LOG_HOST_VERSION_SIZE	(64)
 #define SCSC_LOG_FAPI_VERSION_SIZE	(64)
 /* Reserved 2 . 4 byte */
-#define SCSC_LOG_RESERVED_2		3
+#define SCSC_LOG_RESERVED_2		4
 /* Ideally header + versions should be 16 bytes aligne*/
 #define SCSC_SUPPORTED_CHUNKS_HEADER    48
 
@@ -42,7 +41,6 @@ enum scsc_log_reason {
 	SCSC_LOG_HOST_WLAN,
 	SCSC_LOG_HOST_BT,
 	SCSC_LOG_HOST_COMMON,
-	SCSC_LOG_SYS_ERR,
 	/* Add others */
 };
 
@@ -58,9 +56,7 @@ extern const char *scsc_loc_reason_str[];
  */
 enum scsc_log_chunk_type {
 	SCSC_LOG_CHUNK_SYNC, /* SYNC should be the first chunk to collect */
-	SCSC_LOG_MINIMOREDUMP,
-	/* Add other chunks */
-	SCSC_LOG_CHUNK_IMP = 127,
+	SCSC_LOG_CHUNK_IMP,
 	SCSC_LOG_CHUNK_MXL,
 	SCSC_LOG_CHUNK_UDI,
 	SCSC_LOG_CHUNK_BT_HCF,
@@ -70,8 +66,8 @@ enum scsc_log_chunk_type {
 	SCSC_LOG_RESERVED_BT,
 	SCSC_LOG_RESERVED_WLAN,
 	SCSC_LOG_RESERVED_RADIO,
-	/* Add other chunks */
 	SCSC_LOG_CHUNK_LOGRING = 254,
+	/* Add other chunks */
 	SCSC_LOG_CHUNK_INVALID = 255,
 };
 
@@ -90,8 +86,6 @@ enum scsc_log_chunk_type {
 #define SCSC_LOG_HOST_WLAN_REASON_DISCONNECT_IND	0x0001
 #define SCSC_LOG_HOST_WLAN_REASON_DISCONNECTED_IND	0x0002
 #define SCSC_LOG_HOST_WLAN_REASON_DRIVERDEBUGDUMP	0x0003
-#define SCSC_LOG_HOST_WLAN_REASON_CONNECT_ERR		0x0004
-#define SCSC_LOG_HOST_WLAN_REASON_INVALID_AMSDU		0x0005
 /* Reason codes for SCSC_LOG_HOST_BT */
 #define SCSC_LOG_HOST_BT_REASON_HCI_ERROR		0x0000
 /* Reason codes for SCSC_LOG_HOST_COMMON */
@@ -111,7 +105,6 @@ struct scsc_log_sbl_header {
 	char host_version[SCSC_LOG_HOST_VERSION_SIZE];
 	char fapi_version[SCSC_LOG_FAPI_VERSION_SIZE];
 	u16  reason_code;
-	bool observer;
 	u8   reserved2[SCSC_LOG_RESERVED_2];
 	char supported_chunks[SCSC_SUPPORTED_CHUNKS_HEADER];
 } __packed;
@@ -140,38 +133,6 @@ unsigned char *scsc_log_collector_get_buffer(void);
 /* Public method to register FAPI version. */
 void scsc_log_collector_write_fapi(char __user *buf, size_t len);
 
-/* Public method to notify the presence/absense of observers */
-void scsc_log_collector_is_observer(bool observer);
-
 void scsc_log_collector_schedule_collection(enum scsc_log_reason reason, u16 reason_code);
 int scsc_log_collector_write(char __user *buf, size_t count, u8 align);
-
-/* function to provide string representation of uint8 trigger code */
-static inline const char *scsc_get_trigger_str(int code)
-{
-	switch (code) {
-	case 1:	return "scsc_log_fw_panic";
-	case 2:	return "scsc_log_user";
-	case 3:	return "scsc_log_fw";
-	case 4:	return "scsc_log_dumpstate";
-	case 5:	return "scsc_log_host_wlan";
-	case 6:	return "scsc_log_host_bt";
-	case 7:	return "scsc_log_host_common";
-	case 8:	return "scsc_log_sys_error";
-	case 0:
-	default:
-		return "unknown";
-	}
-};
-
-/* callbacks to mxman */
-struct scsc_log_collector_mx_cb {
-	void (*get_fw_version)(struct scsc_log_collector_mx_cb *mx_cb, char *version, size_t ver_sz);
-	void (*get_drv_version)(struct scsc_log_collector_mx_cb *mx_cb, char *version, size_t ver_sz);
-	void (*call_wlbtd_sable)(struct scsc_log_collector_mx_cb *mx_cb, u8 trigger_code, u16 reason_code);
-};
-
-int scsc_log_collector_register_mx_cb(struct scsc_log_collector_mx_cb *mx_cb);
-int scsc_log_collector_unregister_mx_cb(struct scsc_log_collector_mx_cb *mx_cb);
-
 #endif /* __SCSC_LOG_COLLECTOR_H__ */

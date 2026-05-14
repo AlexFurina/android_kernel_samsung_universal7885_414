@@ -1,78 +1,22 @@
 /****************************************************************************
 *
-* Copyright (c) 2014 - 2018 Samsung Electronics Co., Ltd. All rights reserved
+* Copyright (c) 2014 - 2016 Samsung Electronics Co., Ltd. All rights reserved
 *
 ****************************************************************************/
 
 #ifndef __SCSC_MIF_ABS_H
 #define __SCSC_MIF_ABS_H
 
-#include <linux/version.h>
-
-#ifdef CONFIG_SCSC_QOS
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-#include <soc/samsung/exynos_pm_qos.h>
-#include <linux/cpufreq.h>
-#else
-#include <linux/pm_qos.h>
-#endif
-#endif
 #include <linux/types.h>
 #include <scsc/scsc_mifram.h>
-#include <scsc/scsc_mx.h>
 
 struct device;
 
 /* To R4/M4 */
 enum scsc_mif_abs_target {
 	SCSC_MIF_ABS_TARGET_R4 = 0,
-	SCSC_MIF_ABS_TARGET_M4 = 1,
-#ifdef CONFIG_SCSC_MX450_GDB_SUPPORT
-	SCSC_MIF_ABS_TARGET_M4_1 = 2
-#endif
+	SCSC_MIF_ABS_TARGET_M4 = 1
 };
-
-#ifdef CONFIG_SCSC_SMAPPER
-#define SCSC_MIF_SMAPPER_MAX_BANKS 32
-
-struct scsc_mif_smapper_info {
-	u32 num_entries;
-	u32 mem_range_bytes;
-};
-
-enum scsc_mif_abs_bank_type {
-	SCSC_MIF_ABS_NO_BANK = 0,
-	SCSC_MIF_ABS_SMALL_BANK = 1,
-	SCSC_MIF_ABS_LARGE_BANK = 2
-};
-#endif
-
-#ifdef CONFIG_SCSC_QOS
-struct scsc_mifqos_request {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-	struct exynos_pm_qos_request pm_qos_req_mif;
-	struct exynos_pm_qos_request pm_qos_req_int;
-	struct freq_qos_request pm_qos_req_cl0;
-	struct freq_qos_request pm_qos_req_cl1;
-	struct cpufreq_policy* cpu_cluster0_policy;
-	struct cpufreq_policy* cpu_cluster1_policy;
-#ifdef CONFIG_SOC_S5E9815
-	struct freq_qos_request pm_qos_req_cl2;
-	struct cpufreq_policy* cpu_cluster2_policy;
-#endif
-#else
-	struct pm_qos_request pm_qos_req_mif;
-	struct pm_qos_request pm_qos_req_int;
-	struct pm_qos_request pm_qos_req_cl0;
-	struct pm_qos_request pm_qos_req_cl1;
-#ifdef CONFIG_SOC_S5E9815
-	struct pm_qos_request pm_qos_req_cl2;
-#endif
-#endif
-};
-#endif
-
-#define SCSC_REG_READ_WLBT_STAT		0
 
 /**
  * Abstraction of the Maxwell "Memory Interface" aka  MIF.
@@ -193,15 +137,9 @@ struct scsc_mif_abs {
  * Return kernel-space pointer to MIF ram.
  * The pointer is guaranteed to remain valid between map and unmap calls.
  */
-	void *(*get_mifram_ptr)(struct scsc_mif_abs *interface, scsc_mifram_ref ref);
+	void      *(*get_mifram_ptr)(struct scsc_mif_abs *interface, scsc_mifram_ref ref);
 /* Maps kernel-space pointer to MIF RAM to portable reference */
 	int (*get_mifram_ref)(struct scsc_mif_abs *interface, void *ptr, scsc_mifram_ref *ref);
-#if IS_ENABLED(CONFIG_SCSC_MEMLOG)
-	void *(*get_mifram_ptr_region2)(struct scsc_mif_abs *interface, scsc_mifram_ref ref);
-	int (*get_mifram_ref_region2)(struct scsc_mif_abs *interface, void *ptr, scsc_mifram_ref *ref);
-	int (*set_mem_region2)(struct scsc_mif_abs *interface, void __iomem *_mem_region2, size_t _mem_size_region2);
-	void (*set_memlog_paddr)(struct scsc_mif_abs *interface, dma_addr_t paddr);
-#endif
 
 /* Return physical page frame number corresponding to the physical addres to which
  * the virtual address is mapped . Needed in mmap file operations*/
@@ -223,35 +161,13 @@ struct scsc_mif_abs {
 	void (*mif_dump_registers)(struct scsc_mif_abs *interface);
 	void (*mif_cleanup)(struct scsc_mif_abs *interface);
 	void (*mif_restart)(struct scsc_mif_abs *interface);
-
-#ifdef CONFIG_SCSC_SMAPPER
-/* SMAPPER */
-	int  (*mif_smapper_get_mapping)(struct scsc_mif_abs *interface, u8 *phy_map, u16 *align);
-	int  (*mif_smapper_get_bank_info)(struct scsc_mif_abs *interface, u8 bank, struct scsc_mif_smapper_info *bank_info);
-	int  (*mif_smapper_write_sram)(struct scsc_mif_abs *interface, u8 bank, u8 num_entries, u8 first_entry, dma_addr_t *addr);
-	void (*mif_smapper_configure)(struct scsc_mif_abs *interface, u32 granularity);
-	u32  (*mif_smapper_get_bank_base_address)(struct scsc_mif_abs *interface, u8 bank);
-#endif
-#ifdef CONFIG_SCSC_QOS
-	int  (*mif_pm_qos_add_request)(struct scsc_mif_abs *interface, struct scsc_mifqos_request *qos_req, enum scsc_qos_config config);
-	int  (*mif_pm_qos_update_request)(struct scsc_mif_abs *interface, struct scsc_mifqos_request *qos_req, enum scsc_qos_config config);
-	int  (*mif_pm_qos_remove_request)(struct scsc_mif_abs *interface, struct scsc_mifqos_request *qos_req);
-	int  (*mif_set_affinity_cpu)(struct scsc_mif_abs *interface, u8 cpu);
-#endif
-	bool (*mif_reset_failure)(struct scsc_mif_abs *interface);
-	int (*mif_read_register)(struct scsc_mif_abs *interface, u64 id, u32 *val);
-#ifdef CONFIG_SOC_EXYNOS7885
 /**
-* Return scsc_btabox_data structure with physical address & size of the DTB region
-* exposed by the platform driver. The platform driver uses it to configure BAAW1.
-* The BT driver needs to know and pass it down to BT firmware to configure ABOX
-* shared data structure
-*/
+ * Return scsc_btabox_data structure with physical address & size of the DTB region
+ * exposed by the platform driver. The platform driver uses it to configure BAAW1.
+ * The BT driver needs to know and pass it down to BT firmware to configure ABOX
+ * shared data structure
+ */
 	void (*get_abox_shared_mem)(struct scsc_mif_abs *interface, void **data);
-#endif
-/* To un/register callbacks to mxman functionality */
-	void (*recovery_disabled_reg)(struct scsc_mif_abs *interface, bool (*handler)(void));
-	void (*recovery_disabled_unreg)(struct scsc_mif_abs *interface);
 };
 
 struct device;

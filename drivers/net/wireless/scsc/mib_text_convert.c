@@ -307,7 +307,7 @@ static bool CsrWifiMibConvertTextAppend(const char *mibText, struct slsi_mib_dat
 				char *line = kmalloc(strSize + 1, GFP_KERNEL);
 
 				if (!line) {
-					SLSI_ERR_NODEV("Memory allocation failed!\n", line);
+					SLSI_ERR_NODEV("Memory allocation failed!\n");
 					return false;
 				}
 				(void)strncpy(line, lineStart, strSize);

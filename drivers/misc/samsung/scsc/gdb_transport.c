@@ -11,6 +11,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <scsc/scsc_logring.h>
+
 #include "mifintrbit.h"
 
 struct clients_node {
@@ -157,10 +158,6 @@ int gdb_transport_init(struct gdb_transport *gdb_transport, struct scsc_mx *mx, 
 
 	if (type == GDB_TRANSPORT_M4)
 		r = mif_stream_init(&gdb_transport->mif_istream, SCSC_MIF_ABS_TARGET_M4, MIF_STREAM_DIRECTION_IN, num_packets, packet_size, mx, MIF_STREAM_INTRBIT_TYPE_ALLOC, gdb_input_irq_handler, gdb_transport);
-#ifdef CONFIG_SCSC_MX450_GDB_SUPPORT
-	else if (type == GDB_TRANSPORT_M4_1)
-		r = mif_stream_init(&gdb_transport->mif_istream, SCSC_MIF_ABS_TARGET_M4_1, MIF_STREAM_DIRECTION_IN, num_packets, packet_size, mx, MIF_STREAM_INTRBIT_TYPE_ALLOC, gdb_input_irq_handler, gdb_transport);
-#endif
 	else
 		r = mif_stream_init(&gdb_transport->mif_istream, SCSC_MIF_ABS_TARGET_R4, MIF_STREAM_DIRECTION_IN, num_packets, packet_size, mx, MIF_STREAM_INTRBIT_TYPE_ALLOC, gdb_input_irq_handler, gdb_transport);
 	if (r) {
@@ -170,10 +167,6 @@ int gdb_transport_init(struct gdb_transport *gdb_transport, struct scsc_mx *mx, 
 
 	if (type == GDB_TRANSPORT_M4)
 		r = mif_stream_init(&gdb_transport->mif_ostream, SCSC_MIF_ABS_TARGET_M4, MIF_STREAM_DIRECTION_OUT, num_packets, packet_size, mx, MIF_STREAM_INTRBIT_TYPE_RESERVED, gdb_output_irq_handler, gdb_transport);
-#ifdef CONFIG_SCSC_MX450_GDB_SUPPORT
-	else if (type == GDB_TRANSPORT_M4_1)
-		r = mif_stream_init(&gdb_transport->mif_ostream, SCSC_MIF_ABS_TARGET_M4_1, MIF_STREAM_DIRECTION_OUT, num_packets, packet_size, mx, MIF_STREAM_INTRBIT_TYPE_RESERVED, gdb_output_irq_handler, gdb_transport);
-#endif
 	else
 		r = mif_stream_init(&gdb_transport->mif_ostream, SCSC_MIF_ABS_TARGET_R4, MIF_STREAM_DIRECTION_OUT, num_packets, packet_size, mx, MIF_STREAM_INTRBIT_TYPE_RESERVED, gdb_output_irq_handler, gdb_transport);
 	if (r) {
@@ -188,6 +181,7 @@ int gdb_transport_init(struct gdb_transport *gdb_transport, struct scsc_mx *mx, 
 	gdb_transport_node->gdb_transport = gdb_transport;
 	/* Add gdb_transport node */
 	list_add_tail(&gdb_transport_node->list, &gdb_transport_module.gdb_transport_list);
+
 	gdb_transport->type = type;
 	gdb_transport_probe_registered_clients(gdb_transport);
 	return 0;

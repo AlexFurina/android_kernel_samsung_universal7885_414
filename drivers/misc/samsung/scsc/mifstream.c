@@ -57,10 +57,6 @@ int mif_stream_init(struct mif_stream *stream, enum scsc_mif_abs_target target, 
 	if (intrbit == MIF_STREAM_INTRBIT_TYPE_RESERVED) {
 		if (target == SCSC_MIF_ABS_TARGET_M4)
 			r2 = MIFINTRBIT_RESERVED_PANIC_M4;
-#ifdef CONFIG_SCSC_MX450_GDB_SUPPORT
-		else if (target == SCSC_MIF_ABS_TARGET_M4_1)
-			r2 = MIFINTRBIT_RESERVED_PANIC_M4_1;
-#endif
 		else
 			r2 = MIFINTRBIT_RESERVED_PANIC_R4;
 	} else
@@ -91,7 +87,7 @@ int mif_stream_init(struct mif_stream *stream, enum scsc_mif_abs_target target, 
 		return -EINVAL;
 	}
 	stream->direction = direction;
-	stream->peer = (enum MIF_STREAM_PEER)target;
+	stream->peer = target;
 	return 0;
 }
 
@@ -102,10 +98,10 @@ void mif_stream_release(struct mif_stream *stream)
 	intr = scsc_mx_get_intrbit(stream->mx);
 	if (stream->direction == MIF_STREAM_DIRECTION_IN) {
 		mifintrbit_free_tohost(intr, stream->write_bit_idx);
-		mifintrbit_free_fromhost(intr, stream->read_bit_idx, (enum scsc_mif_abs_target)stream->peer);
+		mifintrbit_free_fromhost(intr, stream->read_bit_idx, stream->peer);
 	} else {
 		mifintrbit_free_tohost(intr, stream->read_bit_idx);
-		mifintrbit_free_fromhost(intr, stream->write_bit_idx, (enum scsc_mif_abs_target)stream->peer);
+		mifintrbit_free_fromhost(intr, stream->write_bit_idx, stream->peer);
 	}
 	cpacketbuffer_release(&stream->buffer);
 }
@@ -118,7 +114,7 @@ uint32_t mif_stream_read(struct mif_stream *stream, void *buf, uint32_t num_byte
 
 	if (num_bytes_read > 0)
 		/* Signal that the read is finished to anyone interested */
-		mif_abs->irq_bit_set(mif_abs, stream->read_bit_idx, (enum scsc_mif_abs_target)stream->peer);
+		mif_abs->irq_bit_set(mif_abs, stream->read_bit_idx, stream->peer);
 
 	return num_bytes_read;
 }
@@ -135,7 +131,7 @@ void mif_stream_peek_complete(struct mif_stream *stream, const void *packet)
 	cpacketbuffer_peek_complete(&stream->buffer, packet);
 
 	/* Signal that the read is finished to anyone interested */
-	mif_abs->irq_bit_set(mif_abs, stream->read_bit_idx, (enum scsc_mif_abs_target)stream->peer);
+	mif_abs->irq_bit_set(mif_abs, stream->read_bit_idx, stream->peer);
 }
 
 bool mif_stream_write(struct mif_stream *stream, const void *buf, uint32_t num_bytes)
@@ -146,7 +142,7 @@ bool mif_stream_write(struct mif_stream *stream, const void *buf, uint32_t num_b
 		return false;
 
 	/* Kick the assigned interrupt to let others know new data is available */
-	mif_abs->irq_bit_set(mif_abs, stream->write_bit_idx, (enum scsc_mif_abs_target)stream->peer);
+	mif_abs->irq_bit_set(mif_abs, stream->write_bit_idx, stream->peer);
 
 	return true;
 }
@@ -159,7 +155,7 @@ bool mif_stream_write_gather(struct mif_stream *stream, const void **bufs, uint3
 		return false;
 
 	/* Kick the assigned interrupt to let others know new data is available */
-	mif_abs->irq_bit_set(mif_abs, stream->write_bit_idx, (enum scsc_mif_abs_target)stream->peer);
+	mif_abs->irq_bit_set(mif_abs, stream->write_bit_idx, stream->peer);
 	return true;
 }
 

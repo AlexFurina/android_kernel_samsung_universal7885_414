@@ -8,27 +8,19 @@
 #include <linux/version.h>
 #include <linux/firmware.h>
 #include <linux/fs.h>
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
-#include <linux/uaccess.h>
-#else
 #include <asm/uaccess.h>
-#endif
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
+
 #include <scsc/scsc_logring.h>
 #include <scsc/scsc_mx.h>
 
 #include "scsc_mx_impl.h"
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
-#endif
-
 /* Firmware directory definitions */
 
 #define SCSC_MULTI_RF_CHIP_ID /* Select FW by RF chip ID, not rev */
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
 #if defined(CONFIG_SCSC_CORE_FW_LOCATION) && !defined(CONFIG_SCSC_CORE_FW_LOCATION_AUTO)
 #define MX140_FW_BASE_DIR_SYSTEM_ETC_WIFI      CONFIG_SCSC_CORE_FW_LOCATION
 #define MX140_FW_BASE_DIR_VENDOR_ETC_WIFI      CONFIG_SCSC_CORE_FW_LOCATION
@@ -36,10 +28,9 @@ MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
 #define MX140_FW_BASE_DIR_SYSTEM_ETC_WIFI	"/system/etc/wifi"
 #define MX140_FW_BASE_DIR_VENDOR_ETC_WIFI	"/vendor/etc/wifi"
 #endif
-#else /* when using request_firmware we need to hardcode the folders */
-#define MX140_FW_BASE_DIR_SYSTEM_ETC_WIFI	"/vendor/etc/wifi"
-#define MX140_FW_BASE_DIR_VENDOR_ETC_WIFI	"/vendor/etc/wifi"
-#endif
+
+/* Look for this file in <dir>/etc/wifi */
+#define MX140_FW_DETECT				"mx"
 
 /* Paths for vendor utilities, used when CONFIG_SCSC_CORE_FW_LOCATION_AUTO=n */
 #define MX140_EXE_DIR_VENDOR		"/vendor/bin"    /* Oreo */
@@ -105,11 +96,7 @@ module_param(firmware_hw_ver, charp, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(firmware_hw_ver, "mx140 hw version detect, manual=disable");
 
 /* FW base dir readable by usermode script */
-#ifdef CONFIG_SCSC_CORE_FW_LOCATION_AUTO
-static char *fw_base_dir;
-#else
 static char *fw_base_dir = CONFIG_SCSC_CORE_FW_LOCATION;
-#endif
 module_param_named(base_dir, fw_base_dir, charp, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(base_dir, "WLBT FW base directory");
 
@@ -120,10 +107,6 @@ static char exe_dir[MX140_FW_PATH_MAX_LENGTH];	/* auto detect */
 #else
 static char base_dir[] = CONFIG_SCSC_CORE_FW_LOCATION;  /* fixed in defconfig */
 static char exe_dir[] = CONFIG_SCSC_CORE_TOOL_LOCATION;	/* fixed in defconfig */
-#endif
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-static char base_dir_request_fw[] = "../etc/wifi";  /* fixed in defconfig */
 #endif
 
 
@@ -138,15 +121,6 @@ MODULE_PARM_DESC(use_new_fw_structure, "deprecated");
 static char *cfg_platform = "default";
 module_param(cfg_platform, charp, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(cfg_platform, "HCF config subdirectory");
-
-#if defined SCSC_SEP_VERSION
-static bool force_flat = true; /* Refer to hcf from /vendor/etc/wifi/ */
-#else
-/* AOSP */
-static bool force_flat = false; /* Refer to hcf from /vendor/etc/wifi/mx140/conf/ */
-#endif
-module_param(force_flat, bool, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(force_flat, "Forcely request flat conf");
 
 /* Reads a configuration file into memory (f/w profile specific) */
 static int __mx140_file_request_conf(struct scsc_mx *mx,
@@ -168,11 +142,7 @@ static int __mx140_file_request_conf(struct scsc_mx *mx,
 
 		scnprintf(config_path, sizeof(config_path),
 			"%s/%s%s_%s",
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-			base_dir_request_fw,
-#else
 			base_dir,
-#endif
 			firmware_variant,
 			fw_suffixes[fw_suffix_found].suffix,
 			filename);
@@ -181,11 +151,7 @@ static int __mx140_file_request_conf(struct scsc_mx *mx,
 
 		scnprintf(config_path, sizeof(config_path),
 			"%s/%s%s/%s/%s%s%s/%s",
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-			base_dir_request_fw,
-#else
 			base_dir,
-#endif
 			firmware_variant,
 			fw_suffixes[fw_suffix_found].suffix,
 			MX140_FW_CONF_SUBDIR,
@@ -220,37 +186,29 @@ int mx140_file_request_conf(struct scsc_mx *mx,
 		return __mx140_file_request_conf(mx, conf, cfg_platform, config_rel_path, filename, false);
 	}
 
-	if (force_flat) {
-		/* Only request "flat" conf, where all hcf files are in FW root dir
-		 * e.g. /etc/wifi/<firmware-variant>-wlan.hcf
-		 */
-		r = __mx140_file_request_conf(mx, conf, "", config_rel_path, filename, true);
-		SCSC_TAG_INFO(MX_FILE, "forcely request flat conf = %d\n", r);
-	} else {
-		/* Search in generic location. This is an override.
-		 * e.g. /etc/wifi/mx140/conf/wlan/wlan.hcf
-		 */
-		r = __mx140_file_request_conf(mx, conf, "", config_rel_path, filename, false);
+	/* Search in generic location. This is an override.
+	 * e.g. /etc/wifi/mx140/conf/wlan/wlan.hcf
+	 */
+	r = __mx140_file_request_conf(mx, conf, "", config_rel_path, filename, false);
 
 #if defined CONFIG_SCSC_WLBT_CONFIG_PLATFORM
-		/* Then  search in platform location
-		 * e.g. /etc/wifi/mx140/conf/$platform_dir/wlan/wlan.hcf
-		 */
-		if (r) {
-			const char *plat = CONFIG_SCSC_WLBT_CONFIG_PLATFORM;
+	/* Then  search in platform location
+	 * e.g. /etc/wifi/mx140/conf/$platform_dir/wlan/wlan.hcf
+	 */
+	if (r) {
+		const char *plat = CONFIG_SCSC_WLBT_CONFIG_PLATFORM;
 
-			/* Don't bother if plat is empty string */
-			if (plat[0] != '\0')
-				r = __mx140_file_request_conf(mx, conf, plat, config_rel_path, filename, false);
-		}
+		/* Don't bother if plat is empty string */
+		if (plat[0] != '\0')
+			r = __mx140_file_request_conf(mx, conf, plat, config_rel_path, filename, false);
+	}
 #endif
 
-		/* Finally request "flat" conf, where all hcf files are in FW root dir
-		 * e.g. /etc/wifi/<firmware-variant>-wlan.hcf
-		 */
-		if (r)
-			r = __mx140_file_request_conf(mx, conf, "", config_rel_path, filename, true);
-	}
+	/* Finally request "flat" conf, where all hcf files are in FW root dir
+	 * e.g. /etc/wifi/<firmware-variant>-wlan.hcf
+	 */
+	if (r)
+		r = __mx140_file_request_conf(mx, conf, "", config_rel_path, filename, true);
 
 	return r;
 }
@@ -267,13 +225,8 @@ int mx140_file_request_debug_conf(struct scsc_mx *mx, const struct firmware **co
 
 	/* e.g. /etc/wifi/mx140/debug/log_strings.bin */
 
-	scnprintf(config_path, sizeof(config_path),
-		"%s/%s%s/%s/%s",
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-		base_dir_request_fw,
-#else
+	scnprintf(config_path, sizeof(config_path), "%s/%s%s/%s/%s",
 		base_dir,
-#endif
 		firmware_variant,
 		fw_suffixes[fw_suffix_found].suffix,
 		MX140_FW_DEBUG_SUBDIR,
@@ -293,13 +246,8 @@ int mx140_file_request_device_conf(struct scsc_mx *mx, const struct firmware **c
 
 	/* e.g. /etc/wifi/conf/wlan/mac.txt */
 
-	snprintf(config_path, sizeof(config_path),
-		"%s/%s%s/%s",
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-		base_dir_request_fw,
-#else
+	snprintf(config_path, sizeof(config_path), "%s/%s%s/%s",
 		base_dir,
-#endif
 		fw_suffixes[fw_suffix_found].suffix,
 		MX140_FW_CONF_SUBDIR,
 		config_rel_path);
@@ -329,13 +277,8 @@ static int __mx140_file_download_fw(struct scsc_mx *mx, void *dest, size_t dest_
 	SCSC_TAG_INFO(MX_FILE, "firmware_variant=%s (%s)\n", firmware_variant, fw_suffix);
 
 	/* e.g. /etc/wifi/mx140.bin */
-	scnprintf(img_path_name, sizeof(img_path_name),
-		"%s/%s%s.bin",
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-		base_dir_request_fw,
-#else
+	scnprintf(img_path_name, sizeof(img_path_name), "%s/%s%s.bin",
 		base_dir,
-#endif
 		firmware_variant,
 		fw_suffix);
 
@@ -401,8 +344,7 @@ done:
 	return r;
 }
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
-int __mx140_request_file(struct scsc_mx *mx, char *path, const struct firmware **firmp)
+int mx140_request_file(struct scsc_mx *mx, char *path, const struct firmware **firmp)
 {
 	struct file *f;
 	mm_segment_t fs;
@@ -428,7 +370,7 @@ int __mx140_request_file(struct scsc_mx *mx, char *path, const struct firmware *
 	/* Current segment. */
 	fs = get_fs();
 	/* Set to kernel segment. */
-	set_fs(KERNEL_DS);
+	set_fs(get_ds());
 
 	r = vfs_stat(base_dir, &stat);
 	if (r != 0) {
@@ -436,15 +378,6 @@ int __mx140_request_file(struct scsc_mx *mx, char *path, const struct firmware *
 		SCSC_TAG_ERR(MX_FILE, "vfs_stat() failed for %s\n", base_dir);
 		return -EAGAIN;
 	}
-	
-	/* Open the file for reading. */
-	f = filp_open(path, O_RDONLY, 0);
-	if (IS_ERR(f)) {
-		set_fs(fs);
-		SCSC_TAG_ERR(MX_FILE, "[vfs_stat workaround] filp_open() failed for %s with %ld\n", path, PTR_ERR(f));
-		return -ENOENT;
-	}
-	filp_close(f, NULL);
 
 	/* Check f/w bin */
 	r = vfs_stat(path, &stat);
@@ -484,52 +417,22 @@ int __mx140_request_file(struct scsc_mx *mx, char *path, const struct firmware *
 	whats_left = stat.size;
 
 	fs = get_fs();
-	set_fs(KERNEL_DS);
-
-	/* Special case if file length is reported as zero - try to read until it fails.
-	 * This allows us to read /proc
-	 */
-	if (whats_left == 0) {
-		do {
-		#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-			r = kernel_read(f, p, max_read_size, &f->f_pos);
-		#else
-			r = vfs_read(f, p, max_read_size, &f->f_pos);
-		#endif
-			if (r < 0) {
-				SCSC_TAG_INFO(MX_FILE, "No more data %s\n", path);
-				break;
-			}
-			p += r;
-			if (r < max_read_size) {
-				SCSC_TAG_INFO(MX_FILE, "Read %zd from %s\n", (ptrdiff_t)(p - buf), path);
-				break;
-			}
-		} while (r > 0);
-
-		goto done;
-	}
-
+	set_fs(get_ds());
 	/* Read at most max_read_size in each read. Loop until the whole file has
 	 * been copied to the local buffer.
 	 */
 	while (whats_left) {
 		to_read = whats_left < max_read_size ? whats_left : max_read_size;
-	#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-		r = kernel_read(f, p, max_read_size, &f->f_pos);
-	#else
-		r = vfs_read(f, p, max_read_size, &f->f_pos);
-	#endif
+		r = vfs_read(f, p, to_read, &f->f_pos);
 		if (r < 0) {
 			SCSC_TAG_ERR(MX_FILE, "error reading %s\n", path);
 			break;
 		}
-		whats_left -= r;
-		p += r;
 		if (r == 0 || r < to_read)
 			break;
+		whats_left -= r;
+		p += r;
 	}
-done:
 	set_fs(fs);
 	filp_close(f, NULL);
 
@@ -548,57 +451,9 @@ done:
 	return r;
 
 }
-#endif
-
-int __mx140_request_firmware(struct scsc_mx *mx, char *path, const struct firmware **firmp)
-{
-	int ret;
-	struct device *dev;
-
-	SCSC_TAG_DEBUG(MX_FILE, "request %s\n", path);
-
-	dev = scsc_mx_get_device(mx);
-	if (!dev) {
-		SCSC_TAG_ERR(MX_FILE, "Error. Device is NULL\n");
-		return -EIO;
-	}
-	scsc_mx_request_firmware_mutex_lock(mx);
-	scsc_mx_request_firmware_wake_lock(mx);
-	ret = request_firmware(firmp, path, dev);
-	scsc_mx_request_firmware_wake_unlock(mx);
-	scsc_mx_request_firmware_mutex_unlock(mx);
-
-	SCSC_TAG_DEBUG(MX_FILE, "request %s\n", path);
-
-	return ret;
-}
-
-int mx140_request_file(struct scsc_mx *mx, char *path, const struct firmware **firmp)
-{
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
-	return __mx140_request_file(mx, path, firmp);
-#else
-	return __mx140_request_firmware(mx, path, firmp);
-#endif
-}
 EXPORT_SYMBOL(mx140_request_file);
 
-
-int __mx140_release_firmware(struct scsc_mx *mx, const struct firmware *firmp)
-{
-	if (!firmp || !firmp->data) {
-		SCSC_TAG_ERR(MX_FILE, "firmp=%p\n", firmp);
-		return -EINVAL;
-	}
-
-	SCSC_TAG_DEBUG(MX_FILE, "release firmp=%p, data=%p\n", firmp, firmp->data);
-
-	release_firmware(firmp);
-
-	return 0;
-}
-
-int __mx140_release_file(struct scsc_mx *mx, const struct firmware *firmp)
+int mx140_release_file(struct scsc_mx *mx, const struct firmware *firmp)
 {
 	if (!firmp || !firmp->data) {
 		SCSC_TAG_ERR(MX_FILE, "firmp=%p\n", firmp);
@@ -610,15 +465,6 @@ int __mx140_release_file(struct scsc_mx *mx, const struct firmware *firmp)
 	vfree(firmp->data);
 	kfree(firmp);
 	return 0;
-}
-
-int mx140_release_file(struct scsc_mx *mx, const struct firmware *firmp)
-{
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
-	return __mx140_release_file(mx, firmp);
-#else
-	return __mx140_release_firmware(mx, firmp);
-#endif
 }
 EXPORT_SYMBOL(mx140_release_file);
 
@@ -656,10 +502,13 @@ int mx140_basedir_file(struct scsc_mx *mx)
 	if (base_dir[0] != '\0')
 		return 0;
 
+	/* Default to pre-O bin dir, until we detect O */
+	strlcpy(exe_dir, MX140_EXE_DIR_SYSTEM, sizeof(exe_dir));
+
 	/* Current segment. */
 	fs = get_fs();
 	/* Set to kernel segment. */
-	set_fs(KERNEL_DS);
+	set_fs(get_ds());
 
 	/* If /system isn't present, assume platform isn't ready yet */
 	r = vfs_stat("/system", &stat);
@@ -681,16 +530,33 @@ int mx140_basedir_file(struct scsc_mx *mx)
 
 	/* Now partitions are mounted, so let's see what's in them. */
 
-	/* Try /vendor partition  (post-Oreo) */
-	strlcpy(base_dir, MX140_FW_BASE_DIR_VENDOR_ETC_WIFI, sizeof(base_dir));
-	fw_base_dir = MX140_FW_BASE_DIR_VENDOR_ETC_WIFI;
-	strlcpy(exe_dir, MX140_EXE_DIR_VENDOR, sizeof(exe_dir));
-#if defined(SCSC_SEP_VERSION) && (SCSC_SEP_VERSION < 8)
+	/* Try /vendor partition  (Oreo) first.
+	 * If it's present, it'll contain our FW
+	 */
+	r = vfs_stat(MX140_FW_BASE_DIR_VENDOR_ETC_WIFI"/"MX140_FW_DETECT, &stat);
+	if (r != 0) {
+		SCSC_TAG_ERR(MX_FILE, "Base dir: %s/%s doesn't exist\n",
+			MX140_FW_BASE_DIR_VENDOR_ETC_WIFI, MX140_FW_DETECT);
+		base_dir[0] = '\0';
+		r = -ENOENT;
+	} else {
+		strlcpy(base_dir, MX140_FW_BASE_DIR_VENDOR_ETC_WIFI, sizeof(base_dir));
+		fw_base_dir = MX140_FW_BASE_DIR_VENDOR_ETC_WIFI;
+		strlcpy(exe_dir, MX140_EXE_DIR_VENDOR, sizeof(exe_dir));
+		goto done;
+	}
+
 	/* Try /system partition (pre-Oreo) */
-	strlcpy(base_dir, MX140_FW_BASE_DIR_SYSTEM_ETC_WIFI, sizeof(base_dir));
-	fw_base_dir = MX140_FW_BASE_DIR_SYSTEM_ETC_WIFI;
-	strlcpy(exe_dir, MX140_EXE_DIR_SYSTEM, sizeof(exe_dir));
-#endif
+	r = vfs_stat(MX140_FW_BASE_DIR_SYSTEM_ETC_WIFI"/"MX140_FW_DETECT, &stat);
+	if (r != 0) {
+		SCSC_TAG_ERR(MX_FILE, "Base dir: %s/%s doesn't exist\n",
+			MX140_FW_BASE_DIR_SYSTEM_ETC_WIFI, MX140_FW_DETECT);
+		base_dir[0] = '\0';
+		r = -ENOENT;
+	} else {
+		strlcpy(base_dir, MX140_FW_BASE_DIR_SYSTEM_ETC_WIFI, sizeof(base_dir));
+		fw_base_dir = MX140_FW_BASE_DIR_SYSTEM_ETC_WIFI;
+	}
 
 done:
 	/* Restore segment */
@@ -749,4 +615,3 @@ bool mx140_file_supported_hw(struct scsc_mx *mx, u32 hw_ver)
 	/* Does the select f/w match the hw_ver from chip? */
 	return (fw_suffixes[fw_suffix_found].hw_ver == hw_ver);
 }
-

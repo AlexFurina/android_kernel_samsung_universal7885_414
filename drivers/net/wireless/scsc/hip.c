@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Copyright (c) 2012 - 2018 Samsung Electronics Co., Ltd. All rights reserved
+ * Copyright (c) 2012 - 2017 Samsung Electronics Co., Ltd. All rights reserved
  *
  ****************************************************************************/
 
@@ -10,10 +10,6 @@
 #include "debug.h"
 #include "procfs.h"
 #include "sap.h"
-#include "hip4.h"
-#ifdef CONFIG_SCSC_SMAPPER
-#include "hip4_smapper.h"
-#endif
 
 /* SAP implementations container. Local and static to hip */
 static struct hip_sap {
@@ -62,8 +58,8 @@ int slsi_hip_sap_setup(struct slsi_dev *sdev)
 	if (hip_sap_cont.sap[SAP_MLME]->sap_version_supported) {
 		if (conf_hip4_ver == 4)
 			version = scsc_wifi_get_hip_config_version_4_u16(&sdev->hip4_inst.hip_control->config_v4, sap_mlme_ver);
-		if (conf_hip4_ver == 5)
-			version = scsc_wifi_get_hip_config_version_5_u16(&sdev->hip4_inst.hip_control->config_v5, sap_mlme_ver);
+		if (conf_hip4_ver == 3)
+			version = scsc_wifi_get_hip_config_version_3_u16(&sdev->hip4_inst.hip_control->config_v3, sap_mlme_ver);
 		if (hip_sap_cont.sap[SAP_MLME]->sap_version_supported(version))
 			return -ENODEV;
 	} else {
@@ -73,8 +69,8 @@ int slsi_hip_sap_setup(struct slsi_dev *sdev)
 	if (hip_sap_cont.sap[SAP_MA]->sap_version_supported) {
 		if (conf_hip4_ver == 4)
 			version = scsc_wifi_get_hip_config_version_4_u16(&sdev->hip4_inst.hip_control->config_v4, sap_ma_ver);
-		if (conf_hip4_ver == 5)
-			version = scsc_wifi_get_hip_config_version_5_u16(&sdev->hip4_inst.hip_control->config_v5, sap_ma_ver);
+		if (conf_hip4_ver == 3)
+			version = scsc_wifi_get_hip_config_version_3_u16(&sdev->hip4_inst.hip_control->config_v3, sap_ma_ver);
 		if (hip_sap_cont.sap[SAP_MA]->sap_version_supported(version))
 			return -ENODEV;
 	} else {
@@ -84,8 +80,8 @@ int slsi_hip_sap_setup(struct slsi_dev *sdev)
 	if (hip_sap_cont.sap[SAP_DBG]->sap_version_supported) {
 		if (conf_hip4_ver == 4)
 			version = scsc_wifi_get_hip_config_version_4_u16(&sdev->hip4_inst.hip_control->config_v4, sap_debug_ver);
-		if (conf_hip4_ver == 5)
-			version = scsc_wifi_get_hip_config_version_5_u16(&sdev->hip4_inst.hip_control->config_v5, sap_debug_ver);
+		if (conf_hip4_ver == 3)
+			version = scsc_wifi_get_hip_config_version_3_u16(&sdev->hip4_inst.hip_control->config_v3, sap_debug_ver);
 		if (hip_sap_cont.sap[SAP_DBG]->sap_version_supported(version))
 			return -ENODEV;
 	} else {
@@ -95,8 +91,8 @@ int slsi_hip_sap_setup(struct slsi_dev *sdev)
 	if (hip_sap_cont.sap[SAP_TST]->sap_version_supported) {
 		if (conf_hip4_ver == 4)
 			version = scsc_wifi_get_hip_config_version_4_u16(&sdev->hip4_inst.hip_control->config_v4, sap_test_ver);
-		if (conf_hip4_ver == 5)
-			version = scsc_wifi_get_hip_config_version_5_u16(&sdev->hip4_inst.hip_control->config_v5, sap_test_ver);
+		if (conf_hip4_ver == 3)
+			version = scsc_wifi_get_hip_config_version_3_u16(&sdev->hip4_inst.hip_control->config_v3, sap_test_ver);
 		if (hip_sap_cont.sap[SAP_TST]->sap_version_supported(version))
 			return -ENODEV;
 	} else {
@@ -154,10 +150,6 @@ static int slsi_hip_service_notifier(struct notifier_block *nb, unsigned long ev
 		mutex_lock(&sdev->hip.hip_mutex);
 		hip4_resume(&sdev->hip4_inst);
 		mutex_unlock(&sdev->hip.hip_mutex);
-		break;
-
-	case SCSC_WIFI_SUBSYSTEM_RESET:
-	case SCSC_WIFI_CHIP_READY:
 		break;
 
 	default:
@@ -244,22 +236,12 @@ int slsi_hip_rx(struct slsi_dev *sdev, struct sk_buff *skb)
 	slsi_log_clients_log_signal_fast(sdev, &sdev->log_clients, skb, SLSI_LOG_DIRECTION_TO_HOST);
 	pid = fapi_get_u16(skb, receiver_pid);
 	if (pid >= SLSI_TX_PROCESS_ID_UDI_MIN && pid <= SLSI_TX_PROCESS_ID_UDI_MAX) {
-#ifdef CONFIG_SCSC_SMAPPER
-		hip4_smapper_free_mapped_skb(skb);
-#endif
-		kfree_skb(skb);
+		slsi_kfree_skb(skb);
 		return 0;
 	}
 
-	if (fapi_is_ma(skb)) {
-		/* It is anomolous to handle the MA_BLOCKACK_IND in the
-		 * mlme wq.
-		 */
-		if (fapi_get_sigid(skb) == MA_BLOCKACK_IND)
-			return hip_sap_cont.sap[SAP_MLME]->sap_handler(sdev, skb);
-		else
-			return hip_sap_cont.sap[SAP_MA]->sap_handler(sdev, skb);
-	}
+	if (fapi_is_ma(skb))
+		return hip_sap_cont.sap[SAP_MA]->sap_handler(sdev, skb);
 
 	if (fapi_is_mlme(skb))
 		return hip_sap_cont.sap[SAP_MLME]->sap_handler(sdev, skb);
@@ -274,48 +256,20 @@ int slsi_hip_rx(struct slsi_dev *sdev, struct sk_buff *skb)
 }
 
 /* Only DATA plane will look at the returning FB to account BoT */
-int slsi_hip_tx_done(struct slsi_dev *sdev, u8 vif, u8 peer_index, u8 ac)
+int slsi_hip_tx_done(struct slsi_dev *sdev, u16 colour)
 {
-	return hip_sap_cont.sap[SAP_MA]->sap_txdone(sdev, vif, peer_index, ac);
+	return hip_sap_cont.sap[SAP_MA]->sap_txdone(sdev, colour);
 }
 
 int slsi_hip_setup(struct slsi_dev *sdev)
 {
-	u32 ret_val;
-	mutex_lock(&sdev->hip.hip_mutex);
-
 	/* Setup hip4 after initialization */
-	ret_val = hip4_setup(&sdev->hip4_inst);
-
-	mutex_unlock(&sdev->hip.hip_mutex);
-	return ret_val;
+	return hip4_setup(&sdev->hip4_inst);
 }
-
-#ifdef CONFIG_SCSC_SMAPPER
-int slsi_hip_consume_smapper_entry(struct slsi_dev *sdev, struct sk_buff *skb)
-{
-	return hip4_smapper_consume_entry(sdev, &sdev->hip4_inst, skb);
-}
-
-struct sk_buff *slsi_hip_get_skb_from_smapper(struct slsi_dev *sdev, struct sk_buff *skb)
-{
-	return hip4_smapper_get_skb(sdev, &sdev->hip4_inst, skb);
-}
-
-void *slsi_hip_get_skb_data_from_smapper(struct slsi_dev *sdev, struct sk_buff *skb)
-{
-	return hip4_smapper_get_skb_data(sdev, &sdev->hip4_inst, skb);
-}
-#endif
 
 int slsi_hip_stop(struct slsi_dev *sdev)
 {
 	mutex_lock(&sdev->hip.hip_mutex);
-
-	if (atomic_read(&sdev->hip.hip_state) != SLSI_HIP_STATE_STARTED) {
-		mutex_unlock(&sdev->hip.hip_mutex);
-		return 0;
-	}
 	SLSI_DBG4(sdev, SLSI_HIP_INIT_DEINIT, "Update HIP state (SLSI_HIP_STATE_STOPPING)\n");
 	atomic_set(&sdev->hip.hip_state, SLSI_HIP_STATE_STOPPING);
 
@@ -327,23 +281,3 @@ int slsi_hip_stop(struct slsi_dev *sdev)
 	mutex_unlock(&sdev->hip.hip_mutex);
 	return 0;
 }
-#ifdef CONFIG_SCSC_WLAN_RX_NAPI
-void slsi_hip_set_napi_cpu(struct slsi_dev *sdev, u8 napi_cpu, bool perf_mode)
-{
-	hip4_set_napi_cpu(&sdev->hip4_inst, napi_cpu, perf_mode);
-}
-
-void slsi_hip_reprocess_skipped_ctrl_bh(struct slsi_dev *sdev)
-{
-	struct slsi_hip4 *hip4 = &sdev->hip4_inst;
-
-	hip4_sched_wq_ctrl(hip4);
-}
-#else
-void slsi_hip_reprocess_skipped_data_bh(struct slsi_dev *sdev)
-{
-	struct slsi_hip4 *hip4 = &sdev->hip4_inst;
-
-	hip4_sched_wq(hip4);
-}
-#endif

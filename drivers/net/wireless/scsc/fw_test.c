@@ -13,24 +13,23 @@
 #include "mlme.h"
 #include "netif.h"
 #include "ba.h"
-#include "sap_mlme.h"
 
 static void slsi_fw_test_save_frame(struct slsi_dev *sdev, struct slsi_fw_test *fwtest, struct sk_buff *saved_skbs[CONFIG_SCSC_WLAN_MAX_INTERFACES + 1], struct sk_buff *skb, bool udi_header)
 {
 	u16 vif;
 
-	skb = skb_copy(skb, GFP_KERNEL);
+	skb = slsi_skb_copy(skb, GFP_KERNEL);
 
 	if (udi_header)
 		skb_pull(skb, sizeof(struct udi_msg_t));
 
 	vif = fapi_get_vif(skb);
 
-	SLSI_DBG3(sdev, SLSI_FW_TEST, "sig:0x%.4X, vif:%d\n", fapi_get_sigid(skb), vif);
+	SLSI_DBG3(sdev, SLSI_FW_TEST, "sig:0x%.4X, vif:%d", fapi_get_sigid(skb), vif);
 	slsi_debug_frame(sdev, NULL, skb, "SAVE");
 
 	slsi_spinlock_lock(&fwtest->fw_test_lock);
-	kfree_skb(saved_skbs[vif]);
+	slsi_kfree_skb(saved_skbs[vif]);
 	saved_skbs[vif] = skb;
 	slsi_spinlock_unlock(&fwtest->fw_test_lock);
 }
@@ -39,7 +38,7 @@ static void slsi_fw_test_process_frame(struct slsi_dev *sdev, struct slsi_fw_tes
 {
 	u16 vif;
 
-	skb = skb_copy(skb, GFP_KERNEL);
+	skb = slsi_skb_copy(skb, GFP_KERNEL);
 
 	if (udi_header)
 		skb_pull(skb, sizeof(struct udi_msg_t));
@@ -135,10 +134,6 @@ int slsi_fw_test_signal_with_udi_header(struct slsi_dev *sdev, struct slsi_fw_te
 			slsi_fw_test_process_frame(sdev, fwtest, skb, true);
 			sdev->device_config.ap_disconnect_ind_timeout =  SLSI_DEFAULT_AP_DISCONNECT_IND_TIMEOUT;
 			break;
-		case MA_BLOCKACK_IND:
-			SLSI_DBG2(sdev, SLSI_FW_TEST, "0x%p: Process MA_BLOCKACK_IND(0x%.4X, vif:%d)\n", skb, le16_to_cpu(fapi_header->id), le16_to_cpu(fapi_header->vif));
-			slsi_fw_test_process_frame(sdev, fwtest, skb, true);
-			break;
 		default:
 			break;
 		}
@@ -182,7 +177,7 @@ static void slsi_fw_test_connect_station_roam(struct slsi_dev *sdev, struct net_
 
 	SLSI_ETHER_COPY(peer->address, mgmt->bssid);
 	slsi_peer_update_assoc_req(sdev, dev, peer, mlme_procedure_started_ind);
-	slsi_peer_update_assoc_rsp(sdev, dev, peer, skb_copy(skb, GFP_KERNEL));
+	slsi_peer_update_assoc_rsp(sdev, dev, peer, slsi_skb_copy(skb, GFP_KERNEL));
 }
 
 static void slsi_fw_test_connect_start_station(struct slsi_dev *sdev, struct net_device *dev, struct slsi_fw_test *fwtest, struct sk_buff *skb)
@@ -230,7 +225,7 @@ static void slsi_fw_test_connect_start_station(struct slsi_dev *sdev, struct net
 		return;
 	}
 
-	slsi_peer_update_assoc_req(sdev, dev, peer, skb_copy(skb, GFP_KERNEL));
+	slsi_peer_update_assoc_req(sdev, dev, peer, slsi_skb_copy(skb, GFP_KERNEL));
 }
 
 static void slsi_fw_test_connect_station(struct slsi_dev *sdev, struct net_device *dev, struct slsi_fw_test *fwtest, struct sk_buff *skb)
@@ -281,9 +276,9 @@ static void slsi_fw_test_connect_station(struct slsi_dev *sdev, struct net_devic
 	netif_carrier_on(dev);
 
 exit:
-	kfree_skb(req);
-	kfree_skb(cfm);
-	kfree_skb(ind);
+	slsi_kfree_skb(req);
+	slsi_kfree_skb(cfm);
+	slsi_kfree_skb(ind);
 }
 
 static void slsi_fw_test_started_network(struct slsi_dev *sdev, struct net_device *dev, struct slsi_fw_test *fwtest, struct sk_buff *skb)
@@ -354,13 +349,13 @@ static void slsi_fw_test_connect_start_ap(struct slsi_dev *sdev, struct net_devi
 	if (WARN_ON(!ieee80211_is_assoc_req(mgmt->frame_control) &&
 		    !ieee80211_is_reassoc_req(mgmt->frame_control)))
 		return;
-	peer_index = fapi_get_u16(skb, u.mlme_procedure_started_ind.association_identifier);
+	peer_index = fapi_get_u16(skb, u.mlme_procedure_started_ind.peer_index);
 
 	peer = slsi_peer_add(sdev, dev, mgmt->sa, peer_index);
 	if (WARN_ON(!peer))
 		return;
 
-	slsi_peer_update_assoc_req(sdev, dev, peer, skb_copy(skb, GFP_KERNEL));
+	slsi_peer_update_assoc_req(sdev, dev, peer, slsi_skb_copy(skb, GFP_KERNEL));
 	peer->connected_state = SLSI_STA_CONN_STATE_CONNECTING;
 }
 
@@ -368,23 +363,23 @@ static void slsi_fw_test_connected_network(struct slsi_dev *sdev, struct net_dev
 {
 	struct netdev_vif *ndev_vif = netdev_priv(dev);
 	struct slsi_peer  *peer = NULL;
-	u16               aid = fapi_get_u16(skb, u.mlme_connected_ind.association_identifier);
+	u16               peer_index = fapi_get_u16(skb, u.mlme_connected_ind.peer_index);
 
 	SLSI_UNUSED_PARAMETER(fwtest);
 
 	WARN_ON(!SLSI_MUTEX_IS_LOCKED(ndev_vif->vif_mutex));
 
-	SLSI_NET_DBG1(dev, SLSI_FW_TEST, "Network Peer Connect(vif:%d, aid:%d)\n", ndev_vif->ifnum, aid);
+	SLSI_NET_DBG1(dev, SLSI_FW_TEST, "Network Peer Connect(vif:%d, peer_index:%d)\n", ndev_vif->ifnum, peer_index);
 	WARN(!ndev_vif->is_fw_test, "!is_fw_test");
 
 	if (WARN(!ndev_vif->activated, "Not Activated"))
 		return;
 
-	if (WARN_ON(aid > SLSI_PEER_INDEX_MAX))
+	if (WARN_ON(peer_index > SLSI_PEER_INDEX_MAX))
 		return;
 
-	peer = slsi_get_peer_from_qs(sdev, dev, aid - 1);
-	if (WARN(!peer, "Peer(aid:%d) Not Found", aid))
+	peer = slsi_get_peer_from_qs(sdev, dev, peer_index - 1);
+	if (WARN(!peer, "Peer(peer_index:%d) Not Found", peer_index))
 		return;
 
 	slsi_ps_port_control(sdev, dev, peer, SLSI_STA_CONN_STATE_CONNECTED);
@@ -401,14 +396,14 @@ static void slsi_fw_test_procedure_started_ind(struct slsi_dev *sdev, struct net
 	u16               viftype = FAPI_VIFTYPE_STATION;
 
 	if (!ndev_vif->is_fw_test) {
-		kfree_skb(skb);
+		slsi_kfree_skb(skb);
 		return;
 	}
 
-	SLSI_NET_DBG1(dev, SLSI_FW_TEST, "ProcedureStarted(vif:%d)\n", ndev_vif->ifnum);
+	SLSI_NET_DBG1(dev, SLSI_FW_TEST, "ProceedureStarted(vif:%d)\n", ndev_vif->ifnum);
 
 	if (fapi_get_u16(skb, u.mlme_procedure_started_ind.procedure_type) != FAPI_PROCEDURETYPE_CONNECTION_STARTED) {
-		kfree_skb(skb);
+		slsi_kfree_skb(skb);
 		return;
 	}
 
@@ -433,14 +428,14 @@ static void slsi_fw_test_procedure_started_ind(struct slsi_dev *sdev, struct net
 		slsi_fw_test_connect_start_ap(sdev, dev, fwtest, skb);
 		break;
 	default:
-		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d virtual_interface_type:%d NOT SUPPORTED\n", ndev_vif->ifnum, viftype);
+		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d virtual_interface_type:%d NOT SUPPORTED", ndev_vif->ifnum, viftype);
 		break;
 	}
 
 	SLSI_MUTEX_UNLOCK(ndev_vif->vif_mutex);
 
 out:
-	kfree_skb(skb);
+	slsi_kfree_skb(skb);
 }
 
 /* Setup the NetDev / Peers based on the saved frames */
@@ -451,7 +446,7 @@ static void slsi_fw_test_connect_ind(struct slsi_dev *sdev, struct net_device *d
 	u16               viftype = FAPI_VIFTYPE_STATION;
 
 	if (!ndev_vif->is_fw_test) {
-		kfree_skb(skb);
+		slsi_kfree_skb(skb);
 		return;
 	}
 
@@ -474,14 +469,14 @@ static void slsi_fw_test_connect_ind(struct slsi_dev *sdev, struct net_device *d
 		slsi_fw_test_connect_station(sdev, dev, fwtest, skb);
 		break;
 	default:
-		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d virtual_interface_type:%d NOT SUPPORTED\n", ndev_vif->ifnum, viftype);
+		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d virtual_interface_type:%d NOT SUPPORTED", ndev_vif->ifnum, viftype);
 		break;
 	}
 
 	SLSI_MUTEX_UNLOCK(ndev_vif->vif_mutex);
 
 out:
-	kfree_skb(skb);
+	slsi_kfree_skb(skb);
 }
 
 static void slsi_fw_test_connected_ind(struct slsi_dev *sdev, struct net_device *dev, struct slsi_fw_test *fwtest, struct sk_buff *skb)
@@ -491,7 +486,7 @@ static void slsi_fw_test_connected_ind(struct slsi_dev *sdev, struct net_device 
 	u16               viftype = FAPI_VIFTYPE_STATION;
 
 	if (!ndev_vif->is_fw_test) {
-		kfree_skb(skb);
+		slsi_kfree_skb(skb);
 		return;
 	}
 
@@ -513,14 +508,14 @@ static void slsi_fw_test_connected_ind(struct slsi_dev *sdev, struct net_device 
 		slsi_fw_test_connected_network(sdev, dev, fwtest, skb);
 		break;
 	default:
-		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d virtual_interface_type:%d NOT SUPPORTED\n", ndev_vif->ifnum, viftype);
+		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d virtual_interface_type:%d NOT SUPPORTED", ndev_vif->ifnum, viftype);
 		break;
 	}
 
 	SLSI_MUTEX_UNLOCK(ndev_vif->vif_mutex);
 
 out:
-	kfree_skb(skb);
+	slsi_kfree_skb(skb);
 }
 
 static void slsi_fw_test_roamed_ind(struct slsi_dev *sdev, struct net_device *dev, struct slsi_fw_test *fwtest, struct sk_buff *skb)
@@ -530,7 +525,7 @@ static void slsi_fw_test_roamed_ind(struct slsi_dev *sdev, struct net_device *de
 	u16               viftype = FAPI_VIFTYPE_STATION;
 
 	if (!ndev_vif->is_fw_test) {
-		kfree_skb(skb);
+		slsi_kfree_skb(skb);
 		return;
 	}
 
@@ -552,14 +547,14 @@ static void slsi_fw_test_roamed_ind(struct slsi_dev *sdev, struct net_device *de
 		slsi_fw_test_connect_station_roam(sdev, dev, fwtest, skb);
 		break;
 	default:
-		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d virtual_interface_type:%d NOT SUPPORTED\n", ndev_vif->ifnum, viftype);
+		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d virtual_interface_type:%d NOT SUPPORTED", ndev_vif->ifnum, viftype);
 		break;
 	}
 
 	SLSI_MUTEX_UNLOCK(ndev_vif->vif_mutex);
 
 out:
-	kfree_skb(skb);
+	slsi_kfree_skb(skb);
 }
 
 static void slsi_fw_test_disconnect_station(struct slsi_dev *sdev, struct net_device *dev, struct slsi_fw_test *fwtest, struct sk_buff *skb)
@@ -620,7 +615,7 @@ static void slsi_fw_test_disconnected_ind(struct slsi_dev *sdev, struct net_devi
 	u16               viftype = FAPI_VIFTYPE_STATION;
 
 	if (!ndev_vif->is_fw_test) {
-		kfree_skb(skb);
+		slsi_kfree_skb(skb);
 		return;
 	}
 
@@ -643,13 +638,13 @@ static void slsi_fw_test_disconnected_ind(struct slsi_dev *sdev, struct net_devi
 		slsi_fw_test_disconnect_network(sdev, dev, fwtest, skb);
 		break;
 	default:
-		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d virtual_interface_type:%d NOT SUPPORTED\n", ndev_vif->ifnum, viftype);
+		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d virtual_interface_type:%d NOT SUPPORTED", ndev_vif->ifnum, viftype);
 		break;
 	}
 	SLSI_MUTEX_UNLOCK(ndev_vif->vif_mutex);
 
 out:
-	kfree_skb(skb);
+	slsi_kfree_skb(skb);
 }
 
 static void slsi_fw_test_tdls_event_connected(struct slsi_dev *sdev, struct net_device *dev, struct sk_buff *skb)
@@ -725,11 +720,11 @@ static void slsi_fw_test_tdls_peer_ind(struct slsi_dev *sdev, struct net_device 
 	u16 tdls_event;
 
 	if (!ndev_vif->is_fw_test) {
-		kfree_skb(skb);
+		slsi_kfree_skb(skb);
 		return;
 	}
 	if (WARN(!ndev_vif->activated, "Not Activated")) {
-		kfree_skb(skb);
+		slsi_kfree_skb(skb);
 		return;
 	}
 	slsi_spinlock_lock(&fwtest->fw_test_lock);
@@ -739,7 +734,7 @@ static void slsi_fw_test_tdls_peer_ind(struct slsi_dev *sdev, struct net_device 
 	slsi_spinlock_unlock(&fwtest->fw_test_lock);
 
 	if (WARN(vif_type != FAPI_VIFTYPE_STATION, "Not STA VIF")) {
-		kfree_skb(skb);
+		slsi_kfree_skb(skb);
 		return;
 	}
 
@@ -759,7 +754,7 @@ static void slsi_fw_test_tdls_peer_ind(struct slsi_dev *sdev, struct net_device 
 		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d tdls_event:%d not supported\n", ndev_vif->ifnum, tdls_event);
 		break;
 	}
-	kfree_skb(skb);
+	slsi_kfree_skb(skb);
 }
 
 /* Setup the NetDev */
@@ -770,7 +765,7 @@ static void slsi_fw_test_start_cfm(struct slsi_dev *sdev, struct net_device *dev
 	u16               viftype = FAPI_VIFTYPE_UNSYNCHRONISED;
 
 	if (!ndev_vif->is_fw_test) {
-		kfree_skb(skb);
+		slsi_kfree_skb(skb);
 		return;
 	}
 
@@ -793,14 +788,14 @@ static void slsi_fw_test_start_cfm(struct slsi_dev *sdev, struct net_device *dev
 		slsi_fw_test_started_network(sdev, dev, fwtest, skb);
 		break;
 	default:
-		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d virtual_interface_type:%d NOT SUPPORTED\n", ndev_vif->ifnum, viftype);
+		SLSI_NET_DBG1(dev, SLSI_FW_TEST, "vif:%d virtual_interface_type:%d NOT SUPPORTED", ndev_vif->ifnum, viftype);
 		break;
 	}
 
 	SLSI_MUTEX_UNLOCK(ndev_vif->vif_mutex);
 
 out:
-	kfree_skb(skb);
+	slsi_kfree_skb(skb);
 }
 
 static void slsi_fw_test_add_vif_req(struct slsi_dev *sdev, struct net_device *dev, struct slsi_fw_test *fwtest, struct sk_buff *skb)
@@ -812,7 +807,7 @@ static void slsi_fw_test_add_vif_req(struct slsi_dev *sdev, struct net_device *d
 
 	SLSI_DBG1(sdev, SLSI_FW_TEST, "Mark UDI test NetDevice(vif:%d)\n", fapi_get_vif(skb));
 	ndev_vif->is_fw_test = true;
-	kfree_skb(skb);
+	slsi_kfree_skb(skb);
 }
 
 static void slsi_fw_test_del_vif_req(struct slsi_dev *sdev, struct net_device *dev, struct slsi_fw_test *fwtest, struct sk_buff *skb)
@@ -827,10 +822,10 @@ static void slsi_fw_test_del_vif_req(struct slsi_dev *sdev, struct net_device *d
 	add_vif_req = fwtest->mlme_add_vif_req[ndev_vif->ifnum];
 	if (add_vif_req)
 		viftype = fapi_get_u16(add_vif_req, u.mlme_add_vif_req.virtual_interface_type);
-	kfree_skb(fwtest->mlme_add_vif_req[ndev_vif->ifnum]);
-	kfree_skb(fwtest->mlme_connect_req[ndev_vif->ifnum]);
-	kfree_skb(fwtest->mlme_connect_cfm[ndev_vif->ifnum]);
-	kfree_skb(fwtest->mlme_procedure_started_ind[ndev_vif->ifnum]);
+	slsi_kfree_skb(fwtest->mlme_add_vif_req[ndev_vif->ifnum]);
+	slsi_kfree_skb(fwtest->mlme_connect_req[ndev_vif->ifnum]);
+	slsi_kfree_skb(fwtest->mlme_connect_cfm[ndev_vif->ifnum]);
+	slsi_kfree_skb(fwtest->mlme_procedure_started_ind[ndev_vif->ifnum]);
 
 	fwtest->mlme_add_vif_req[ndev_vif->ifnum] = NULL;
 	fwtest->mlme_connect_req[ndev_vif->ifnum] = NULL;
@@ -858,20 +853,7 @@ static void slsi_fw_test_del_vif_req(struct slsi_dev *sdev, struct net_device *d
 
 	SLSI_MUTEX_UNLOCK(ndev_vif->vif_mutex);
 
-	kfree_skb(skb);
-}
-
-static void slsi_fw_test_ma_blockack_ind(struct slsi_dev *sdev, struct net_device *dev, struct slsi_fw_test *fwtest, struct sk_buff *skb)
-{
-	struct netdev_vif *ndev_vif = netdev_priv(dev);
-
-	if (!ndev_vif->is_fw_test) {
-		kfree_skb(skb);
-		return;
-	}
-
-	SLSI_NET_DBG1(dev, SLSI_FW_TEST, "MA Block Ack Indication(vif:%d)\n", ndev_vif->ifnum);
-	slsi_rx_blockack_ind(sdev, dev, skb);
+	slsi_kfree_skb(skb);
 }
 
 void slsi_fw_test_work(struct work_struct *work)
@@ -887,7 +869,7 @@ void slsi_fw_test_work(struct work_struct *work)
 		SLSI_DBG3(sdev, SLSI_FW_TEST, "0x%p: Signal:0x%.4X, vif:%d\n", skb, fapi_get_sigid(skb), vif);
 
 		if (WARN(!vif, "!vif")) {
-			kfree_skb(skb);
+			slsi_kfree_skb(skb);
 			skb = slsi_skb_work_dequeue(&fw_test->fw_test_work);
 			continue;
 		}
@@ -897,7 +879,7 @@ void slsi_fw_test_work(struct work_struct *work)
 		if (!dev) {
 			/* Just ignore the signal. This is valid in some error testing scenarios*/
 			SLSI_MUTEX_UNLOCK(sdev->netdev_add_remove_mutex);
-			kfree_skb(skb);
+			slsi_kfree_skb(skb);
 			skb = slsi_skb_work_dequeue(&fw_test->fw_test_work);
 			continue;
 		}
@@ -931,12 +913,9 @@ void slsi_fw_test_work(struct work_struct *work)
 		case MLME_DEL_VIF_REQ:
 			slsi_fw_test_del_vif_req(sdev, dev, fw_test, skb);
 			break;
-		case MA_BLOCKACK_IND:
-			slsi_fw_test_ma_blockack_ind(sdev, dev, fw_test, skb);
-			break;
 		default:
 			WARN(1, "Unhandled Signal");
-			kfree_skb(skb);
+			slsi_kfree_skb(skb);
 			break;
 		}
 		SLSI_MUTEX_UNLOCK(sdev->netdev_add_remove_mutex);
@@ -965,10 +944,10 @@ void slsi_fw_test_deinit(struct slsi_dev *sdev, struct slsi_fw_test *fwtest)
 	slsi_skb_work_deinit(&fwtest->fw_test_work);
 	slsi_spinlock_lock(&fwtest->fw_test_lock);
 	for (i = 1; i <= CONFIG_SCSC_WLAN_MAX_INTERFACES; i++) {
-		kfree_skb(fwtest->mlme_add_vif_req[i]);
-		kfree_skb(fwtest->mlme_connect_req[i]);
-		kfree_skb(fwtest->mlme_connect_cfm[i]);
-		kfree_skb(fwtest->mlme_procedure_started_ind[i]);
+		slsi_kfree_skb(fwtest->mlme_add_vif_req[i]);
+		slsi_kfree_skb(fwtest->mlme_connect_req[i]);
+		slsi_kfree_skb(fwtest->mlme_connect_cfm[i]);
+		slsi_kfree_skb(fwtest->mlme_procedure_started_ind[i]);
 
 		fwtest->mlme_add_vif_req[i] = NULL;
 		fwtest->mlme_connect_req[i] = NULL;
