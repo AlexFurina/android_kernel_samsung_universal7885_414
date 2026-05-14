@@ -1,21 +1,16 @@
 /********************************************************************************
  *
- *   Copyright (c) 2016 - 2018 Samsung Electronics Co., Ltd. All rights reserved.
+ *   Copyright (c) 2016 - 2017 Samsung Electronics Co., Ltd. All rights reserved.
  *
  ********************************************************************************/
 #include "scsc_logring_main.h"
 #include "scsc_logring_ring.h"
 #include "scsc_logring_debugfs.h"
-#include <scsc/scsc_logring.h>
-#if IS_ENABLED(CONFIG_SCSC_LOG_COLLECTION)
+#ifdef CONFIG_SCSC_LOG_COLLECTION
 #include <scsc/scsc_log_collector.h>
-#endif
-#if IS_ENABLED(CONFIG_SCSC_MEMLOG)
-#include "soc/samsung/memlogger.h"
 #endif
 
 /* Global module parameters */
-static int              cached_enable;
 static int              enable = DEFAULT_ENABLE_LOGRING;
 static bool             initialized;
 #ifndef CONFIG_SCSC_STATIC_RING_SIZE
@@ -31,12 +26,12 @@ static int              scsc_droplevel_atomic = DEFAULT_DROPLEVEL;
 static int              scsc_redirect_to_printk_droplvl = DEFAULT_REDIRECT_DROPLVL;
 static int              scsc_reset_all_droplevels_to;
 
-static struct scsc_ring_buffer *the_ringbuf;
+struct scsc_ring_buffer *the_ringbuf;
 
-#if IS_ENABLED(CONFIG_SCSC_LOG_COLLECTION)
+#ifdef CONFIG_SCSC_LOG_COLLECTION
 static int logring_collect(struct scsc_log_collector_client *collect_client, size_t size);
 
-static struct scsc_log_collector_client logring_collect_client = {
+struct scsc_log_collector_client logring_collect_client = {
 	.name = "Logring",
 	.type = SCSC_LOG_CHUNK_LOGRING,
 	.collect_init = NULL,
@@ -51,20 +46,20 @@ int __init samlog_init(void)
 {
 	struct scsc_ring_buffer *rb = NULL;
 
-	pr_debug("wlbt: Samlog Init\n");
+	pr_debug("Samlog Init\n");
 	if (!enable) {
-		pr_info("wlbt: Samlog: module disabled...NOT starting.\n");
+		pr_info("Samlog: module disabled...NOT starting.\n");
 		return 0;
 	}
 	if (the_ringbuf != NULL) {
-		pr_info("wlbt: Samlog: Ring:%s already initialized...skipping.\n",
+		pr_info("Samlog: Ring:%s already initialized...skipping.\n",
 			the_ringbuf->name);
 		return 0;
 	}
 	/* Check for power of two compliance with std Kernel func */
 	if (!is_power_of_2(ringsize)) {
 		ringsize = DEFAULT_RING_BUFFER_SZ;
-		pr_info("wlbt: Samlog: scsc_logring.ringsize MUST be power-of-two. Using default: %d\n",
+		pr_info("Samlog: scsc_logring.ringsize MUST be power-of-two. Using default: %d\n",
 			ringsize);
 	}
 	rb = alloc_ring_buffer(ringsize, BASE_SPARE_SZ, DEBUGFS_RING0_ROOT);
@@ -73,39 +68,38 @@ int __init samlog_init(void)
 		goto tfail;
 	rb->private = samlog_debugfs_init(rb->name, rb);
 	if (!rb->private)
-		pr_info("wlbt: Samlog: Cannot Initialize DebugFS.\n");
+		pr_info("Samlog: Cannot Initialize DebugFS.\n");
 #ifndef CONFIG_SCSC_STATIC_RING_SIZE
-	pr_info("wlbt: scsc_logring:: Allocated ring buffer of size %zd bytes.\n",
+	pr_info("scsc_logring:: Allocated ring buffer of size %zd bytes.\n",
 		rb->bsz);
 #else
-	pr_info("wlbt: scsc_logring: Allocated STATIC ring buffer of size %zd bytes.\n",
+	pr_info("scsc_logring:: Allocated STATIC ring buffer of size %zd bytes.\n",
 		rb->bsz);
 #endif
 	the_ringbuf = rb;
 	initialized = true;
-	pr_info("wlbt: Samlog Loaded.\n");
-	scsc_printk_tag(FORCE_PRK, NO_TAG, "wlbt: Samlog Started.\n");
+	pr_info("Samlog Loaded.\n");
+	scsc_printk_tag(FORCE_PRK, NO_TAG, "Samlog Started.\n");
 	scsc_printk_tag(NO_ECHO_PRK, NO_TAG,
-	                "wlbt: Allocated ring buffer of size %zd bytes at %p - %p\n",
-	                rb->bsz, virt_to_phys((const volatile void *)rb->buf),
-	                virt_to_phys((const volatile void *)(rb->buf + rb->bsz)));
+			"Allocated ring buffer of size %zd bytes.\n",
+			rb->bsz);
 	scsc_printk_tag(NO_ECHO_PRK, NO_TAG,
-			"wlbt: Using THROWAWAY DYNAMIC per-reader buffer.\n");
+			"Using THROWAWAY DYNAMIC per-reader buffer.\n");
 
-#if IS_ENABLED(CONFIG_SCSC_LOG_COLLECTION)
+#ifdef CONFIG_SCSC_LOG_COLLECTION
 	scsc_log_collector_register_client(&logring_collect_client);
 #endif
 	return 0;
 
 tfail:
-	pr_err("wlbt: Samlog Initialization Failed. LogRing disabled.\n");
+	pr_err("Samlog Initialization Failed. LogRing disabled.\n");
 	return -ENODEV;
 }
 
 void __exit samlog_exit(void)
 {
 	if (!the_ringbuf) {
-		pr_err("wlbt: Cannot UNLOAD ringbuf\n");
+		pr_err("Cannot UNLOAD ringbuf\n");
 		return;
 	}
 	if (the_ringbuf && the_ringbuf->private)
@@ -113,7 +107,7 @@ void __exit samlog_exit(void)
 	initialized = false;
 	free_ring_buffer(the_ringbuf);
 	the_ringbuf = NULL;
-#if IS_ENABLED(CONFIG_SCSC_LOG_COLLECTION)
+#ifdef CONFIG_SCSC_LOG_COLLECTION
 	scsc_log_collector_unregister_client(&logring_collect_client);
 #endif
 	pr_info("Samlog Unloaded\n");
@@ -191,7 +185,7 @@ SCSC_MODPARAM_DESC(scsc_droplevel_atomic,
  */
 ADD_DEBUG_MODULE_PARAM(binary,  SCSC_FULL_DEBUG, BINARY);
 ADD_DEBUG_MODULE_PARAM(bin_wifi_ctrl_rx,  SCSC_FULL_DEBUG, BIN_WIFI_CTRL_RX);
-ADD_DEBUG_MODULE_PARAM(bin_wifi_data_rx,  SCSC_DEBUG, BIN_WIFI_DATA_RX);
+ADD_DEBUG_MODULE_PARAM(bin_wifi_data_rx,  SCSC_FULL_DEBUG, BIN_WIFI_DATA_RX);
 ADD_DEBUG_MODULE_PARAM(bin_wifi_ctrl_tx,  SCSC_FULL_DEBUG, BIN_WIFI_CTRL_TX);
 ADD_DEBUG_MODULE_PARAM(bin_wifi_data_tx,  SCSC_FULL_DEBUG, BIN_WIFI_DATA_TX);
 ADD_DEBUG_MODULE_PARAM(wifi_rx, SCSC_FULL_DEBUG, WIFI_RX);
@@ -208,8 +202,6 @@ ADD_DEBUG_MODULE_PARAM(gdb_trans,   SCSC_DBG1, GDB_TRANS);
 ADD_DEBUG_MODULE_PARAM(mif,   SCSC_FULL_DEBUG, MIF);
 ADD_DEBUG_MODULE_PARAM(clk20,   SCSC_FULL_DEBUG, CLK20);
 ADD_DEBUG_MODULE_PARAM(clk20_test, SCSC_FULL_DEBUG, CLK20_TEST);
-ADD_DEBUG_MODULE_PARAM(fm,   SCSC_FULL_DEBUG, FM);
-ADD_DEBUG_MODULE_PARAM(fm_test, SCSC_FULL_DEBUG, FM_TEST);
 ADD_DEBUG_MODULE_PARAM(mx_file,   SCSC_FULL_DEBUG, MX_FILE);
 ADD_DEBUG_MODULE_PARAM(mx_fw,   SCSC_FULL_DEBUG, MX_FW);
 ADD_DEBUG_MODULE_PARAM(mx_sampler,   SCSC_FULL_DEBUG, MX_SAMPLER);
@@ -225,8 +217,6 @@ ADD_DEBUG_MODULE_PARAM(plat_mif, SCSC_DBG1, PLAT_MIF);
 ADD_DEBUG_MODULE_PARAM(kic_common, SCSC_FULL_DEBUG, KIC_COMMON);
 ADD_DEBUG_MODULE_PARAM(wlbtd, SCSC_FULL_DEBUG, WLBTD);
 ADD_DEBUG_MODULE_PARAM(wlog, SCSC_DEBUG, WLOG);
-ADD_DEBUG_MODULE_PARAM(lerna, SCSC_FULL_DEBUG, LERNA);
-ADD_DEBUG_MODULE_PARAM(mxcfg, SCSC_FULL_DEBUG, MX_CFG);
 #ifdef CONFIG_SCSC_DEBUG_COMPATIBILITY
 ADD_DEBUG_MODULE_PARAM(init_deinit,  SCSC_FULL_DEBUG, SLSI_INIT_DEINIT);
 ADD_DEBUG_MODULE_PARAM(netdev,  SCSC_DBG4, SLSI_NETDEV);
@@ -236,7 +226,7 @@ ADD_DEBUG_MODULE_PARAM(summary_frames,  SCSC_FULL_DEBUG, SLSI_SUMMARY_FRAMES);
 ADD_DEBUG_MODULE_PARAM(hydra,  SCSC_FULL_DEBUG, SLSI_HYDRA);
 ADD_DEBUG_MODULE_PARAM(tx,  SCSC_FULL_DEBUG, SLSI_TX);
 ADD_DEBUG_MODULE_PARAM(rx,  SCSC_DBG4, SLSI_RX);
-ADD_DEBUG_MODULE_PARAM(udi,  SCSC_DBG4, SLSI_UDI);
+ADD_DEBUG_MODULE_PARAM(udi,  SCSC_FULL_DEBUG, SLSI_UDI);
 ADD_DEBUG_MODULE_PARAM(wifi_fcq,  SCSC_DBG4, SLSI_WIFI_FCQ);
 ADD_DEBUG_MODULE_PARAM(hip,  SCSC_FULL_DEBUG, SLSI_HIP);
 ADD_DEBUG_MODULE_PARAM(hip_init_deinit,  SCSC_FULL_DEBUG, SLSI_HIP_INIT_DEINIT);
@@ -249,20 +239,16 @@ ADD_DEBUG_MODULE_PARAM(hip_sig,  SCSC_FULL_DEBUG, SLSI_HIP_SIG);
 ADD_DEBUG_MODULE_PARAM(func_trace,  SCSC_FULL_DEBUG, SLSI_FUNC_TRACE);
 ADD_DEBUG_MODULE_PARAM(test,  SCSC_FULL_DEBUG, SLSI_TEST);
 ADD_DEBUG_MODULE_PARAM(src_sink,  SCSC_FULL_DEBUG, SLSI_SRC_SINK);
-ADD_DEBUG_MODULE_PARAM(fw_test,  SCSC_DBG4, SLSI_FW_TEST);
+ADD_DEBUG_MODULE_PARAM(fw_test,  SCSC_FULL_DEBUG, SLSI_FW_TEST);
 ADD_DEBUG_MODULE_PARAM(rx_ba,  SCSC_DBG4, SLSI_RX_BA);
 ADD_DEBUG_MODULE_PARAM(tdls,  SCSC_FULL_DEBUG, SLSI_TDLS);
 ADD_DEBUG_MODULE_PARAM(gscan,  SCSC_FULL_DEBUG, SLSI_GSCAN);
 ADD_DEBUG_MODULE_PARAM(mbulk,  SCSC_DBG1, SLSI_MBULK);
-ADD_DEBUG_MODULE_PARAM(smapper,  SCSC_DBG1, SLSI_SMAPPER);
 ADD_DEBUG_MODULE_PARAM(flowc, SCSC_FULL_DEBUG, SLSI_FLOWC);
 #endif
 ADD_DEBUG_MODULE_PARAM(test_me, SCSC_FULL_DEBUG, TEST_ME);
 
-/* Extend this list when you add ADD_DEBUG_MODULE_PARAM, above.
- * You must also extend "enum scsc_logring_tags"
- */
-static int *scsc_droplevels[MAX_TAG + 1] = {
+int *scsc_droplevels[] = {
 	&scsc_droplevel_binary,
 	&scsc_droplevel_bin_wifi_ctrl_rx,
 	&scsc_droplevel_bin_wifi_data_rx,
@@ -283,8 +269,6 @@ static int *scsc_droplevels[MAX_TAG + 1] = {
 	&scsc_droplevel_mif,
 	&scsc_droplevel_clk20,
 	&scsc_droplevel_clk20_test,
-	&scsc_droplevel_fm,
-	&scsc_droplevel_fm_test,
 	&scsc_droplevel_mx_file,
 	&scsc_droplevel_mx_fw,
 	&scsc_droplevel_mx_sampler,
@@ -300,8 +284,6 @@ static int *scsc_droplevels[MAX_TAG + 1] = {
 	&scsc_droplevel_kic_common,
 	&scsc_droplevel_wlbtd,
 	&scsc_droplevel_wlog,
-	&scsc_droplevel_lerna,
-	&scsc_droplevel_mxcfg,
 #ifdef CONFIG_SCSC_DEBUG_COMPATIBILITY
 	&scsc_droplevel_init_deinit,
 	&scsc_droplevel_netdev,
@@ -330,12 +312,11 @@ static int *scsc_droplevels[MAX_TAG + 1] = {
 	&scsc_droplevel_gscan,
 	&scsc_droplevel_mbulk,
 	&scsc_droplevel_flowc,
-	&scsc_droplevel_smapper,
 #endif
-	&scsc_droplevel_test_me, /* Must be last */
+	&scsc_droplevel_test_me,
 };
 
-#if IS_ENABLED(CONFIG_SCSC_LOG_COLLECTION)
+#ifdef CONFIG_SCSC_LOG_COLLECTION
 static int logring_collect(struct scsc_log_collector_client *collect_client, size_t size)
 {
 	int ret = 0, saved_droplevel;
@@ -438,119 +419,6 @@ static inline int _scsc_printk(int level, int tag,
 	return written;
 }
 
-#if IS_ENABLED(CONFIG_SCSC_MEMLOG)
-#define SCSC_LVL2MEMLOG(lv)	(((lv) < 3) ? MEMLOG_LEVEL_EMERG : ((lv) < 7) ? (lv) - 2 : MEMLOG_LEVEL_DEBUG)
-#define IS_MEMLOG_ALLOWED(ff, level, memlog_lv) \
-	((ff) == FORCE_PRK || \
-	((ff) != NO_ECHO_PRK && (level) < scsc_redirect_to_printk_droplvl) || \
-	((ff) != NO_ECHO_PRK && SCSC_LVL2MEMLOG(level) <= (memlog_lv)))
-
-struct memlog_obj *print_obj;
-extern const char *tagstr[MAX_TAG + 1];
-
-static inline bool memlog_get_obj(void)
-{
-	struct memlog *memlog_desc = NULL;
-
-	memlog_desc = memlog_get_desc("WB_LOG");
-	if (!memlog_desc)
-		return false;
-
-	print_obj = memlog_get_obj_by_name(memlog_desc, "ker_mem");
-	if (!print_obj) {
-		struct memlog_obj *file_obj = memlog_alloc_file(memlog_desc, "ker_fil", SZ_1M, 1, 1000, 1);
-
-		if (!file_obj)
-			return false;
-
-		print_obj = memlog_alloc_printf(memlog_desc, SZ_512K, file_obj, "ker_mem", false);
-		if (!print_obj)
-			return false;
-	}
-
-	return true;
-}
-
-static inline
-void memlog_out_string(int level, int tag, const char *fmt, va_list args,
-			int force)
-{
-	unsigned long flags;
-	struct va_format vaf;
-	u8 ctx;
-	u8 core;
-	char *msg_head = NULL;
-
-	if (!enable)
-		return;
-
-	if (print_obj == NULL)
-		if (!memlog_get_obj())
-			return;
-
-	if (!IS_MEMLOG_ALLOWED(force, level, print_obj->log_level))
-		return;
-
-	drop_message_level_macro(fmt, &msg_head);
-	vaf.fmt = msg_head;
-	vaf.va = &args;
-
-	local_irq_save(flags);
-	ctx = in_interrupt() ? (in_softirq() ? 'S' : 'I') : 'P';
-	core = smp_processor_id();
-	local_irq_restore(flags);
-
-	if (print_obj)
-		memlog_write_printf(print_obj, SCSC_LVL2MEMLOG(level),
-			"<%d> [c%d] [%c] [%s] :: %pV",
-			level, core, ctx, tagstr[tag], &vaf);
-	else
-		pr_notice("Samlog: print_obj is not valid\n");
-}
-
-static inline
-void memlog_out_bin(int level, int tag, const void *start, size_t len,
-			int force)
-{
-	const u8 *ptr = start;
-	int i, linelen, rowsize = 32, remaining = len;
-	unsigned char linebuf[64 * 3 + 1];
-	unsigned long flags;
-	u8 ctx;
-	u8 core;
-
-	if (!enable)
-		return;
-
-	if (print_obj == NULL)
-		if (!memlog_get_obj())
-			return;
-
-	if (!IS_MEMLOG_ALLOWED(force, level, print_obj->log_level))
-		return;
-
-	local_irq_save(flags);
-	ctx = in_interrupt() ? (in_softirq() ? 'S' : 'I') : 'P';
-	core = smp_processor_id();
-	local_irq_restore(flags);
-
-	for (i = 0; i < len; i += rowsize) {
-		linelen = min(remaining, rowsize);
-		remaining -= rowsize;
-
-		hex_dump_to_buffer(ptr + i, linelen, rowsize, 1,
-				   linebuf, sizeof(linebuf), false);
-
-		if (print_obj)
-			memlog_write_printf(print_obj, SCSC_LVL2MEMLOG(level),
-				"<%d> [c%d] [%c] [%s] "SCSC_PREFIX"SCSC_HEX->|%s\n",
-				level, core, ctx, tagstr[tag], linebuf);
-		else
-			pr_notice("Samlog: print_obj is not valid\n");
-	}
-}
-#endif
-
 /**
  * Embeds the filtering behaviour towards std kenrel ring buffer for
  * non binary stuff, and decides what to do based on current user config.
@@ -569,7 +437,7 @@ void handle_klogbuf_out_string(int level, struct device *dev, int tag,
 	}
 }
 
-static const char * const map2kern[] = {
+const char *map2kern[] = {
 	KERN_EMERG,
 	KERN_ALERT,
 	KERN_CRIT,
@@ -631,9 +499,6 @@ int scsc_printk_tag(int force, int tag, const char *fmt, ...)
 	if ((in_interrupt() && level >= scsc_droplevel_atomic))
 		return ret;
 	va_start(args, fmt);
-#if IS_ENABLED(CONFIG_SCSC_MEMLOG)
-	memlog_out_string(level, tag, fmt, args, force);
-#endif
 	handle_klogbuf_out_string(level, NULL, tag, fmt, args, force);
 	va_end(args);
 	/* restart varargs */
@@ -660,9 +525,6 @@ int scsc_printk_tag_lvl(int tag, int level, const char *fmt, ...)
 	if ((in_interrupt() && level >= scsc_droplevel_atomic))
 		return ret;
 	va_start(args, fmt);
-#if IS_ENABLED(CONFIG_SCSC_MEMLOG)
-	memlog_out_string(level, tag, fmt, args, NO_FORCE_PRK);
-#endif
 	handle_klogbuf_out_string(level, NULL, tag, fmt, args, NO_FORCE_PRK);
 	va_end(args);
 	/* restart varargs */
@@ -691,9 +553,6 @@ int scsc_printk_tag_dev(int force, int tag, struct device *dev,
 	if ((in_interrupt() && level >= scsc_droplevel_atomic))
 		return ret;
 	va_start(args, fmt);
-#if IS_ENABLED(CONFIG_SCSC_MEMLOG)
-	memlog_out_string(level, tag, fmt, args, force);
-#endif
 	handle_klogbuf_out_string(level, dev, tag, fmt, args, force);
 	va_end(args);
 	/* restart varargs */
@@ -720,9 +579,6 @@ int scsc_printk_tag_dev_lvl(int force, int tag, struct device *dev,
 	if ((in_interrupt() && level >= scsc_droplevel_atomic))
 		return ret;
 	va_start(args, fmt);
-#if IS_ENABLED(CONFIG_SCSC_MEMLOG)
-	memlog_out_string(level, tag, fmt, args, force);
-#endif
 	handle_klogbuf_out_string(level, dev, tag, fmt, args, force);
 	va_end(args);
 	/* restart varargs */
@@ -739,6 +595,7 @@ EXPORT_SYMBOL(scsc_printk_tag_dev_lvl);
 int scsc_printk_bin(int force, int tag, int dlev, const void *start, size_t len)
 {
 	int ret = 0;
+
 	/* Cannot use NON BINARY tag with strings logging
 	 * or NULLs start/len
 	 */
@@ -747,9 +604,6 @@ int scsc_printk_bin(int force, int tag, int dlev, const void *start, size_t len)
 	dlev = (dlev >= 0) ? dlev : default_dbglevel;
 	if ((in_interrupt() && dlev >= scsc_droplevel_atomic))
 		return ret;
-#if IS_ENABLED(CONFIG_SCSC_MEMLOG)
-	memlog_out_bin(dlev, tag, start, len, force);
-#endif
 	handle_klogbuf_out_binary(dlev, tag, start, len, force);
 	/* consider proper tag droplevel */
 	if (!initialized || !enable || !start ||
@@ -761,32 +615,6 @@ int scsc_printk_bin(int force, int tag, int dlev, const void *start, size_t len)
 	return ret;
 }
 EXPORT_SYMBOL(scsc_printk_bin);
-
-/*
- * This is a very basic mechanism to have implement the dynamic switch
- * for one user (currently WLAN). If multiple users are
- * required to use the dynamic logring switch, a new registration
- * mechanism based on requests and use_count should be implemented to avoid one service
- * re-enabling logring when some other has requested not to do so.
- */
-int scsc_logring_enable(bool logging_enable)
-{
-	scsc_printk_tag(FORCE_PRK, NO_TAG, "scsc_logring %s\n", logging_enable ? "enable" : "disable");
-	/* User has requested to disable logring */
-	if (!logging_enable && enable) {
-		cached_enable = true;
-		enable = 0;
-		scsc_printk_tag(FORCE_PRK, NO_TAG, "Logring disabled\n");
-	} else if (logging_enable && cached_enable) {
-		cached_enable = false;
-		enable = 1;
-		scsc_printk_tag(FORCE_PRK, NO_TAG, "Logring re-enabled\n");
-	} else {
-		scsc_printk_tag(FORCE_PRK, NO_TAG, "Ignored\n");
-	}
-	return 0;
-}
-EXPORT_SYMBOL(scsc_logring_enable);
 
 
 MODULE_DESCRIPTION("SCSC Event Logger");

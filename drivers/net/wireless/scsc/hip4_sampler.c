@@ -1,6 +1,6 @@
 /*****************************************************************************
  *
- * Copyright (c) 2014 - 2018 Samsung Electronics Co., Ltd. All rights reserved
+ * Copyright (c) 2014 - 2017 Samsung Electronics Co., Ltd. All rights reserved
  *
  ****************************************************************************/
 #include <linux/module.h>
@@ -18,7 +18,6 @@
 #include <linux/mm.h>
 #include <linux/version.h>
 #include <linux/hardirq.h>
-#include <linux/cpufreq.h>
 
 #include <linux/ktime.h>
 #include <linux/hrtimer.h>
@@ -26,7 +25,7 @@
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <scsc/scsc_mx.h>
-#if IS_ENABLED(CONFIG_SCSC_LOG_COLLECTION)
+#ifdef CONFIG_SCSC_LOG_COLLECTION
 #include <scsc/scsc_log_collector.h>
 #endif
 #include <linux/delay.h>
@@ -39,108 +38,67 @@ struct hip4_record {
 	u32     record_num;
 	ktime_t ts;
 	u32     record;
-	u32     record2;
 } __packed;
-
-static atomic_t in_read;
-
-/* Create a global spinlock for all the instances */
-/* It is less efficent, but we simplify the implementation */
-static DEFINE_SPINLOCK(g_spinlock);
 
 static bool hip4_sampler_enable = true;
 module_param(hip4_sampler_enable, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_enable, "Enable hip4_sampler_enable. Run-time option - (default: Y)");
 
-static bool hip4_sampler_dynamic = true;
-module_param(hip4_sampler_dynamic, bool, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(hip4_sampler_dynamic, "Enable hip4_sampler dynamic adaptation based on TPUT. Run-time option - (default: Y)");
-
-static int hip4_sampler_kfifo_len = 128 * 1024;
+static int hip4_sampler_kfifo_len = 256 * 1024;
 module_param(hip4_sampler_kfifo_len, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_kfifo_len, "Streaming fifo buffer length in num of records- default: 262144 Max: 262144. Loaded at /dev open");
 
-static int hip4_sampler_static_kfifo_len = 128 * 1024;
+static int hip4_sampler_static_kfifo_len = 256 * 1024;
 module_param(hip4_sampler_static_kfifo_len, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_static_kfifo_len, "Offline fifo buffer length in num of records- default: 262144 Max: 262144. Loaded at /dev open");
 
-static bool hip4_sampler_sample_q = true;
+bool hip4_sampler_sample_q = true;
 module_param(hip4_sampler_sample_q, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_sample_q, "Sample Queues. Default: Y. Run time option");
 
-static bool hip4_sampler_sample_qref = true;
+bool hip4_sampler_sample_qref = true;
 module_param(hip4_sampler_sample_qref, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_sample_qref, "Sample Queue References. Default: Y. Run time option");
 
-static bool hip4_sampler_sample_int = true;
+bool hip4_sampler_sample_int = true;
 module_param(hip4_sampler_sample_int, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_sample_int, "Sample WQ/Tasklet Intr BH in/out. Default: Y. Run time option");
 
-static bool hip4_sampler_sample_fapi = true;
+bool hip4_sampler_sample_fapi = true;
 module_param(hip4_sampler_sample_fapi, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_sample_fapi, "Sample FAPI ctrl signals. Default: Y. Run time option");
 
-static bool hip4_sampler_sample_through = true;
+bool hip4_sampler_sample_through = true;
 module_param(hip4_sampler_sample_through, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_sample_through, "Sample throughput. Default: Y. Run time option");
 
-static bool hip4_sampler_sample_tcp = true;
-module_param(hip4_sampler_sample_tcp, bool, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(hip4_sampler_sample_tcp, "Sample TCP streams. Default: Y. Run time option");
-
-static bool hip4_sampler_sample_start_stop_q = true;
+bool hip4_sampler_sample_start_stop_q = true;
 module_param(hip4_sampler_sample_start_stop_q, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_sample_start_stop_q, "Sample Stop/Start queues. Default: Y. Run time option");
 
-static bool hip4_sampler_sample_mbulk = true;
+bool hip4_sampler_sample_mbulk = true;
 module_param(hip4_sampler_sample_mbulk, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_sample_mbulk, "Sample Mbulk counter. Default: Y. Run time option");
 
-static bool hip4_sampler_sample_qfull;
+bool hip4_sampler_sample_qfull;
 module_param(hip4_sampler_sample_qfull, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_sample_qfull, "Sample Q full event. Default: N. Run time option");
 
-static bool hip4_sampler_sample_mfull = true;
+bool hip4_sampler_sample_mfull = true;
 module_param(hip4_sampler_sample_mfull, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_sample_mfull, "Sample Mbulk full event. Default: Y. Run time option");
 
-static bool hip4_sampler_vif = true;
+bool hip4_sampler_vif = true;
 module_param(hip4_sampler_vif, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_vif, "Sample VIF. Default: Y. Run time option");
 
-static bool hip4_sampler_bot = true;
+bool hip4_sampler_bot = true;
 module_param(hip4_sampler_bot, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_bot, "Sample BOT. Default: Y. Run time option");
 
-static bool hip4_sampler_pkt_tx = true;
+bool hip4_sampler_pkt_tx = true;
 module_param(hip4_sampler_pkt_tx, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(hip4_sampler_pkt_tx, "Track TX Data packet TX->HIP4->FB. Default: Y. Run time option");
-
-static bool hip4_sampler_suspend_resume = true;
-module_param(hip4_sampler_suspend_resume, bool, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(hip4_sampler_suspend_resume, "Sample Suspend/Resume events. Default: Y. Run time option");
-
-#define HIP4_TPUT_HLIMIT	400000000  /* 400Mbps */
-#define HIP4_TPUT_LLIMIT	350000000  /* 350Mbps */
-#define HIP4_TPUT_HSECONDS	1
-#define HIP4_TPUT_LSECONDS	5
-
-static bool hip4_sampler_sample_q_hput;
-static bool hip4_sampler_sample_qref_hput;
-static bool hip4_sampler_sample_int_hput;
-static bool hip4_sampler_sample_fapi_hput;
-/* static bool hip4_sampler_sample_through_hput; */
-/* static bool hip4_sampler_sample_start_stop_q_hput; */
-/* static bool hip4_sampler_sample_mbulk_hput; */
-/* static bool hip4_sampler_sample_qfull_hput; */
-/* static bool hip4_sampler_sample_mfull_hput; */
-static bool hip4_sampler_vif_hput;
-static bool hip4_sampler_bot_hput;
-static bool hip4_sampler_pkt_tx_hput;
-static bool hip4_sampler_suspend_resume_hput;
-
-static bool hip4_sampler_in_htput;
-static u16 hip4_sampler_in_htput_seconds;
 
 #define DRV_NAME                "hip4_sampler"
 #define DEVICE_NAME             "hip4_sampler"
@@ -152,7 +110,7 @@ static u16 hip4_sampler_in_htput_seconds;
 #define VER_MAJOR               0
 #define VER_MINOR               0
 
-static DECLARE_BITMAP(bitmap_hip4_sampler_minor, SCSC_HIP4_DEBUG_INTERFACES);
+DECLARE_BITMAP(bitmap_hip4_sampler_minor, SCSC_HIP4_DEBUG_INTERFACES);
 
 enum hip4_dg_errors {
 	NO_ERROR = 0,
@@ -181,6 +139,8 @@ struct hip4_sampler_dev {
 	wait_queue_head_t read_wait;
 	/* Device in error */
 	enum hip4_dg_errors    error;
+	/* Device node spinlock for IRQ */
+	spinlock_t        spinlock;
 	/* Device node mutex for fops */
 	struct mutex      mutex;
 	/* Record number */
@@ -189,8 +149,6 @@ struct hip4_sampler_dev {
 	u32               kfifo_max;
 	/* Sampler type streaming/offline */
 	enum hip4_type         type;
-	/* reference to minor number */
-	u32               minor;
 };
 
 /**
@@ -203,26 +161,34 @@ static struct {
 	struct hip4_sampler_dev devs[SCSC_HIP4_DEBUG_INTERFACES];
 } hip4_sampler;
 
-void __hip4_sampler_update_record(struct hip4_sampler_dev *hip4_dev, u32 minor, u8 param1, u8 param2, u8 param3, u8 param4, u32 param5)
+void hip4_sampler_update_record(u32 minor, u8 param1, u8 param2, u8 param3, u8 param4)
 {
+	struct hip4_sampler_dev *hip4_dev;
 	struct hip4_record      ev;
 	u32                     ret;
-	u32                     cpu;
-	u32                     freq = 0;
 
+	if (!hip4_sampler_enable)
+		return;
+
+	if (minor >= SCSC_HIP4_INTERFACES)
+		return;
+
+	hip4_dev = &hip4_sampler.devs[minor];
 	/* If char device if open, use streaming buffer */
 	if (hip4_dev->filp) {
 		/* put string into the Streaming fifo */
 		if (kfifo_avail(&hip4_dev->fifo)) {
+			spin_lock_bh(&hip4_dev->spinlock);
 			/* Push values in Fifo*/
-			cpu = smp_processor_id();
-			if (hip4_dev->record_num % 64 == 0)
-				freq = (cpufreq_quick_get(cpu) / 1000) & 0xfff;
-			ev.record_num = (0x0000ffff & hip4_dev->record_num++) | (cpu << 28) | (freq << 16);
+			ev.record_num = (0x3fffffff & hip4_dev->record_num++) | (in_irq() << 31) | (irqs_disabled() << 30);
 			ev.ts = ktime_get();
 			ev.record = ((param1 & 0xff) << 24) | ((param2 & 0xff) << 16) | ((param3 & 0xff) << 8) | (param4 & 0xff);
-			ev.record2 = param5;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 12, 0))
 			kfifo_put(&hip4_dev->fifo, ev);
+#else
+			kfifo_put(&hip4_dev->fifo, &ev);
+#endif
+			spin_unlock_bh(&hip4_dev->spinlock);
 			ret = kfifo_len(&hip4_dev->fifo);
 			if (ret > hip4_dev->kfifo_max)
 				hip4_dev->kfifo_max = ret;
@@ -236,348 +202,24 @@ void __hip4_sampler_update_record(struct hip4_sampler_dev *hip4_dev, u32 minor, 
 		/* Get associated Offline buffer */
 		hip4_dev = &hip4_sampler.devs[minor + 1];
 		/* Record in offline fifo */
+		spin_lock_bh(&hip4_dev->spinlock);
 		/* if fifo is full, remove last item */
 		if (kfifo_is_full(&hip4_dev->fifo))
 			ret = kfifo_get(&hip4_dev->fifo, &ev);
-		cpu = smp_processor_id();
-		if (hip4_dev->record_num % 64 == 0)
-			freq = (cpufreq_quick_get(cpu) / 1000) & 0xfff;
 		/* Push values in Static Fifo*/
-		ev.record_num = (0x0000ffff & hip4_dev->record_num++) | (cpu << 28) | (freq << 16);
+		ev.record_num = (0x3fffffff & hip4_dev->record_num++) | (in_irq() << 31) | (irqs_disabled() << 30);
 		ev.ts = ktime_get();
 		ev.record = ((param1 & 0xff) << 24) | ((param2 & 0xff) << 16) | ((param3 & 0xff) << 8) | (param4 & 0xff);
-		ev.record2 = param5;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 12, 0))
 		kfifo_put(&hip4_dev->fifo, ev);
+#else
+		kfifo_put(&hip4_dev->fifo, &ev);
+#endif
+		spin_unlock_bh(&hip4_dev->spinlock);
 	}
 }
 
-bool hip4_sampler_update_record_filter(u8 param1)
-{
-	switch (param1) {
-	case HIP4_MIF_Q_FH_CTRL:
-	case HIP4_MIF_Q_FH_DAT:
-	case HIP4_MIF_Q_FH_RFB:
-	case HIP4_MIF_Q_TH_CTRL:
-	case HIP4_MIF_Q_TH_DAT:
-	case HIP4_MIF_Q_TH_RFB:
-		return hip4_sampler_sample_q;
-	case HIP4_SAMPLER_QREF:
-		return hip4_sampler_sample_qref;
-	case HIP4_SAMPLER_SIGNAL_CTRLTX:
-	case HIP4_SAMPLER_SIGNAL_CTRLRX:
-		return hip4_sampler_sample_fapi;
-	case HIP4_SAMPLER_THROUG:
-	case HIP4_SAMPLER_THROUG_K:
-	case HIP4_SAMPLER_THROUG_M:
-		return hip4_sampler_sample_through;
-	case HIP4_SAMPLER_STOP_Q:
-	case HIP4_SAMPLER_START_Q:
-		return hip4_sampler_sample_start_stop_q;
-	case HIP4_SAMPLER_MBULK:
-		return hip4_sampler_sample_mbulk;
-	case HIP4_SAMPLER_QFULL:
-		return hip4_sampler_sample_qfull;
-	case HIP4_SAMPLER_MFULL:
-		return hip4_sampler_sample_mfull;
-	case HIP4_SAMPLER_INT:
-	case HIP4_SAMPLER_INT_OUT:
-	case HIP4_SAMPLER_INT_BH:
-	case HIP4_SAMPLER_INT_OUT_BH:
-		return hip4_sampler_sample_int;
-	case HIP4_SAMPLER_RESET:
-		return true;
-	case HIP4_SAMPLER_PEER:
-		return hip4_sampler_vif;
-	case HIP4_SAMPLER_BOT_RX:
-	case HIP4_SAMPLER_BOT_TX:
-	case HIP4_SAMPLER_BOT_ADD:
-	case HIP4_SAMPLER_BOT_REMOVE:
-	case HIP4_SAMPLER_BOT_START_Q:
-	case HIP4_SAMPLER_BOT_STOP_Q:
-	case HIP4_SAMPLER_BOT_QMOD_RX:
-	case HIP4_SAMPLER_BOT_QMOD_TX:
-		return hip4_sampler_bot;
-	case HIP4_SAMPLER_BOT_QMOD_START:
-	case HIP4_SAMPLER_BOT_QMOD_STOP:
-		return hip4_sampler_sample_start_stop_q || hip4_sampler_bot;
-	case HIP4_SAMPLER_PKT_TX:
-	case HIP4_SAMPLER_PKT_TX_HIP4:
-	case HIP4_SAMPLER_PKT_TX_FB:
-		return hip4_sampler_pkt_tx;
-	case HIP4_SAMPLER_SUSPEND:
-	case HIP4_SAMPLER_RESUME:
-		return hip4_sampler_suspend_resume;
-	case HIP4_SAMPLER_TCP_SYN:
-	case HIP4_SAMPLER_TCP_FIN:
-	case HIP4_SAMPLER_TCP_DATA:
-	case HIP4_SAMPLER_TCP_ACK:
-	case HIP4_SAMPLER_TCP_DATA_IN:
-	case HIP4_SAMPLER_TCP_ACK_IN:
-	case HIP4_SAMPLER_TCP_RWND:
-	case HIP4_SAMPLER_TCP_CWND:
-	case HIP4_SAMPLER_TCP_SEND_BUF:
-		return hip4_sampler_sample_tcp;
-	}
-	return false;
-}
-
-void hip4_sampler_update_record(u32 minor, u8 param1, u8 param2, u8 param3, u8 param4, u32 param5)
-{
-	struct hip4_sampler_dev *hip4_dev;
-	unsigned long flags;
-
-	if (!hip4_sampler_update_record_filter(param1))
-		return;
-
-	if (!hip4_sampler_enable || !hip4_sampler.init)
-		return;
-
-	if (atomic_read(&in_read))
-		return;
-
-	if (minor >= SCSC_HIP4_INTERFACES)
-		return;
-
-	spin_lock_irqsave(&g_spinlock, flags);
-	hip4_dev = &hip4_sampler.devs[minor];
-	__hip4_sampler_update_record(hip4_dev, minor, param1, param2, param3, param4, param5);
-	spin_unlock_irqrestore(&g_spinlock, flags);
-}
-
-static void hip4_sampler_store_param(void)
-{
-	hip4_sampler_sample_q_hput = hip4_sampler_sample_q;
-	hip4_sampler_sample_qref_hput = hip4_sampler_sample_qref;
-	hip4_sampler_sample_int_hput = hip4_sampler_sample_int;
-	hip4_sampler_sample_fapi_hput = hip4_sampler_sample_fapi;
-	/* hip4_sampler_sample_through_hput = hip4_sampler_sample_through; */
-	/* hip4_sampler_sample_start_stop_q_hput = hip4_sampler_sample_start_stop_q; */
-	/* hip4_sampler_sample_mbulk_hput = hip4_sampler_sample_mbulk; */
-	/* hip4_sampler_sample_qfull_hput = hip4_sampler_sample_qfull; */
-	/* hip4_sampler_sample_mfull_hput = hip4_sampler_sample_mfull; */
-	hip4_sampler_vif_hput = hip4_sampler_vif;
-	hip4_sampler_bot_hput = hip4_sampler_bot;
-	hip4_sampler_pkt_tx_hput = hip4_sampler_pkt_tx;
-	hip4_sampler_suspend_resume_hput = hip4_sampler_suspend_resume;
-
-	/* Reset values to avoid contention */
-	hip4_sampler_sample_q = false;
-	hip4_sampler_sample_qref = false;
-	hip4_sampler_sample_int = false;
-	hip4_sampler_sample_fapi = false;
-	/* hip4_sampler_sample_through_hput = false; */
-	/* hip4_sampler_sample_start_stop_q_hput = false; */
-	/* hip4_sampler_sample_mbulk = false; */
-	/* hip4_sampler_sample_qfull_hput = false; */
-	/* hip4_sampler_sample_mfull_hput = false; */
-	hip4_sampler_vif = false;
-	hip4_sampler_bot = false;
-	hip4_sampler_pkt_tx = false;
-	hip4_sampler_suspend_resume = false;
-}
-
-static void hip4_sampler_restore_param(void)
-{
-	hip4_sampler_sample_q = hip4_sampler_sample_q_hput;
-	hip4_sampler_sample_qref = hip4_sampler_sample_qref_hput;
-	hip4_sampler_sample_int = hip4_sampler_sample_int_hput;
-	hip4_sampler_sample_fapi = hip4_sampler_sample_fapi_hput;
-	/* hip4_sampler_sample_through = hip4_sampler_sample_through_hput; */
-	/* hip4_sampler_sample_start_stop_q = hip4_sampler_sample_start_stop_q_hput; */
-	/* hip4_sampler_sample_mbulk = hip4_sampler_sample_mbulk_hput; */
-	/* hip4_sampler_sample_qfull = hip4_sampler_sample_qfull_hput; */
-	/* hip4_sampler_sample_mfull = hip4_sampler_sample_mfull_hput; */
-	hip4_sampler_vif = hip4_sampler_vif_hput;
-	hip4_sampler_bot = hip4_sampler_bot_hput;
-	hip4_sampler_pkt_tx = hip4_sampler_pkt_tx_hput;
-	hip4_sampler_suspend_resume = hip4_sampler_suspend_resume_hput;
-}
-
-static void hip4_sampler_dynamic_switcher(u32 bps)
-{
-	/* Running in htput, */
-	if (hip4_sampler_in_htput) {
-		if (bps < HIP4_TPUT_LLIMIT) {
-			/* bps went down , count number of times to switch */
-			hip4_sampler_in_htput_seconds++;
-			if (hip4_sampler_in_htput_seconds >= HIP4_TPUT_LSECONDS) {
-			/* HIP4_TPUT_LSECONDS have passed, switch to low tput samples */
-				hip4_sampler_in_htput = false;
-				hip4_sampler_in_htput_seconds = 0;
-				hip4_sampler_restore_param();
-			}
-		} else {
-			hip4_sampler_in_htput_seconds = 0;
-		}
-	} else {
-		if (bps > HIP4_TPUT_HLIMIT) {
-			/* bps went up, count number of times to switch */
-			hip4_sampler_in_htput_seconds++;
-			if (hip4_sampler_in_htput_seconds >= HIP4_TPUT_HSECONDS) {
-			/* HIP4_TPUT_LSECONDS have passed, switch to high tput samples */
-				hip4_sampler_in_htput = true;
-				hip4_sampler_in_htput_seconds = 0;
-				hip4_sampler_store_param();
-			}
-		} else {
-			hip4_sampler_in_htput_seconds = 0;
-		}
-	}
-}
-
-static u32 g_tput_rx;
-static u32 g_tput_tx;
-
-void hip4_sampler_tput_monitor(void *client_ctx, u32 state, u32 tput_tx, u32 tput_rx)
-{
-	struct hip4_sampler_dev *hip4_sampler_dev = (struct hip4_sampler_dev *)client_ctx;
-
-	if (!hip4_sampler_enable)
-		return;
-
-	if ((g_tput_tx == tput_tx) && (g_tput_rx == tput_rx))
-		return;
-
-	g_tput_tx = tput_tx;
-	g_tput_rx = tput_rx;
-
-	if (hip4_sampler_dynamic) {
-		/* Call the dynamic switcher with the computed bps
-		 * The algorithm will decide to not change, decrease
-		 * or increase the sampler verbosity
-		 */
-		if (tput_rx > tput_tx)
-			hip4_sampler_dynamic_switcher(tput_rx);
-		else
-			hip4_sampler_dynamic_switcher(tput_tx);
-	}
-
-	/* Generate the TX sample, in bps, Kbps, or Mbps */
-	if (tput_tx < 1000) {
-		SCSC_HIP4_SAMPLER_THROUG(hip4_sampler_dev->minor, 1, (tput_tx & 0xff00) >> 8, tput_tx & 0xff);
-	} else if ((tput_tx >= 1000) && (tput_tx < (1000 * 1000))) {
-		tput_tx = tput_tx / 1000;
-		SCSC_HIP4_SAMPLER_THROUG_K(hip4_sampler_dev->minor, 1, (tput_tx & 0xff00) >> 8, tput_tx & 0xff);
-	} else {
-		tput_tx = tput_tx / (1000 * 1000);
-		SCSC_HIP4_SAMPLER_THROUG_M(hip4_sampler_dev->minor, 1, (tput_tx & 0xff00) >> 8, tput_tx & 0xff);
-	}
-
-	/* Generate the RX sample, in bps, Kbps, or Mbps */
-	if (tput_rx < 1000) {
-		SCSC_HIP4_SAMPLER_THROUG(hip4_sampler_dev->minor, 0, (tput_rx & 0xff00) >> 8, tput_rx & 0xff);
-	} else if ((tput_rx >= 1000) && (tput_rx < (1000 * 1000))) {
-		tput_rx = tput_rx / 1000;
-		SCSC_HIP4_SAMPLER_THROUG_K(hip4_sampler_dev->minor, 0, (tput_rx & 0xff00) >> 8, tput_rx & 0xff);
-	} else {
-		tput_rx = tput_rx / (1000 * 1000);
-		SCSC_HIP4_SAMPLER_THROUG_M(hip4_sampler_dev->minor, 0, (tput_rx & 0xff00) >> 8, tput_rx & 0xff);
-	}
-}
-
-void hip4_sampler_tcp_decode(struct slsi_dev *sdev, struct net_device *dev, u8 *frame, bool from_ba)
-{
-	struct tcphdr *tcp_hdr;
-	struct ethhdr *ehdr = (struct ethhdr *)(frame);
-	struct netdev_vif *ndev_vif = netdev_priv(dev);
-	u8 *ip_frame;
-	u16 ip_data_offset;
-	u8 hlen;
-	u16 len;
-	u8 proto;
-	u8 idx;
-
-	if (!hip4_sampler_sample_tcp)
-		return;
-
-	if (be16_to_cpu(ehdr->h_proto) != ETH_P_IP)
-		return;
-
-	ip_frame = frame + ETH_HLEN;
-	proto = ip_frame[9];
-
-	if (proto != IPPROTO_TCP)
-		return;
-
-	ip_data_offset = 20;
-	hlen = ip_frame[0] & 0x0F;
-	len = ip_frame[2] << 8 | ip_frame[3];
-
-	if (hlen > 5)
-		ip_data_offset += (hlen - 5) * 4;
-
-	tcp_hdr = (struct tcphdr *)(ip_frame + ip_data_offset);
-
-	slsi_spinlock_lock(&ndev_vif->tcp_ack_lock);
-	/* Search for an existing record on this connection. */
-	for (idx = 0; idx < TCP_ACK_SUPPRESSION_RECORDS_MAX; idx++) {
-		struct slsi_tcp_ack_s *tcp_ack;
-		u32 rwnd = 0;
-
-		tcp_ack = &ndev_vif->ack_suppression[idx];
-		if ((tcp_ack->dport == tcp_hdr->source) && (tcp_ack->sport == tcp_hdr->dest)) {
-			if (from_ba && tcp_hdr->syn && tcp_hdr->ack) {
-				unsigned char *options;
-				u32 optlen = 0, len = 0;
-
-				if (tcp_hdr->doff > 5)
-					optlen = (tcp_hdr->doff - 5) * 4;
-
-				options = (u8 *)tcp_hdr + TCP_ACK_SUPPRESSION_OPTIONS_OFFSET;
-
-				while (optlen > 0) {
-					switch (options[0]) {
-					case TCP_ACK_SUPPRESSION_OPTION_EOL:
-						len = 1;
-						break;
-					case TCP_ACK_SUPPRESSION_OPTION_NOP:
-						len = 1;
-						break;
-					case TCP_ACK_SUPPRESSION_OPTION_WINDOW:
-						tcp_ack->rx_window_scale = options[2];
-						len = options[1];
-						break;
-					default:
-						len = options[1];
-						break;
-					}
-					/* if length field in TCP options is 0, or greater than
-					 * total options length, then options are incorrect
-					 */
-					if ((len == 0) || (len >= optlen))
-						break;
-
-					if (optlen >= len)
-						optlen -= len;
-					else
-						optlen = 0;
-					options += len;
-				}
-			}
-			if (len > ((hlen * 4) + (tcp_hdr->doff * 4))) {
-				if (from_ba)
-					SCSC_HIP4_SAMPLER_TCP_DATA(sdev->minor_prof, tcp_ack->stream_id, tcp_hdr->seq);
-				else
-					SCSC_HIP4_SAMPLER_TCP_DATA_IN(sdev->minor_prof, tcp_ack->stream_id, tcp_hdr->seq);
-			} else {
-				if (tcp_ack->rx_window_scale)
-					rwnd = be16_to_cpu(tcp_hdr->window) * (2 << tcp_ack->rx_window_scale);
-				else
-					rwnd = be16_to_cpu(tcp_hdr->window);
-				if (from_ba) {
-					SCSC_HIP4_SAMPLER_TCP_ACK(sdev->minor_prof, tcp_ack->stream_id, be32_to_cpu(tcp_hdr->ack_seq));
-					SCSC_HIP4_SAMPLER_TCP_RWND(sdev->minor_prof, tcp_ack->stream_id, rwnd);
-				} else {
-					SCSC_HIP4_SAMPLER_TCP_ACK_IN(sdev->minor_prof, tcp_ack->stream_id, be32_to_cpu(tcp_hdr->ack_seq));
-				}
-			}
-			break;
-		}
-	}
-	slsi_spinlock_unlock(&ndev_vif->tcp_ack_lock);
-}
-
-#if IS_ENABLED(CONFIG_SCSC_LOG_COLLECTION)
+#ifdef CONFIG_SCSC_LOG_COLLECTION
 int hip4_collect_init(struct scsc_log_collector_client *collect_client)
 {
 	/* Stop Sampling */
@@ -593,8 +235,6 @@ int hip4_collect(struct scsc_log_collector_client *collect_client, size_t size)
 	u32 num_samples;
 	struct hip4_sampler_dev *hip4_dev;
 	void *buf;
-	struct scsc_hip4_sampler_header header;
-
 
 	SLSI_INFO_NODEV("Triggered log collection in hip4_sampler\n");
 
@@ -610,37 +250,9 @@ int hip4_collect(struct scsc_log_collector_client *collect_client, size_t size)
 			buf = vmalloc(num_samples * sizeof(struct hip4_record));
 			if (!buf)
 				continue;
-			/* Write the hip4 sampler header */
-			memset(&header, 0, sizeof(header));
-			memcpy(header.magic, SCSC_HIP4_SAMPLER_MAGIC, 4);
-			header.offset_data = sizeof(header);
-			header.version_major = SCSC_HIP4_SAMPLER_HEADER_VERSION_MAJOR;
-			header.version_minor = SCSC_HIP4_SAMPLER_HEADER_VERSION_MINOR;
-#ifdef CONFIG_SOC_EXYNOS9630
-			header.platform = SCSC_HIP4_SAMPLER_EXYNOS9630;
-#elif defined(CONFIG_SOC_EXYNOS9610)
-			header.platform = SCSC_HIP4_SAMPLER_EXYNOS9610;
-#elif defined(CONFIG_SOC_EXYNOS7885)
-			header.platform = SCSC_HIP4_SAMPLER_EXYNOS7885;
-#else
-			header.platform = SCSC_HIP4_SAMPLER_UNDEF;
-#endif
-			/* We are currently using only one sample type */
-			header.sample_type = SCSC_HIP4_SAMPLER_TYPE_TCP;
-			if (hip4_sampler_in_htput)
-				header.hip4_status |= BIT(0);
-#ifdef CONFIG_DEBUG_SPINLOCK
-			header.hip4_status |= BIT(1);
-#endif
-			header.num_samples = num_samples;
-
-			ret = scsc_log_collector_write((char *)&header, sizeof(header), 1);
-			if (ret)
-				goto error;
-
-			spin_lock_irqsave(&g_spinlock, flags);
+			spin_lock_irqsave(&hip4_dev->spinlock, flags);
 			ret = kfifo_out(&hip4_dev->fifo, buf, num_samples);
-			spin_unlock_irqrestore(&g_spinlock, flags);
+			spin_unlock_irqrestore(&hip4_dev->spinlock, flags);
 			if (!ret)
 				goto error;
 			SLSI_DBG1_NODEV(SLSI_HIP, "num_samples %d ret %d size of hip4_record %zu\n", num_samples, ret, sizeof(struct hip4_record));
@@ -663,7 +275,7 @@ int hip4_collect_end(struct scsc_log_collector_client *collect_client)
 }
 
 /* Collect client registration */
-static struct scsc_log_collector_client hip4_collect_client = {
+struct scsc_log_collector_client hip4_collect_client = {
 	.name = "HIP4 Sampler",
 	.type = SCSC_LOG_CHUNK_HIP4_SAMPLER,
 	.collect_init = hip4_collect_init,
@@ -708,12 +320,14 @@ static int hip4_sampler_open(struct inode *inode, struct file *filp)
 
 	filp->private_data = hip4_dev;
 
+	spin_lock(&hip4_dev->spinlock);
 	/* Clear any remaining error */
 	hip4_dev->error = NO_ERROR;
 
 	hip4_dev->record_num = 0;
 	hip4_dev->kfifo_max = 0;
 	hip4_dev->filp = filp;
+	spin_unlock(&hip4_dev->spinlock);
 
 	SLSI_INFO_NODEV("%s: Sampling....\n", DRV_NAME);
 end:
@@ -733,7 +347,6 @@ static ssize_t hip4_sampler_read(struct file *filp, char __user *buf, size_t len
 		/* Offline buffer skip open */
 		if (mutex_lock_interruptible(&hip4_dev->mutex))
 			return -EINTR;
-		atomic_set(&in_read, 1);
 		ret = kfifo_to_user(&hip4_dev->fifo, buf, len, &copied);
 		mutex_unlock(&hip4_dev->mutex);
 		return ret ? ret : copied;
@@ -811,11 +424,9 @@ static int hip4_sampler_release(struct inode *inode, struct file *filp)
 
 	hip4_dev = container_of(inode->i_cdev, struct hip4_sampler_dev, cdev);
 
-	if (hip4_dev->type == OFFLINE) {
-		atomic_set(&in_read, 0);
+	if (hip4_dev->type == OFFLINE)
 		/* Offline buffer skip release */
 		return 0;
-	}
 
 	if (mutex_lock_interruptible(&hip4_dev->mutex))
 		return -EINTR;
@@ -832,9 +443,11 @@ static int hip4_sampler_release(struct inode *inode, struct file *filp)
 		return -EIO;
 	}
 
+	spin_lock(&hip4_dev->spinlock);
 	filp->private_data = NULL;
 	hip4_dev->filp = NULL;
 	kfifo_free(&hip4_dev->fifo);
+	spin_unlock(&hip4_dev->spinlock);
 
 	mutex_unlock(&hip4_dev->mutex);
 	SLSI_INFO_NODEV("%s: Sampling... end. Kfifo_max = %d\n", DRV_NAME, hip4_dev->kfifo_max);
@@ -861,7 +474,7 @@ int hip4_sampler_register_hip(struct scsc_mx *mx)
 	return -ENODEV;
 }
 
-void hip4_sampler_create(struct slsi_dev *sdev, struct scsc_mx *mx)
+void hip4_sampler_create(struct scsc_mx *mx)
 {
 	dev_t devn;
 	int   ret;
@@ -924,19 +537,11 @@ void hip4_sampler_create(struct slsi_dev *sdev, struct scsc_mx *mx)
 		hip4_sampler.devs[minor].mx = mx;
 
 		mutex_init(&hip4_sampler.devs[minor].mutex);
+		spin_lock_init(&hip4_sampler.devs[minor].spinlock);
 		hip4_sampler.devs[minor].kfifo_max = 0;
 		hip4_sampler.devs[minor].type = STREAMING;
-		hip4_sampler.devs[minor].minor = minor;
 
 		init_waitqueue_head(&hip4_sampler.devs[minor].read_wait);
-
-		slsi_traffic_mon_client_register(
-			sdev,
-			&hip4_sampler.devs[minor],
-			TRAFFIC_MON_CLIENT_MODE_PERIODIC,
-			0,
-			0,
-			hip4_sampler_tput_monitor);
 
 		/* Update bit mask */
 		set_bit(minor, bitmap_hip4_sampler_minor);
@@ -983,6 +588,7 @@ void hip4_sampler_create(struct slsi_dev *sdev, struct scsc_mx *mx)
 		hip4_sampler.devs[minor].mx = mx;
 
 		mutex_init(&hip4_sampler.devs[minor].mutex);
+		spin_lock_init(&hip4_sampler.devs[minor].spinlock);
 		hip4_sampler.devs[minor].kfifo_max = 0;
 		hip4_sampler.devs[minor].type = OFFLINE;
 
@@ -990,7 +596,7 @@ void hip4_sampler_create(struct slsi_dev *sdev, struct scsc_mx *mx)
 		set_bit(minor, bitmap_hip4_sampler_minor);
 	}
 
-#if IS_ENABLED(CONFIG_SCSC_LOG_COLLECTION)
+#ifdef CONFIG_SCSC_LOG_COLLECTION
 	hip4_collect_client.prv = mx;
 	scsc_log_collector_register_client(&hip4_collect_client);
 #endif
@@ -1007,7 +613,7 @@ error:
 	return;
 }
 
-void hip4_sampler_destroy(struct slsi_dev *sdev, struct scsc_mx *mx)
+void hip4_sampler_destroy(struct scsc_mx *mx)
 {
 	int                     i = SCSC_HIP4_DEBUG_INTERFACES;
 	struct hip4_sampler_dev *hip4_dev;
@@ -1019,20 +625,21 @@ void hip4_sampler_destroy(struct slsi_dev *sdev, struct scsc_mx *mx)
 			 * the service (device node) is open
 			 */
 			if (hip4_sampler.devs[i].filp) {
+				spin_lock(&hip4_sampler.devs[i].spinlock);
 				hip4_sampler.devs[i].filp = NULL;
 				kfifo_free(&hip4_sampler.devs[i].fifo);
+				spin_unlock(&hip4_dev->spinlock);
 			}
 			if (hip4_sampler.devs[i].type == OFFLINE)
 				kfifo_free(&hip4_sampler.devs[i].fifo);
 
-			slsi_traffic_mon_client_unregister(sdev, hip4_dev);
 			device_destroy(hip4_sampler.class_hip4_sampler, hip4_sampler.devs[i].cdev.dev);
 			cdev_del(&hip4_sampler.devs[i].cdev);
 			memset(&hip4_sampler.devs[i].cdev, 0, sizeof(struct cdev));
 			hip4_sampler.devs[i].mx = NULL;
 			clear_bit(i, bitmap_hip4_sampler_minor);
 		}
-#if IS_ENABLED(CONFIG_SCSC_LOG_COLLECTION)
+#ifdef CONFIG_SCSC_LOG_COLLECTION
 	scsc_log_collector_unregister_client(&hip4_collect_client);
 #endif
 	class_destroy(hip4_sampler.class_hip4_sampler);

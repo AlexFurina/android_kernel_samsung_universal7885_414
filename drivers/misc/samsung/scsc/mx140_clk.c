@@ -95,20 +95,45 @@ static u32 proc_count;
 		.llseek = generic_file_llseek                               \
 	}
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 9))
 #define MX_PDE_DATA(inode) PDE_DATA(inode)
+#else
+#define MX_PDE_DATA(inode) (PDE(inode)->data)
+#endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 9))
 #define MX_CLK20_PROCFS_SET_UID_GID(_entry) \
 	do { \
 		kuid_t proc_kuid = KUIDT_INIT(AID_MXPROC); \
 		kgid_t proc_kgid = KGIDT_INIT(AID_MXPROC); \
 		proc_set_user(_entry, proc_kuid, proc_kgid); \
 	} while (0)
+#else
+#define MX_CLK20_PROCFS_SET_UID_GID(entry) \
+	do { \
+		(entry)->uid = AID_MXPROC; \
+		(entry)->gid = AID_MXPROC; \
+	} while (0)
+#endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 9))
 #define MX_CLK20_PROCFS_ADD_FILE(_sdev, name, parent, mode)                      \
 	do {                                                               \
 		struct proc_dir_entry *entry = proc_create_data(# name, mode, parent, &mx_procfs_ ## name ## _fops, _sdev); \
 		MX_CLK20_PROCFS_SET_UID_GID(entry);                              \
 	} while (0)
+#else
+#define MX_CLK20_PROCFS_ADD_FILE(_data, name, parent, mode)                      \
+	do {                                                               \
+		struct proc_dir_entry *entry;                              \
+		entry = create_proc_entry(# name, mode, parent);           \
+		if (entry) {                                               \
+			entry->proc_fops = &mx_procfs_ ## name ## _fops; \
+			entry->data = _data;                               \
+			MX_CLK20_PROCFS_SET_UID_GID(entry);                      \
+		}                                                          \
+	} while (0)
+#endif
 
 #define MX_CLK20_PROCFS_REMOVE_FILE(name, parent) remove_proc_entry(# name, parent)
 
@@ -184,18 +209,9 @@ static void mx140_clk20mhz_remove_ctrl_proc_dir(struct mx140_clk20mhz *clk20mhz)
 	}
 }
 
-/* Maxwell manager has detected a recoverable issue no action needed */
-static u8 mx140_clk20mhz_failure_notification(struct scsc_service_client *client, struct mx_syserr_decode *err)
-{
-	(void) client;
-	SCSC_TAG_INFO(CLK20, "\n");
-	return err->level;
-}
-
 /* Maxwell manager has detected an issue and the service should freeze */
-static bool mx140_clk20mhz_stop_on_failure(struct scsc_service_client *client, struct mx_syserr_decode *err)
+static void mx140_clk20mhz_stop_on_failure(struct scsc_service_client *client)
 {
-	(void) err;
 	atomic_set(&clk20mhz.mx140_clk20mhz_service_failed, 1);
 
 	mutex_lock(&clk_work_lock);
@@ -210,15 +226,12 @@ static bool mx140_clk20mhz_stop_on_failure(struct scsc_service_client *client, s
 #endif
 
 	SCSC_TAG_INFO(CLK20, "\n");
-
-	return false;
 }
 
 /* Maxwell manager has handled a failure and the chip has been resat. */
-static void mx140_clk20mhz_failure_reset(struct scsc_service_client *client, u8 level, u16 scsc_syserr_code)
+static void mx140_clk20mhz_failure_reset(struct scsc_service_client *client, u16 scsc_panic_code)
 {
-	(void)level;
-	(void)scsc_syserr_code;
+	(void)scsc_panic_code;
 	atomic_set(&clk20mhz.mx140_clk20mhz_service_failed, 1);
 
 #ifdef MX140_CLK_VERBOSE_CALLBACKS
@@ -579,9 +592,8 @@ void mx140_clk20mhz_probe(struct scsc_mx_module_client *module_client, struct sc
 	} else {
 		SCSC_TAG_INFO(CLK20, "Maxwell probed\n");
 		clk20mhz.mx = mx;
-		clk20mhz.mx140_clk20mhz_service_client.failure_notification   = mx140_clk20mhz_failure_notification;
-		clk20mhz.mx140_clk20mhz_service_client.stop_on_failure_v2   = mx140_clk20mhz_stop_on_failure;
-		clk20mhz.mx140_clk20mhz_service_client.failure_reset_v2     = mx140_clk20mhz_failure_reset;
+		clk20mhz.mx140_clk20mhz_service_client.stop_on_failure   = mx140_clk20mhz_stop_on_failure;
+		clk20mhz.mx140_clk20mhz_service_client.failure_reset     = mx140_clk20mhz_failure_reset;
 
 		mx140_clk20mhz_create_ctrl_proc_dir(&clk20mhz);
 

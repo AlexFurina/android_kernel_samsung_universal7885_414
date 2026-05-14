@@ -7,7 +7,7 @@
 #ifndef MXMGR_TRANSPORT_FORMAT_H__
 #define MXMGR_TRANSPORT_FORMAT_H__
 
-#define MXMGR_MESSAGE_PAYLOAD_SIZE 127
+#define MXMGR_MESSAGE_PAYLOAD_SIZE 7
 
 /**
  * Layout of messages across the manager transport streams.

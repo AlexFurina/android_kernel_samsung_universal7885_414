@@ -10,7 +10,6 @@
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <asm/uaccess.h>
-#include <linux/uaccess.h>
 
 #include <scsc/scsc_logring.h>
 #include <scsc/scsc_mx.h>
@@ -29,12 +28,12 @@ static struct scsc_mx_test *test;
 /* First service to start */
 static int                 service_id = SCSC_SERVICE_ID_NULL;
 module_param(service_id, int, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(service_id, "ID of service to start, Default 0:NULL, 1:WLAN, 2:BT, 3:ANT, 5:ECHO");
+MODULE_PARM_DESC(service_id, "ID of service to start, Default 0:NULL, 1:BT, 2:WLAN, 5:ECHO");
 
 /* Second service to start if != -1 */
 static int service_id_2 = -1;
 module_param(service_id_2, int, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(service_id_2, "ID of optional second service to start: Default -1:None, 0:NULL, 1:WLAN, 2:BT, 3:ANT, 5:ECHO");
+MODULE_PARM_DESC(service_id_2, "ID of optional second service to start: Default -1:None, 0:NULL, 1:BT, 2:WLAN, 5:ECHO");
 
 #ifdef CONFIG_SCSC_MX_ALWAYS_ON
 static int auto_start = 2;
@@ -54,27 +53,14 @@ static dev_t        client_test_dev_t;
 static struct class *client_test_class;
 static struct cdev  *client_test_cdev;
 
-static u8 test_failure_notification(struct scsc_service_client *client, struct mx_syserr_decode *err)
+static void test_stop_on_failure(struct scsc_service_client *client)
 {
-	(void) client;
 	SCSC_TAG_DEBUG(MXMAN_TEST, "OK\n");
-	return err->level;
 }
 
-
-static bool test_stop_on_failure(struct scsc_service_client *client, struct mx_syserr_decode *err)
+static void test_failure_reset(struct scsc_service_client *client, u16 scsc_panic_code)
 {
-	(void) client;
-	(void) err;
-	SCSC_TAG_DEBUG(MXMAN_TEST, "OK\n");
-	return false;
-}
-
-static void test_failure_reset(struct scsc_service_client *client, u8 level, u16 scsc_syserr_code)
-{
-	(void)client;
-	(void)level;
-	(void)scsc_syserr_code;
+	(void)scsc_panic_code;
 	SCSC_TAG_ERR(MXMAN_TEST, "OK\n");
 }
 
@@ -217,7 +203,7 @@ static void delay_start_func(struct work_struct *work)
 		pr_err("mx140: Error starting delayed service\n");
 }
 
-static DECLARE_DELAYED_WORK(delay_start, delay_start_func);
+DECLARE_DELAYED_WORK(delay_start, delay_start_func);
 
 /* Start the null service after a delay */
 static void delay_open_start_services(void)
@@ -237,9 +223,8 @@ void client_module_probe(struct scsc_mx_module_client *module_client, struct scs
 	if (!test)
 		return;
 
-	test->test_service_client.failure_notification = test_failure_notification;
-	test->test_service_client.stop_on_failure_v2   = test_stop_on_failure;
-	test->test_service_client.failure_reset_v2     = test_failure_reset;
+	test->test_service_client.stop_on_failure   = test_stop_on_failure;
+	test->test_service_client.failure_reset     = test_failure_reset;
 	test->mx = mx;
 
 	switch (auto_start) {
@@ -287,7 +272,7 @@ void client_module_remove(struct scsc_mx_module_client *module_client, struct sc
 
 
 /* Test client driver registration */
-static struct scsc_mx_module_client client_test_driver = {
+struct scsc_mx_module_client client_test_driver = {
 	.name = "MX client test driver",
 	.probe = client_module_probe,
 	.remove = client_module_remove,
@@ -369,7 +354,7 @@ static int __init scsc_client_test_module_init(void)
 		return r;
 	}
 
-	r = alloc_chrdev_region(&client_test_dev_t, 0, 1, "wlbt-null-service");
+	r = alloc_chrdev_region(&client_test_dev_t, 0, 1, "sample-cdev");
 	if (r < 0) {
 		SCSC_TAG_ERR(MXMAN_TEST, "failed to alloc chrdev region\n");
 		goto fail_alloc_chrdev_region;

@@ -4,37 +4,34 @@
  *
  ****************************************************************************/
 #include <linux/mutex.h>
-#include <linux/version.h>
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-#include <scsc/scsc_wakelock.h>
-#else
 #include <linux/wakelock.h>
-#endif
 #include <linux/string.h>
 
 #include "scsc_wlbtd.h"
 
-#define MAX_TIMEOUT		30000 /* in milisecounds */
+/* 
+ * The value for maximum timeout is set to 18 seconds as most of customer
+ * platform operate timeout of 20 seconds for watchdog timer. So please do
+ * not change this or atleast don't change it without proper discussion. 
+ */
+#define MAX_TIMEOUT		18000 /* in milisecounds */
 #define WRITE_FILE_TIMEOUT	1000 /* in milisecounds */
 #define MAX_RSP_STRING_SIZE	128
 #define PROP_VALUE_MAX		92
 
-/* completion to indicate when EVENT_* is done */
+/* completion to indicate when moredump is done */
 static DECLARE_COMPLETION(event_done);
-static DECLARE_COMPLETION(fw_sable_done);
 static DECLARE_COMPLETION(fw_panic_done);
 static DECLARE_COMPLETION(write_file_done);
 static DEFINE_MUTEX(write_file_lock);
 
 static DEFINE_MUTEX(build_type_lock);
 static char *build_type;
-static DEFINE_MUTEX(sable_lock);
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-static struct scsc_wake_lock wlbtd_wakelock;
-#else
 static struct wake_lock wlbtd_wakelock;
-#endif
+
+/* module parameter controlling recovery handling */
+extern int disable_recovery_handling;
 
 const char *response_code_to_str(enum scsc_wlbtd_response_codes response_code)
 {
@@ -116,7 +113,7 @@ static int msg_from_wlbtd_sable_cb(struct sk_buff *skb, struct genl_info *info)
 		goto error_complete;
 	}
 
-	SCSC_TAG_INFO(WLBTD, "%s\n", nla_data(info->attrs[1]));
+	SCSC_TAG_INFO(WLBTD, "%s\n", (char *)nla_data(info->attrs[1]));
 	status = nla_get_u16(info->attrs[2]);
 
 	if ((enum scsc_wlbtd_response_codes)status < SCSC_WLBTD_LAST_RESPONSE_CODE)
@@ -135,7 +132,6 @@ static int msg_from_wlbtd_sable_cb(struct sk_buff *skb, struct genl_info *info)
 	 *	a) OTHER_SBL_GENERATED
 	 *	   Once .sbl is written
 	 *    ---> complete event_done
-	 *    ---> complete fw_sable_done for extra waiter
 	 *	b) OTHER_TAR_GENERATED
 	 *	   2nd time when sable tar is done
 	 *	   IGNORE this response and Don't complete
@@ -145,7 +141,6 @@ static int msg_from_wlbtd_sable_cb(struct sk_buff *skb, struct genl_info *info)
 	 *    we ignore requests other than "fw_panic" in wlbtd and
 	 *    send a msg "ignoring" back to kernel.
 	 *    ---> complete event_done
-	 *    ---> complete fw_sable_done for extra waiter
 	 * 4) FW_PANIC_ERR_* and OTHER_ERR_*
 	 *    when something failed, file not found, mmap failed, etc.
 	 *    ---> complete the completion with waiter(s) based on if it was
@@ -160,10 +155,6 @@ static int msg_from_wlbtd_sable_cb(struct sk_buff *skb, struct genl_info *info)
 		if (!completion_done(&fw_panic_done)) {
 			SCSC_TAG_INFO(WLBTD, "completing fw_panic_done\n");
 			complete(&fw_panic_done);
-		}
-		if (!completion_done(&fw_sable_done)) {
-			SCSC_TAG_INFO(WLBTD, "completing fw_sable_done\n");
-			complete(&fw_sable_done);
 		}
 		if (!completion_done(&event_done)) {
 			SCSC_TAG_INFO(WLBTD, "completing event_done\n");
@@ -191,10 +182,6 @@ static int msg_from_wlbtd_sable_cb(struct sk_buff *skb, struct genl_info *info)
 	case SCSC_WLBTD_OTHER_ERR_MMAP:
 	case SCSC_WLBTD_OTHER_ERR_SABLE_FILE:
 	case SCSC_WLBTD_OTHER_IGNORE_TRIGGER:
-		if (!completion_done(&fw_sable_done)) {
-			SCSC_TAG_INFO(WLBTD, "completing fw_sable_done\n");
-			complete(&fw_sable_done);
-		}
 		if (!completion_done(&event_done)) {
 			SCSC_TAG_INFO(WLBTD, "completing event_done\n");
 			complete(&event_done);
@@ -275,6 +262,7 @@ static int msg_from_wlbtd_build_type_cb(struct sk_buff *skb, struct genl_info *i
 	SCSC_TAG_INFO(WLBTD, "ro.build.type = %s\n", build_type);
 	mutex_unlock(&build_type_lock);
 	return 0;
+
 }
 
 static int msg_from_wlbtd_write_file_cb(struct sk_buff *skb, struct genl_info *info)
@@ -294,7 +282,6 @@ error_complete:
 	return ret_code;
 }
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
 /**
  * Here you can define some constraints for the attributes so Linux will
  * validate them for you.
@@ -317,64 +304,48 @@ static struct nla_policy policy_write_file[] = {
 	[ATTR_PATH] = { .type = NLA_STRING, },
 	[ATTR_CONTENT] = { .type = NLA_STRING, },
 };
-#endif
-
 
 /**
  * Actual message type definition.
  */
-const struct genl_ops scsc_ops[] = {
+struct genl_ops scsc_ops[] = {
 	{
 		.cmd = EVENT_SCSC,
 		.flags = 0,
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
 		.policy = policies,
-#endif
 		.doit = msg_from_wlbtd_cb,
 		.dumpit = NULL,
 	},
 	{
 		.cmd = EVENT_SYSTEM_PROPERTY,
 		.flags = 0,
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
 		.policy = policies_build_type,
-#endif
 		.doit = msg_from_wlbtd_build_type_cb,
 		.dumpit = NULL,
 	},
 	{
 		.cmd = EVENT_SABLE,
 		.flags = 0,
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
 		.policy = policy_sable,
-#endif
 		.doit = msg_from_wlbtd_sable_cb,
 		.dumpit = NULL,
 	},
 	{
 		.cmd = EVENT_WRITE_FILE,
 		.flags = 0,
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0))
 		.policy = policy_write_file,
-#endif
 		.doit = msg_from_wlbtd_write_file_cb,
 		.dumpit = NULL,
 	},
-
 };
 
 /* The netlink family */
 static struct genl_family scsc_nlfamily = {
-	.id = 0, /* Don't bother with a hardcoded ID */
+	.id = GENL_ID_GENERATE, /* Don't bother with a hardcoded ID */
 	.name = "scsc_mdp_family",     /* Have users key off the name instead */
 	.hdrsize = 0,           /* No private header */
 	.version = 1,
 	.maxattr = __ATTR_MAX,
-	.module = THIS_MODULE,
-	.ops    = scsc_ops,
-	.n_ops  = ARRAY_SIZE(scsc_ops),
-	.mcgrps = scsc_mcgrp,
-	.n_mcgrps = ARRAY_SIZE(scsc_mcgrp),
 };
 
 int scsc_wlbtd_get_and_print_build_type(void)
@@ -452,6 +423,7 @@ error:
 
 int wlbtd_write_file(const char *file_path, const char *file_content)
 {
+#ifdef CONFIG_SCSC_WRITE_INFO_FILE_WLBTD
 	struct sk_buff *skb;
 	void *msg;
 	int rc = 0;
@@ -526,7 +498,7 @@ int wlbtd_write_file(const char *file_path, const char *file_content)
 	else {
 		completion_jiffies = jiffies_to_msecs(max_timeout_jiffies - completion_jiffies);
 
-		SCSC_TAG_INFO(WLBTD, "written %s in %dms\n", file_path,
+		SCSC_TAG_INFO(WLBTD, "written %s in %lu ms\n", file_path,
 			completion_jiffies ? completion_jiffies : 1);
 	}
 
@@ -546,6 +518,10 @@ error:
 	wake_unlock(&wlbtd_wakelock);
 	mutex_unlock(&write_file_lock);
 	return -1;
+#else /* CONFIG_SCSC_WRITE_INFO_FILE_WLBTD */
+	SCSC_TAG_DEBUG(WLBTD, "not writing %s\n", file_path);
+	return 0; /* stub */
+#endif
 }
 EXPORT_SYMBOL(wlbtd_write_file);
 
@@ -557,7 +533,6 @@ int call_wlbtd_sable(u8 trigger_code, u16 reason_code)
 	unsigned long completion_jiffies = 0;
 	unsigned long max_timeout_jiffies = msecs_to_jiffies(MAX_TIMEOUT);
 
-	mutex_lock(&sable_lock);
 	wake_lock(&wlbtd_wakelock);
 
 	SCSC_TAG_INFO(WLBTD, "start:trigger - %s\n",
@@ -626,6 +601,7 @@ int call_wlbtd_sable(u8 trigger_code, u16 reason_code)
 						max_timeout_jiffies);
 
 	if (completion_jiffies) {
+
 		completion_jiffies = max_timeout_jiffies - completion_jiffies;
 		SCSC_TAG_INFO(WLBTD, "sable generated in %dms\n",
 			(int)jiffies_to_msecs(completion_jiffies) ? : 1);
@@ -644,34 +620,16 @@ int call_wlbtd_sable(u8 trigger_code, u16 reason_code)
 
 done:
 	wake_unlock(&wlbtd_wakelock);
-	mutex_unlock(&sable_lock);
 	return rc;
 
 error:
 	/* free skb */
 	nlmsg_free(skb);
 	wake_unlock(&wlbtd_wakelock);
-	mutex_unlock(&sable_lock);
 
 	return -1;
 }
 EXPORT_SYMBOL(call_wlbtd_sable);
-
-void scsc_wlbtd_wait_for_sable_logging(void)
-{
-	unsigned long completion_jiffies = 0;
-	unsigned long max_timeout_jiffies = msecs_to_jiffies(MAX_TIMEOUT);
-	/* Just waits for the log collection not tarring */
-	completion_jiffies = wait_for_completion_timeout(&fw_sable_done,
-						max_timeout_jiffies);
-	if (!completion_jiffies)
-		SCSC_TAG_ERR(WLBTD, "wait for sable logging timed out !\n");
-
-	/* reinit so completion can be re-used */
-	reinit_completion(&fw_sable_done);
-}
-EXPORT_SYMBOL(scsc_wlbtd_wait_for_sable_logging);
-
 
 int call_wlbtd(const char *script_path)
 {
@@ -691,7 +649,7 @@ int call_wlbtd(const char *script_path)
 		goto error;
 	}
 
-	SCSC_TAG_INFO(WLBTD, "create message to run %s\n", script_path);
+	SCSC_TAG_INFO(WLBTD, "create message\n");
 	msg = genlmsg_put(skb,
 			0,		// PID is whatever
 			0,		// Sequence number (don't care)
@@ -774,13 +732,8 @@ int scsc_wlbtd_init(void)
 {
 	int r = 0;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-	wake_lock_init(NULL, &(wlbtd_wakelock.ws), "wlbtd_wl");
-#else
 	wake_lock_init(&wlbtd_wakelock, WAKE_LOCK_SUSPEND, "wlbtd_wl");
-#endif
 	init_completion(&event_done);
-	init_completion(&fw_sable_done);
 	init_completion(&fw_panic_done);
 	init_completion(&write_file_done);
 

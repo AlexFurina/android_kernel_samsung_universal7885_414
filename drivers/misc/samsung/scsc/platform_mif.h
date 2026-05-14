@@ -8,16 +8,9 @@
 #define __PLATFORM_MIF_H
 #include "scsc_mif_abs.h"
 
-enum wlbt_irqs {
-       PLATFORM_MIF_MBOX,
-       PLATFORM_MIF_ALIVE,
-       PLATFORM_MIF_WDOG,
-#if defined(CONFIG_SOC_EXYNOS9610) || defined(CONFIG_SOC_EXYNOS9630) || defined(CONFIG_SOC_EXYNOS3830) || defined(CONFIG_SOC_S5E9815)
-       PLATFORM_MIF_CFG_REQ,
-#endif
-       /* must be last */
-       PLATFORM_MIF_NUM_IRQS
-};
+#define PLATFORM_MIF_MBOX        0
+#define PLATFORM_MIF_ALIVE       1
+#define PLATFORM_MIF_WDOG        2
 
 struct platform_device;
 

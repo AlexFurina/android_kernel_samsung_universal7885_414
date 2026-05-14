@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Copyright (c) 2014 - 2020 Samsung Electronics Co., Ltd. All rights reserved
+ * Copyright (c) 2014 - 2017 Samsung Electronics Co., Ltd. All rights reserved
  *
  ****************************************************************************/
 
@@ -21,73 +21,18 @@
 #include <linux/skbuff.h>
 #include <scsc/scsc_mifram.h>
 #include <scsc/scsc_mx.h>
-#ifdef CONFIG_SCSC_WLAN_RX_NAPI
-#include <linux/netdevice.h>
-#endif
-#ifdef CONFIG_SCSC_WLAN_ANDROID
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-#include <scsc/scsc_wakelock.h>
-#else
+#ifndef SLSI_TEST_DEV
 #include <linux/wakelock.h>
 #endif
-#endif
 #include "mbulk.h"
-#ifdef CONFIG_SCSC_SMAPPER
-#include "hip4_smapper.h"
-#endif
 
-/* Shared memory Layout
- *
- * |-------------------------| CONFIG
- * |    CONFIG  + Queues     |
- * |       ---------         |
- * |          MIB            |
- * |-------------------------| TX Pool
- * |         TX DAT          |
- * |       ---------         |
- * |         TX CTL          |
- * |-------------------------| RX Pool
- * |          RX             |
- * |-------------------------|
- */
+#define MIF_HIP_COMPAT_FLAG_NEED_MLME_RESET     BIT(0)
+#define MIF_HIP_COMPAT_FLAG_MIB_DAT_BY_FAPI     BIT(1)
 
-/**** OFFSET SHOULD BE 4096 BYTES ALIGNED ***/
-/*** CONFIG POOL ***/
-#define HIP4_WLAN_CONFIG_OFFSET	0x00000
-#define HIP4_WLAN_CONFIG_SIZE	0x02000 /* 8 kB */
-/*** MIB POOL ***/
-#define HIP4_WLAN_MIB_OFFSET	(HIP4_WLAN_CONFIG_OFFSET +  HIP4_WLAN_CONFIG_SIZE)
-#define HIP4_WLAN_MIB_SIZE	0x08000 /* 32 kB */
-/*** TX POOL ***/
-#define HIP4_WLAN_TX_OFFSET	(HIP4_WLAN_MIB_OFFSET + HIP4_WLAN_MIB_SIZE)
-/*** TX POOL - DAT POOL ***/
-#define HIP4_WLAN_TX_DAT_OFFSET	HIP4_WLAN_TX_OFFSET
-#define HIP4_WLAN_TX_DAT_SIZE	0x100000 /* 1 MB */
-/*** TX POOL - CTL POOL ***/
-#define HIP4_WLAN_TX_CTL_OFFSET	(HIP4_WLAN_TX_DAT_OFFSET + HIP4_WLAN_TX_DAT_SIZE)
-#define HIP4_WLAN_TX_CTL_SIZE	0x10000 /*  64 kB */
-#define HIP4_WLAN_TX_SIZE	(HIP4_WLAN_TX_DAT_SIZE + HIP4_WLAN_TX_CTL_SIZE)
-/*** RX POOL ***/
-#define HIP4_WLAN_RX_OFFSET	(HIP4_WLAN_TX_CTL_OFFSET +  HIP4_WLAN_TX_CTL_SIZE)
-#ifdef CONFIG_SCSC_PCIE
-#define HIP4_WLAN_RX_SIZE	0x80000  /* 512 kB */
-#else
-#define HIP4_WLAN_RX_SIZE	0x100000 /* 1 MB */
-#endif
-/*** TOTAL : CONFIG POOL + TX POOL + RX POOL ***/
-#define HIP4_WLAN_TOTAL_MEM	(HIP4_WLAN_CONFIG_SIZE + HIP4_WLAN_MIB_SIZE + \
-				 HIP4_WLAN_TX_SIZE + HIP4_WLAN_RX_SIZE) /* 2 MB + 104 KB*/
-
-#define HIP4_POLLING_MAX_PACKETS 512
-
-#define HIP4_DAT_MBULK_SIZE	(2 * 1024)
-#define HIP4_DAT_SLOTS		(HIP4_WLAN_TX_DAT_SIZE / HIP4_DAT_MBULK_SIZE)
-#define HIP4_CTL_MBULK_SIZE	(2 * 1024)
-#define HIP4_CTL_SLOTS		(HIP4_WLAN_TX_CTL_SIZE / HIP4_CTL_MBULK_SIZE)
+#define HIP4_DAT_SLOTS                        218
+#define HIP4_CTL_SLOTS                         32
 
 #define MIF_HIP_CFG_Q_NUM       6
-
-#define MIF_NO_IRQ		0xff
 
 /* Current versions supported by this HIP */
 #define HIP4_SUPPORTED_V1	3
@@ -135,35 +80,23 @@ struct hip4_hip_config_version_4 {
 	u32 log_config_loc;     /* Logging Configuration Location in MIF_ADDR */
 	u32 log_config_sz;      /* Logging Configuration Size in MIF_ADDR */
 
-	u8 mif_fh_int_n;		/* MIF from-host interrupt bit position for all HIP queue */
-	u8 reserved1[3];
-
-	u8 mif_th_int_n[6];		/* MIF to-host interrupt bit positions for each HIP queue */
-	u8 reserved2[2];
+	u8  mif_fh_int_n;       /* MIF from-host interrupt bit position */
+	u8  mif_th_int_n;       /* MIF to-host interrpt bit position */
+	u8  reserved[2];
 
 	u32 scbrd_loc;          /* Scoreboard locatin in MIF_ADDR */
 
 	u16 q_num;              /* 6 */
 	u16 q_len;              /* 256 */
 	u16 q_idx_sz;           /* 1 */
-	u8  reserved3[2];
+	u8  reserved2[2];
 
 	u32 q_loc[MIF_HIP_CFG_Q_NUM];
 
-#ifdef CONFIG_SCSC_SMAPPER
-	u8  smapper_th_req;     /* TH smapper request interrupt bit position */
-	u8  smapper_fh_ind;     /* FH smapper ind interrupt bit position */
-	u8  smapper_mbox_scb;   /* SMAPPER MBOX scoreboard location */
-	u8  smapper_entries_banks[16];  /* num entries banks */
-	u8  smapper_pow_sz[16];     /* Power of size of entry i.e. 12 = 4096B */
-	u32 smapper_bank_addr[16]; /* Bank start addr */
-#else
-	u8  reserved_nosmapper[99];
-#endif
-	u8  reserved4[16];
+	u8  reserved3[16];
 } __packed;
 
-struct hip4_hip_config_version_5 {
+struct hip4_hip_config_version_3 {
 	/* Host owned */
 	u32 magic_number;       /* 0xcaba0401 */
 	u16 hip_config_ver;     /* Version of this configuration structure = 2*/
@@ -232,7 +165,7 @@ struct hip4_hip_q {
 
 struct hip4_hip_control {
 	struct hip4_hip_init             init;
-	struct hip4_hip_config_version_5 config_v5 __aligned(32);
+	struct hip4_hip_config_version_3 config_v3 __aligned(32);
 	struct hip4_hip_config_version_4 config_v4 __aligned(32);
 	u32                              scoreboard[256] __aligned(64);
 	struct hip4_hip_q                q[MIF_HIP_CFG_Q_NUM] __aligned(64);
@@ -240,30 +173,19 @@ struct hip4_hip_control {
 
 struct slsi_hip4;
 
+/* #define TASKLET 1 */
 /* This struct is private to the HIP implementation */
 struct hip4_priv {
-#ifdef CONFIG_SCSC_WLAN_RX_NAPI
-	/* NAPI CPU switch lock */
-	spinlock_t                   napi_cpu_lock;
-	struct work_struct           intr_wq_napi_cpu_switch;
-	struct work_struct           intr_wq_ctrl;
-	struct tasklet_struct	     intr_tl_fb;
-	struct napi_struct           napi;
-	unsigned long                napi_state;
-	bool                         napi_perf_mode;
-	u8                           napi_rx_full_cnt;
-	u8                           napi_rx_saturated;
+#ifdef TASKLET
+	struct tasklet_struct        intr_tq;
 #else
 	struct work_struct           intr_wq;
 #endif
-	/* Interrupts cache < v4 */
+	/* Interrupts cache */
 	/* TOHOST */
-	u32                          intr_tohost;
-
-	/* Interrupts cache v4 */
-	u32                          intr_tohost_mul[MIF_HIP_CFG_Q_NUM];
+	u32                          rx_intr_tohost;
 	/* FROMHOST */
-	u32                          intr_fromhost;
+	u32                          rx_intr_fromhost;
 
 	/* For workqueue */
 	struct slsi_hip4             *hip;
@@ -273,8 +195,10 @@ struct hip4_priv {
 	/* Pool for ctl frames*/
 	u8                           host_pool_id_ctl;
 
+#ifndef TASKLET
 	/* rx cycle lock */
 	spinlock_t                   rx_lock;
+#endif
 	/* tx cycle lock */
 	spinlock_t                   tx_lock;
 
@@ -287,30 +211,14 @@ struct hip4_priv {
 	spinlock_t                   watchdog_lock;
 	/* wd timer control */
 	atomic_t                     watchdog_timer_active;
-#ifdef CONFIG_SCSC_WLAN_RX_NAPI
-	DECLARE_BITMAP(irq_bitmap, MIF_HIP_CFG_Q_NUM);
-#endif
 
-#ifdef CONFIG_SCSC_WLAN_ANDROID
-#ifdef CONFIG_SCSC_WLAN_RX_NAPI
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-	struct scsc_wake_lock             hip4_wake_lock_tx;
-	struct scsc_wake_lock             hip4_wake_lock_ctrl;
-	struct scsc_wake_lock             hip4_wake_lock_data;
-#else
-
-	struct wake_lock             hip4_wake_lock_tx;
-	struct wake_lock             hip4_wake_lock_ctrl;
-	struct wake_lock             hip4_wake_lock_data;
-#endif
-#endif
+#ifndef SLSI_TEST_DEV
 	/* Wakelock for modem_ctl */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
-	struct scsc_wake_lock             hip4_wake_lock;
-#else
 	struct wake_lock             hip4_wake_lock;
 #endif
-#endif
+
+	/* Control the hip4 init */
+	atomic_t                     rx_ready;
 
 	/* Control the hip4 deinit */
 	atomic_t                     closing;
@@ -345,23 +253,6 @@ struct hip4_priv {
 	/* Global domain Q spinlock */
 	spinlock_t                   gbot_lock;
 
-#ifdef CONFIG_SCSC_SMAPPER
-	/* SMAPPER */
-	/*  Leman has 4 Banks of 160 entries each and 4 Banks of 64 entries each. Each Tx stream is
-	 *  expected to use 2 Bank . In RSDB, 5GHz streams require higher throughput
-	 *  so the bigger banks are allocated for 5GHz streams and the
-	 *  smaller banks are for 2.4GHz streams
-	 */
-	struct hip4_smapper_bank     smapper_banks[HIP4_SMAPPER_TOTAL_BANKS];
-	struct hip4_smapper_control  smapper_control;
-#endif
-#ifdef CONFIG_SCSC_QOS
-	/* PM QoS control */
-	struct work_struct           pm_qos_work;
-	/* PM QoS control spinlock */
-	spinlock_t                   pm_qos_lock;
-	u8                           pm_qos_state;
-#endif
 	/* Collection artificats */
 	void                         *mib_collect;
 	u16                          mib_sz;
@@ -387,21 +278,16 @@ void hip4_resume(struct slsi_hip4 *hip);
 void hip4_freeze(struct slsi_hip4 *hip);
 void hip4_deinit(struct slsi_hip4 *hip);
 int hip4_free_ctrl_slots_count(struct slsi_hip4 *hip);
-void hip4_set_napi_cpu(struct slsi_hip4 *hip, u8 napi_cpu, bool perf_mode);
-int scsc_wifi_transmit_frame(struct slsi_hip4 *hip, struct sk_buff *skb, bool ctrl_packet, u8 vif_index, u8 peer_index, u8 priority);
-#ifdef CONFIG_SCSC_WLAN_RX_NAPI
-void hip4_sched_wq_ctrl(struct slsi_hip4 *hip);
-#else
-void hip4_sched_wq(struct slsi_hip4 *hip);
-#endif
+
+int scsc_wifi_transmit_frame(struct slsi_hip4 *hip, bool ctrl_packet, struct sk_buff *skb);
 
 /* Macros for accessing information stored in the hip_config struct */
 #define scsc_wifi_get_hip_config_version_4_u8(buff_ptr, member) le16_to_cpu((((struct hip4_hip_config_version_4 *)(buff_ptr))->member))
 #define scsc_wifi_get_hip_config_version_4_u16(buff_ptr, member) le16_to_cpu((((struct hip4_hip_config_version_4 *)(buff_ptr))->member))
 #define scsc_wifi_get_hip_config_version_4_u32(buff_ptr, member) le32_to_cpu((((struct hip4_hip_config_version_4 *)(buff_ptr))->member))
-#define scsc_wifi_get_hip_config_version_5_u8(buff_ptr, member) le16_to_cpu((((struct hip4_hip_config_version_5 *)(buff_ptr))->member))
-#define scsc_wifi_get_hip_config_version_5_u16(buff_ptr, member) le16_to_cpu((((struct hip4_hip_config_version_5 *)(buff_ptr))->member))
-#define scsc_wifi_get_hip_config_version_5_u32(buff_ptr, member) le32_to_cpu((((struct hip4_hip_config_version_5 *)(buff_ptr))->member))
+#define scsc_wifi_get_hip_config_version_3_u8(buff_ptr, member) le16_to_cpu((((struct hip4_hip_config_version_4 *)(buff_ptr))->member))
+#define scsc_wifi_get_hip_config_version_3_u16(buff_ptr, member) le16_to_cpu((((struct hip4_hip_config_version_4 *)(buff_ptr))->member))
+#define scsc_wifi_get_hip_config_version_3_u32(buff_ptr, member) le32_to_cpu((((struct hip4_hip_config_version_4 *)(buff_ptr))->member))
 #define scsc_wifi_get_hip_config_u8(buff_ptr, member, ver) le16_to_cpu((((struct hip4_hip_config_version_##ver *)(buff_ptr->config_v##ver))->member))
 #define scsc_wifi_get_hip_config_u16(buff_ptr, member, ver) le16_to_cpu((((struct hip4_hip_config_version_##ver *)(buff_ptr->config_v##ver))->member))
 #define scsc_wifi_get_hip_config_u32(buff_ptr, member, ver) le32_to_cpu((((struct hip4_hip_config_version_##ver *)(buff_ptr->config_v##ver))->member))

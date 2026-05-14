@@ -10,7 +10,6 @@
 #include <scsc/scsc_logring.h>
 #include "scsc_mif_abs.h"
 
-#include "scsc/api/bt_audio.h"
 #include "miframman.h"
 #include "mifproc.h"
 
@@ -42,12 +41,6 @@ void miframman_init(struct miframman *ram, void *start_dram, size_t size_pool, v
 	mifproc_create_ramman_proc_dir(ram);
 }
 
-void miframabox_init(struct mifabox *mifabox, void *start_aboxram)
-{
-	/* No locking as not a shared resource */
-	mifabox->aboxram = (struct scsc_bt_audio_abox *)start_aboxram;
-}
-
 void *__miframman_alloc(struct miframman *ram, size_t nbytes, int tag)
 {
 	unsigned int index = 0;
@@ -55,7 +48,7 @@ void *__miframman_alloc(struct miframman *ram, size_t nbytes, int tag)
 	unsigned int available;
 	unsigned int i;
 	unsigned int min_available_blocks = MIFRAMMAN_NUM_BLOCKS;
-	size_t       num_blocks = 0;
+	size_t       num_blocks;
 	void         *free_mem = NULL;
 	bool 		 has_available_blocks = false;
 
@@ -236,13 +229,6 @@ void miframman_deinit(struct miframman *ram)
 	ram->free_mem = 0;
 
 	mifproc_remove_ramman_proc_dir(ram);
-}
-
-void miframabox_deinit(struct mifabox *mifabox)
-{
-	/* not dynamic - so just mark as NULL */
-	/* Maybe this function should be empty? */
-	mifabox->aboxram = NULL;
 }
 
 /* Log current allocations in a ramman in proc */

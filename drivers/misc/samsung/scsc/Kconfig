@@ -6,42 +6,41 @@ config SCSC_CORE
 	tristate "Samsung SCSC Maxwell driver"
 	select SCSC_CORE_CM
 
+config SCSC_CORE_FW_LOCATION
+	string "SCSC FW location"
+	default "/system/etc/wifi"
+	---help---
+	  Select the FW location, when CONFIG_SCSC_CORE_FW_LOCATION_AUTO=n
+
+config SCSC_CORE_FW_LOCATION_AUTO
+	string "SCSC FW location auto select"
+	default y
+	---help---
+	  Select the FW location (Android N/O) automatically
+
+config SCSC_CORE_TOOL_LOCATION
+	string "SCSC tool location"
+	default "/system/bin"
+	---help---
+	  Select the moredump tool location, when CONFIG_SCSC_CORE_FW_LOCATION_AUTO=n
+
 config SCSC_WLBT_CONFIG_PLATFORM
 	string "SCSC WLBT PLATFORM"
 	default ""
 	---help---
 	  Select the platform, e.g. lassen_smdk
 
-config SCSC_CORE_FW_LOCATION
-	string "SCSC FW location"
-	default "/vendor/etc/wifi"
-	---help---
-	  Select the FW location, when CONFIG_SCSC_CORE_FW_LOCATION_AUTO=n
-
-config SCSC_CORE_TOOL_LOCATION
-	string "SCSC tool location"
-	default "/vendor/bin"
-	---help---
-	  Select the moredump tool location, when CONFIG_SCSC_CORE_FW_LOCATION_AUTO=n
-
 config SCSC_PCIE
 	tristate "Samsung SCSC MIF PCIE implementation"
 	depends on SCSC_CORE
 	depends on PCI
-
 config SCSC_MXLOGGER
-	tristate "Samsung SCSC MXLOGGER"
+	bool "Samsung SCSC MXLOGGER (Sable)"
 	depends on SCSC_CORE
-	default y
+	default n
 	---help---
 	   MXLOGGER provides FW level logging in DRAM
 
-config SCSC_SMAPPER
-	bool "Samsung SCSC WLAN Smapper support"
-	default y
-	depends on SCSC_CORE
-	---help---
-	   SMAPPER provides direct access to Linux SKBs
 
 config SCSC_WLBTD
 	bool "Samsung SCSC Daemon support for Android O"
@@ -53,14 +52,9 @@ config SCSC_WLBTD
 config SCSC_WRITE_INFO_FILE_WLBTD
 	bool "SCSC flag to decide whether to write file via wlbtd or not"
 	depends on SCSC_WLBTD
-	default n
-
-config SCSC_QOS
-	bool "Samsung SCSC kernel PM QoS support"
 	default y
-	depends on SCSC_CORE
 	---help---
-	   SCSC_QOS provides support to configure kernel PM QoS to register configuration as per performance expectations
+		SCSC flag to decide whether to write file via wlbtd or not
 
 config SCSC_PLATFORM
 	tristate "Samsung SCSC MIF Platform driver implementation"
@@ -82,14 +76,6 @@ config SCSC_CLK20MHZ_TEST
 	tristate "Samsung SCSC USB 20MHz Clock Test"
 	depends on SCSC_CLK20MHZ
 
-config SCSC_FM
-	tristate "Samsung SCSC MX250 enables LDOs used for FM"
-	depends on SCSC_CORE
-
-config SCSC_FM_TEST
-	tristate "Samsung SCSC MX250 Test for enabling LDOs used for FM"
-	depends on SCSC_FM
-
 config SCSC_MMAP
 	tristate "Samsung SCSC MMAP/GDB User space interface"
 	depends on SCSC_CORE
@@ -105,18 +91,13 @@ config SCSC_DEBUG
 
 config SCSC_DEBUG_COMPATIBILITY
 	bool "Samsung SCSC Logging mode"
-	default n
-
-config SCSC_LOGRING
-	tristate "Samsung SCSC Kernel Logging"
+	depends on SCSC_DEBUG
 	default y
-       ---help---
-         SCSC Drivers logging mechanism
 
 config SCSC_STATIC_RING
 	tristate "Samsung SCSC Logging use static ring"
-	depends on SCSC_LOGRING
-	default y
+	depends on SCSC_DEBUG
+	default n
 
 config SCSC_STATIC_RING_SIZE
 	int "Size of the static ring"
@@ -139,56 +120,33 @@ config SCSC_BUILD_TYPE
        ---help---
          Type of Kernel Build: User, User Debug, Engineering
 
-config SCSC_LOGRING_DEBUGFS
-        bool "Samsung SCSC Logring DebugFS"
-        depends on SCSC_LOGRING && DEBUG_FS
-        default y
+config SCSC_WIFILOGGER
+	tristate "Samsung SCSC Android Wi-Fi Logger"
+	depends on SCSC_CORE
+	default n
+
+config SCSC_WIFILOGGER_DEBUGFS
+	bool "Samsung SCSC Android Wi-Fi Logger DebugFS"
+	depends on SCSC_WIFILOGGER && DEBUG_FS
+	default y
+
+config SCSC_WIFILOGGER_TEST
+	bool "Samsung SCSC Android Wi-Fi Logger Test Harness"
+	depends on SCSC_WIFILOGGER && SCSC_WIFILOGGER_DEBUGFS
+	default n
 
 config SCSC_LOG_COLLECTION
-	tristate "Samsung SCSC Log Collection"
+	bool "Samsung SCSC Log Collection"
 	depends on SCSC_CORE
-	default y
+	default n
 	---help---
 	  Enable LOG collection to collect Chunks (host and FW) and generate a SBL file
 
-config SCSC_COMMON_HCF
-	bool "Enable Common HCF loader"
-	depends on SCSC_CORE
-	default y
-	---help---
-	  Enable Common HCF loader
-
-config SCSC_WLBT_AUTORECOVERY_PERMANENT_DISABLE
-	bool "Permanently disable WLBT autorecovery, ignroring module parameter"
-	depends on SCSC_CORE
+config SCSC_MX150_EXT_DUAL_FEM
+	bool "Support MX150 boards with dual external WLBT front-end"
 	default n
 	---help---
-	  Override module parameter, and disable recovery
-
-config SCSC_MX450_GDB_SUPPORT
-	bool "Enable GDB Channels for MX450"
-	depends on SCSC_CORE
-	default n
-	---help---
-	  Enable GDB Channels for MX450
-
-config SCSC_LAST_PANIC_IN_DRAM
-        bool "Enable last panic in DRAM"
-        default n
-        ---help---
-        This option tells if WLBTd will copy the last Sable/panic
-	in DRAM
-
-config SCSC_WLBT_CFG_REQ_WQ
-	bool "Enable processing CFG REQ by Workqueue"
-	depends on SCSC_CORE
-	default n
-	---help---
-	Enable processing CFG REQ by Workqueue
-
-config SCSC_MEMLOG
-	tristate "Enable WLBT logging with memlog API"
-	depends on SCSC_CORE
-	depends on SOC_S5E9815
-	---help---
-	  Enable memlog feature. So mxlogger doesn't allocated in reserved memory, dynamically by memlog API.
+	Some boards have dual-external front end module for WLAN/BT
+	which is controlled via GPIO. Enable driver support for this.
+	Note that the customer board-specific DTS file also needs
+	patching for this to work.

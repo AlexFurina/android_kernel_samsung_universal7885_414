@@ -4,8 +4,6 @@
  *
  ****************************************************************************/
 
-#include "pcie_mbox_shared_data_defs.h"
-
 #define PCI_DEVICE_ID_SAMSUNG_SCSC 0x7011
 #define DRV_NAME "scscPCIe"
 
@@ -26,4 +24,4 @@
  |                  |
  | --------------------
  */
-#define PCIE_MIF_ALLOC_MEM ((PCIE_MIF_PREALLOC_MEM) - (PCIE_MIF_MBOX_RESERVED_LEN))
+#define PCIE_MIF_ALLOC_MEM      (3 * 1024 * 1024)
