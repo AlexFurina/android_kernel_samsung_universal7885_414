@@ -19,8 +19,13 @@
 
 #include <video/mipi_display.h>
 
+#if defined(CONFIG_ARCH_EXYNOS) && defined(CONFIG_EXYNOS_DPU20)
 #include "../dsim.h"
 #include "../decon_notify.h"
+#elif defined(CONFIG_ARCH_EXYNOS) && defined(CONFIG_EXYNOS_DPU30)
+#include "../dpu30/dsim.h"
+#include "decon_notify.h"
+#endif
 
 #include "dd.h"
 
@@ -134,15 +139,50 @@ void dsim_write_data_dump(struct dsim_device *dsim, u32 id, unsigned long d0, u3
 		dbg_info("%02x: %02lx %2x\n", id, d0, d1);
 }
 
+static int mipi_tx(u32 id, unsigned long d0, u32 d1)
+{
+	struct dsim_device *dsim = NULL;
+	int ret = 0, i;
+
+	for (i = 0; i < MAX_DSIM_CNT; i++) {
+		dsim = get_dsim_drvdata(i);
+
+		if (!dsim)
+			continue;
+
+		if (i > 0)
+			dbg_info("%s: dsim%d\n", __func__, dsim->id);
+
+#if defined(CONFIG_EXYNOS_DPU20)
+		ret = dsim_write_data(dsim, id, d0, d1);
+#elif defined(CONFIG_EXYNOS_DPU30)
+		ret = dsim_write_data(dsim, id, d0, d1, 1);
+#endif
+		if (ret < 0)
+			return ret;
+	}
+
+	return ret;
+}
+
+static int mipi_rx(u32 type, u32 cmd, u32 len, u8 *buf, u32 pos)
+{
+	struct dsim_device *dsim = get_dsim_drvdata(0);
+	int ret = 0;
+
+	ret = dsim_read_data(dsim, type, cmd, len, buf);
+
+	return ret;
+}
+
 static int tx(struct rw_info *rw, u8 *cmds)
 {
 	int ret = 0;
-	struct dsim_device *dsim = get_dsim_drvdata(0);
 
 	if (dsi_data_type_is_tx_long(rw->type))
-		ret = dsim_write_data(dsim, rw->type, (unsigned long)cmds, rw->len);
+		ret = mipi_tx(rw->type, (unsigned long)cmds, rw->len);
 	else
-		ret = dsim_write_data(dsim, rw->type, cmds[0], (rw->len == 2) ? cmds[1] : 0);
+		ret = mipi_tx(rw->type, cmds[0], (rw->len == 2) ? cmds[1] : 0);
 
 	if (ret < 0)
 		dbg_info("fail. ret: %d, type: %02x, cmd: %02x, len: %d, pos: %d\n", ret, rw->type, rw->cmd, rw->len, rw->pos);
@@ -153,7 +193,6 @@ static int tx(struct rw_info *rw, u8 *cmds)
 static int rx(struct rw_info *rw, u8 *buf)
 {
 	int ret = 0, type;
-	struct dsim_device *dsim = get_dsim_drvdata(0);
 
 	if (rw->pos) {
 		u8 posbuf[2] = {0xB0, };
@@ -173,7 +212,7 @@ static int rx(struct rw_info *rw, u8 *buf)
 
 	type = (dsi_data_type_is_tx_short(rw->type) || dsi_data_type_is_tx_long(rw->type)) ? MIPI_DSI_DCS_READ : rw->type;
 
-	ret = dsim_read_data(dsim, type, rw->cmd, rw->len, buf);
+	ret = mipi_rx(type, rw->cmd, rw->len, buf, rw->pos);
 	dbg_info("%02x, %d, %d\n", rw->cmd, rw->len, ret);
 	if (ret != rw->len) {
 		dbg_info("fail. ret: %d, type: %02x, cmd: %02x, len: %d, pos: %d\n", ret, rw->type, rw->cmd, rw->len, rw->pos);
@@ -207,11 +246,6 @@ int run_cmdlist(u32 index)
 	BUG_ON(index >= ARRAY_SIZE(param_list));
 
 	lh = param_list[index];
-
-	if (!lh) {
-		dbg_info("list is null\n");
-		return NOTIFY_DONE;
-	}
 
 	if (list_empty(lh))
 		return NOTIFY_DONE;
@@ -804,7 +838,6 @@ static ssize_t read_show(struct kobject *kobj,
 	struct kobj_attribute *attr, char *buf)
 {
 	struct d_info *d = container_of(attr, struct d_info, dsi_access_r);
-	struct dsim_device *dsim = get_dsim_drvdata(0);
 
 	char *pos = buf;
 	u8 reg, len, param = 0;
@@ -826,7 +859,7 @@ static ssize_t read_show(struct kobject *kobj,
 
 	dump = kcalloc(len, sizeof(u8), GFP_KERNEL);
 
-	dsim_read_data(dsim, data_type, reg, len, dump);
+	mipi_rx(data_type, reg, len, dump, 0);
 
 	for (i = 0; i < len; i++)
 		pos += sprintf(pos, "%02x ", dump[i]);
@@ -870,7 +903,6 @@ static ssize_t write_store(struct kobject *kobj,
 	struct kobj_attribute *attr, const char *buf, size_t size)
 {
 	struct d_info *d = container_of(attr, struct d_info, dsi_access_w);
-	struct dsim_device *dsim = get_dsim_drvdata(0);
 
 	int ret, i, val, len = 0;
 	unsigned char seqbuf[255] = {0, };
@@ -909,13 +941,13 @@ static ssize_t write_store(struct kobject *kobj,
 
 	{
 		if ((seqbuf[0] == 0x29) || (seqbuf[0] == 0x39))
-			ret = dsim_write_data(dsim, (unsigned int)seqbuf[0], (unsigned long)&seqbuf[1], len);
+			ret = mipi_tx((unsigned int)seqbuf[0], (unsigned long)&seqbuf[1], len);
 		else if (len == 1)
-			ret = dsim_write_data(dsim, (unsigned int)seqbuf[0], seqbuf[1], len);
+			ret = mipi_tx((unsigned int)seqbuf[0], seqbuf[1], len);
 		else if (len == 2)
-			ret = dsim_write_data(dsim, (unsigned int)seqbuf[0], seqbuf[1], seqbuf[2]);
+			ret = mipi_tx((unsigned int)seqbuf[0], seqbuf[1], seqbuf[2]);
 		else
-			ret = dsim_write_data(dsim, (unsigned int)seqbuf[0], (unsigned long)&seqbuf[1], len);
+			ret = mipi_tx((unsigned int)seqbuf[0], (unsigned long)&seqbuf[1], len);
 	}
 
 exit:
@@ -1016,7 +1048,6 @@ static int __init dd_lcd_init(void)
 
 	return 0;
 }
-
-late_initcall(dd_lcd_init);
+late_initcall_sync(dd_lcd_init);
 #endif
 

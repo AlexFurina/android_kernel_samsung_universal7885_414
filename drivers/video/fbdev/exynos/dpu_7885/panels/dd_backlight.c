@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) Samsung Electronics Co., Ltd.
  *
@@ -10,7 +9,7 @@
 /* temporary solution: Do not use these sysfs as official purpose */
 /* these function are not official one. only purpose is for temporary test */
 
-#if defined(CONFIG_DEBUG_FS) && !defined(CONFIG_SAMSUNG_PRODUCT_SHIP) && defined(CONFIG_SMCDSD_LCD_DEBUG)
+#if defined(CONFIG_DEBUG_FS) && !defined(CONFIG_SAMSUNG_PRODUCT_SHIP) && defined(CONFIG_SEC_GPIO_DVS)
 #include <linux/debugfs.h>
 #include <linux/sort.h>
 #include <linux/ctype.h>

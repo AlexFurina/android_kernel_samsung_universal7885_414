@@ -21,10 +21,7 @@
 #include "decon.h"
 #include "dsim.h"
 #include "dpp.h"
-#include "./panels/lcd_ctrl.h"
 #include <video/mipi_display.h>
-#include "../../../../../tools/testing/selftests/sync/sw_sync.h"
-
 
 char acquire_fence_log[ACQUIRE_FENCE_LEN];
 
@@ -311,7 +308,6 @@ void decon_to_init_param(struct decon_device *decon, struct decon_param *p)
 			decon->lcd_info->xres, decon->lcd_info->yres);
 }
 
-#if defined(CONFIG_SUPPORT_LEGACY_FENCE)
 #if defined(CONFIG_DPU_20)
 int decon_get_valid_fd(void)
 {
@@ -353,6 +349,7 @@ int decon_get_valid_fd(void)
 }
 #endif
 /* sync fence related functions */
+/*
 void decon_create_timeline(struct decon_device *decon, char *name)
 {
 	decon->timeline = sw_sync_timeline_create(name);
@@ -466,8 +463,8 @@ void decon_signal_fence(struct decon_device *decon)
 {
 	sw_sync_timeline_inc(decon->timeline, 1);
 }
+*/
 
-#endif //fence
 void dpu_debug_printk(const char *function_name, const char *format, ...)
 {
 	struct va_format vaf;

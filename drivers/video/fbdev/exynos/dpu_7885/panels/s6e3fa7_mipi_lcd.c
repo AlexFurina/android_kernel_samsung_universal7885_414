@@ -165,10 +165,10 @@ static int s6e3fa7_probe(struct dsim_device *dsim)
 	struct lcd_info *lcd = dsim->priv.par;
 	struct panel_private *priv = &dsim->priv;
 
-	priv->lcdConnected = lcd->connected = 1;
+	priv->lcdconnected = lcd->connected = 1;
 
 	lcd->dsim = dsim;
-	lcd->state = PANEL_STATE_SUSPENED;
+	lcd->state = PANEL_STATE_RESUMED;
 
 	dsim_info("lcd panel: %s: done\n", __func__);
 

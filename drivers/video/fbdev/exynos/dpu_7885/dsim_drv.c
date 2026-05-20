@@ -119,7 +119,6 @@ static void dsim_long_data_wr(struct dsim_device *dsim, unsigned long d0, u32 d1
 		}
 	}
 	dsim->pl_cnt += d1;
-
 }
 
 static int dsim_wait_for_cmd_fifo_empty(struct dsim_device *dsim, bool must_wait)
@@ -132,7 +131,7 @@ static int dsim_wait_for_cmd_fifo_empty(struct dsim_device *dsim, bool must_wait
 			del_timer(&dsim->cmd_timer);
 
 		dsim_dbg("%s Doesn't need to wait fifo_completion\n", __func__);
-		return ret;
+		goto exit;
 	} else {
 		del_timer(&dsim->cmd_timer);
 		dsim_dbg("%s Waiting for fifo_completion...\n", __func__);
@@ -152,6 +151,8 @@ static int dsim_wait_for_cmd_fifo_empty(struct dsim_device *dsim, bool must_wait
 		__dsim_dump(dsim);
 		/*dsim_reg_set_fifo_ctrl(dsim->id, DSIM_FIFOCTRL_INIT_SFR);*/
 	}
+
+exit:
 	return ret;
 }
 
@@ -166,7 +167,7 @@ int dsim_wait_for_cmd_done(struct dsim_device *dsim)
 	struct decon_device *decon = get_decon_drvdata(0);
 #if defined(DSIM_FIFO_EMPTY_BUSY_WAIT)
 	int delay_time = 10;
-	int cnt = WRITE_TIME_OUT / delay_time;
+	int cnt = WRITE_TIME_OUT/ delay_time;
 #endif
 
 	decon_hiber_block_exit(decon);
@@ -532,7 +533,7 @@ exit:
 	dsim_dbg("%s -\n", __func__);
 }
 
-#if defined(CONFIG_EXYNOS_BTS)
+#if defined(CONFIG_PM_DEVFREQ)
 static void dsim_bts_print_info(struct bts_decon_info *info)
 {
 	int i;
@@ -563,7 +564,6 @@ static void dsim_underrun_info(struct dsim_device *dsim)
 			iint = cal_dfs_get_rate(ACPM_DVFS_INT),
 			disp = cal_dfs_get_rate(ACPM_DVFS_DISP));
 
-#if defined(CONFIG_EXYNOS_BTS)
 	if (decon) {
 		dsim_info("\tDECON%d: total(%u %u), max(%u %u), peak(%u)\n",
 				decon->id,
@@ -576,7 +576,6 @@ static void dsim_underrun_info(struct dsim_device *dsim)
 
 		decon_abd_save_udr(&decon->abd, mif, iint, disp);
 	}
-#endif
 #endif
 }
 
@@ -599,8 +598,6 @@ static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 	}
 #endif
 	int_src = readl(dsim->res.regs + DSIM_INTSRC);
-
-	dsim_reg_clear_int(dsim->id, int_src);
 
 	if (int_src & DSIM_INTSRC_SFR_PL_FIFO_EMPTY) {
 		dsim->pl_cnt = 0;
@@ -651,6 +648,8 @@ static irqreturn_t dsim_irq_handler(int irq, void *dev_id)
 		}
 	}
 
+	dsim_reg_clear_int(dsim->id, int_src);
+
 	spin_unlock(&dsim->slock);
 
 	return IRQ_HANDLED;
@@ -665,18 +664,18 @@ static int dsim_get_clocks(struct dsim_device *dsim)
 	return 0;
 }
 
-static int _dsim_reset_panel(struct dsim_device *dsim)
+static int dsim_reset_panel(struct dsim_device *dsim)
 {
 	dsim_info("%s\n", __func__);
 
-	run_list(dsim->dev, "dsim_reset_panel");
+	run_list(dsim->dev, __func__);
 
 	call_panel_ops(dsim, after_reset, dsim);
 
 	return 0;
 }
 
-static int dsim_set_panel_power_early(struct dsim_device *dsim)
+int dsim_set_panel_power_early(struct dsim_device *dsim)
 {
 	dsim_info("%s +\n", __func__);
 
@@ -687,7 +686,7 @@ static int dsim_set_panel_power_early(struct dsim_device *dsim)
 	return 0;
 }
 
-static int _dsim_set_panel_power(struct dsim_device *dsim, bool on)
+static int dsim_set_panel_power(struct dsim_device *dsim, bool on)
 {
 	dsim_info("%s: %d\n", __func__, on);
 
@@ -695,234 +694,6 @@ static int _dsim_set_panel_power(struct dsim_device *dsim, bool on)
 		run_list(dsim->dev, "dsim_set_panel_power_enable");
 	else
 		run_list(dsim->dev, "dsim_set_panel_power_disable");
-
-	return 0;
-}
-
-static int dsim_get_gpios(struct dsim_device *dsim)
-{
-	struct device *dev = dsim->dev;
-	struct dsim_resources *res = &dsim->res;
-
-	dsim_info("%s +\n", __func__);
-
-	if (of_get_property(dev->of_node, "gpios", NULL) != NULL)  {
-		/* panel reset */
-		res->lcd_reset = of_get_gpio(dev->of_node, 0);
-		if (res->lcd_reset < 0) {
-			dsim_err("failed to get lcd reset GPIO");
-			return -ENODEV;
-		}
-		res->lcd_power[0] = of_get_gpio(dev->of_node, 1);
-		if (res->lcd_power[0] < 0) {
-			res->lcd_power[0] = -1;
-			dsim_info("This board doesn't support LCD power GPIO");
-		}
-		res->lcd_power[1] = of_get_gpio(dev->of_node, 2);
-		if (res->lcd_power[1] < 0) {
-			res->lcd_power[1] = -1;
-			dsim_info("This board doesn't support 2nd LCD power GPIO");
-		}
-		res->lcd_power[2] = of_get_gpio(dev->of_node, 3);
-		if (res->lcd_power[2] < 0) {
-			res->lcd_power[2] = -1;
-			dsim_info("This board doesn't support 3rd LCD power GPIO");
-		}
-	}
-
-	dsim_info("%s -\n", __func__);
-	return 0;
-}
-
-static int dsim_reset_panel(struct dsim_device *dsim)
-{
-	struct dsim_resources *res = &dsim->res;
-	int ret;
-
-	_dsim_reset_panel(dsim);
-
-	if (res->lcd_reset <= 0)
-		return 0;
-
-	dsim_info("%s +\n", __func__);
-
-	ret = gpio_request_one(res->lcd_reset, GPIOF_OUT_INIT_HIGH, "lcd_reset");
-	if (ret < 0) {
-		dsim_err("failed to get LCD reset GPIO\n");
-		return -EINVAL;
-	}
-
-	usleep_range(5000, 6000);
-	gpio_set_value(res->lcd_reset, 0);
-	usleep_range(5000, 6000);
-	gpio_set_value(res->lcd_reset, 1);
-
-	gpio_free(res->lcd_reset);
-
-	usleep_range(5000, 6000);
-
-	dsim_dbg("%s -\n", __func__);
-	return 0;
-}
-
-
-static int dsim_get_regulator(struct dsim_device *dsim)
-{
-	char *str_reg_V18 = NULL;
-
-	struct device *dev = dsim->dev;
-	struct dsim_resources *res = &dsim->res;
-
-	int ret;
-
-	dsim_info("%s +\n", __func__);
-
-	res->regulator_18V = NULL;
-	ret = of_property_read_string(dev->of_node, "regulator_18V", (const char **)&str_reg_V18);
-	if (ret)
-		return ret;
-
-	if (str_reg_V18) {
-		dsim_info("getting string : %s\n",str_reg_V18);
-		res->regulator_18V = regulator_get(dev, str_reg_V18);
-		if (IS_ERR(res->regulator_18V)) {
-			dsim_err("%s : dsim regulator 1.8V get failed\n", __func__);
-			res->regulator_18V = NULL;
-		}
-	}
-
-	dsim_info("%s -\n", __func__);
-	return 0;
-}
-
-int dsim_enable_regulator(struct dsim_device *dsim)
-{
-	struct dsim_resources *res = &dsim->res;
-
-	int ret = 0;
-
-	ret = regulator_enable(res->regulator_18V);
-	if (ret) {
-		dsim_err("%s : dsim regulator 1.8V enable failed\n", __func__);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-int dsim_disable_regulator(struct dsim_device *dsim)
-{
-	struct dsim_resources *res = &dsim->res;
-
-	int ret = 0;
-
-	ret = regulator_disable(res->regulator_18V);
-	if (ret) {
-		dsim_err("%s : dsim regulator 1.8V disable failed\n", __func__);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int dsim_set_panel_power(struct dsim_device *dsim, bool on)
-{
-	struct dsim_resources *res = &dsim->res;
-	int ret;
-
-	_dsim_set_panel_power(dsim, on);
-
-	dsim_info("%s(%d) +\n", __func__, on);
-
-	if (on) {
-
-		if (res->regulator_18V) {
-			dsim_enable_regulator(dsim);
-			usleep_range(10000, 11000);
-		}
-
-		if (res->lcd_power[0] > 0) {
-			ret = gpio_request_one(res->lcd_power[0],
-					GPIOF_OUT_INIT_HIGH, "lcd_power0");
-			if (ret < 0) {
-				dsim_err("failed LCD power on\n");
-				return -EINVAL;
-			}
-			gpio_free(res->lcd_power[0]);
-			usleep_range(5000, 6000);
-		}
-
-		if (res->lcd_power[1] > 0) {
-			ret = gpio_request_one(res->lcd_power[1],
-					GPIOF_OUT_INIT_HIGH, "lcd_power1");
-			if (ret < 0) {
-				dsim_err("failed 2nd LCD power on\n");
-				return -EINVAL;
-			}
-			gpio_free(res->lcd_power[1]);
-			usleep_range(5000, 6000);
-		}
-
-		if (res->lcd_power[2] > 0) {
-			ret = gpio_request_one(res->lcd_power[2],
-					GPIOF_OUT_INIT_HIGH, "lcd_power2");
-			if (ret < 0) {
-				dsim_err("failed 3rd LCD power on\n");
-				return -EINVAL;
-			}
-			gpio_free(res->lcd_power[2]);
-			usleep_range(5000, 6000);
-		}
-	} else {
-		if (res->lcd_reset > 0) {
-			ret = gpio_request_one(res->lcd_reset, GPIOF_OUT_INIT_LOW,
-					"lcd_reset");
-			if (ret < 0) {
-				dsim_err("failed LCD reset off\n");
-				return -EINVAL;
-			}
-			gpio_free(res->lcd_reset);
-		}
-
-		if (res->lcd_power[0] > 0) {
-			ret = gpio_request_one(res->lcd_power[0],
-					GPIOF_OUT_INIT_LOW, "lcd_power0");
-			if (ret < 0) {
-				dsim_err("failed LCD power off\n");
-				return -EINVAL;
-			}
-			gpio_free(res->lcd_power[0]);
-			usleep_range(5000, 6000);
-		}
-
-		if (res->lcd_power[1] > 0) {
-			ret = gpio_request_one(res->lcd_power[1],
-					GPIOF_OUT_INIT_LOW, "lcd_power1");
-			if (ret < 0) {
-				dsim_err("failed 2nd LCD power off\n");
-				return -EINVAL;
-			}
-			gpio_free(res->lcd_power[1]);
-			usleep_range(5000, 6000);
-		}
-
-		if (res->lcd_power[2] > 0) {
-			ret = gpio_request_one(res->lcd_power[2],
-					GPIOF_OUT_INIT_LOW, "lcd_power2");
-			if (ret < 0) {
-				dsim_err("failed 3rd LCD power off\n");
-				return -EINVAL;
-			}
-			gpio_free(res->lcd_power[2]);
-			usleep_range(5000, 6000);
-		}
-
-		if (res->regulator_18V) {
-			dsim_disable_regulator(dsim);
-			usleep_range(5000, 6000);
-		}
-	}
-	dsim_info("%s(%d) -\n", __func__, on);
 
 	return 0;
 }
@@ -948,7 +719,7 @@ int dsim_runtime_reset(struct dsim_device *dsim)
 	dsim_reg_enable_word_clock(dsim->id, 1);
 
 	if (dsim_reg_init(dsim->id, &dsim->lcd_info, dsim->data_lane_cnt,
-				&dsim->clks) < 0) {
+			&dsim->clks) < 0) {
 		dsim_info("dsim_%d already enabled", dsim->id);
 		ret = -EBUSY;
 	} else {
@@ -997,6 +768,8 @@ void dphy_power_on(struct dsim_device *dsim, int on)
 }
 #endif
 
+static void __iomem *dispaud;	/* 0x11C84020 */
+static void __iomem *dphydsi;	/* 0x11C80678 */
 static int dsim_enable(struct dsim_device *dsim)
 {
 	int ret = 0;
@@ -1037,6 +810,18 @@ static int dsim_enable(struct dsim_device *dsim)
 #else
 	dsim_set_panel_power(dsim, 1);
 #endif
+
+	if (!dispaud) {
+		dispaud = ioremap(0x11C84020, SZ_4);
+		dphydsi = ioremap(0x11C80678, SZ_4);
+	}
+
+	mutex_lock(&dsim->phy->mutex);
+	dsim_info("%s: power_count: %d, disable_depth: %d, direct_complete: %d\n", __func__,
+		dsim->phy->power_count, dsim->phy->dev.power.disable_depth, dsim->phy->dev.power.direct_complete);
+	dsim_info("%s: usage_count: %d, dispaud: %X, dphydsi: %X\n", __func__,
+		atomic_read(&dsim->dev->power.usage_count), readl(dispaud), readl(dphydsi));
+	mutex_unlock(&dsim->phy->mutex);
 
 	/* check whether the bootloader init has been done */
 	if (dsim->state == DSIM_STATE_INIT) {
@@ -1101,7 +886,7 @@ exit:
 static int dsim_disable(struct dsim_device *dsim)
 {
 	if (dsim->state == DSIM_STATE_OFF)
-		return 0;
+		goto exit;
 
 	dsim_info("+ %s\n", __func__);
 
@@ -1119,7 +904,6 @@ static int dsim_disable(struct dsim_device *dsim)
 	mutex_unlock(&dsim->cmd_lock);
 
 	disable_irq(dsim->res.irq);
-
 	dsim_reg_stop(dsim->id, dsim->data_lane);
 
 	dphy_power_on(dsim, 0);
@@ -1132,6 +916,7 @@ static int dsim_disable(struct dsim_device *dsim)
 	dsim_runtime_suspend(dsim->dev);
 #endif
 
+exit:
 	dsim_info("- %s\n", __func__);
 
 	return 0;
@@ -1277,7 +1062,7 @@ static long dsim_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 	case DSIM_IOC_GET_WCLK:
 		v4l2_set_subdev_hostdata(sd, &dsim->clks.word_clk);
 		break;
-#if defined(CONFIG_EXYNOS_SUPPORT_DOZE)
+#if defined(CONFIG_EXYNOS_DOZE)
 	case DSIM_IOC_DOZE:
 		ret = dsim_doze(dsim);
 		if (ret)
@@ -1511,7 +1296,7 @@ static void dsim_parse_lcd_info(struct dsim_device *dsim)
 		if (!of_property_read_u32_array(node, "update_min", res, 2)) {
 			dsim->lcd_info.update_min_w = res[0];
 			dsim->lcd_info.update_min_h = res[1];
-			dsim_info("update_min_w(%d) update_min_h(%d)\n",
+			dsim_info("update_min_w(%d) update_min_h(%d) \n",
 				dsim->lcd_info.update_min_w, dsim->lcd_info.update_min_h);
 		} else { /* If values are not difined on DT, Set to full size */
 			dsim->lcd_info.update_min_w = dsim->lcd_info.xres;
@@ -1541,9 +1326,6 @@ static int dsim_parse_dt(struct dsim_device *dsim, struct device *dev)
 #endif
 
 	dsim->dev = dev;
-	dsim_get_gpios(dsim);
-
-	dsim_get_regulator(dsim);
 
 	dsim_parse_lcd_info(dsim);
 

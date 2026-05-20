@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) Samsung Electronics Co., Ltd.
  *
@@ -18,7 +17,7 @@
 #include "dynamic_aid.h"
 
 #ifdef DYNAMIC_AID_DEBUG
-#define aid_dbg(format, arg...)	pr_info(format, ##arg)
+#define aid_dbg(format, arg...)	printk(format, ##arg)
 #else
 #define aid_dbg(format, arg...)
 #endif

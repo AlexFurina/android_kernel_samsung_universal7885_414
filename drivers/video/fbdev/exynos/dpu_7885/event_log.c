@@ -26,11 +26,7 @@ static inline void dpu_event_log_decon
 	int idx = atomic_inc_return(&decon->d.event_log_idx) % DPU_EVENT_LOG_MAX;
 	struct dpu_log *log = &decon->d.event_log[idx];
 
-#if defined(CONFIG_SUPPORT_KERNEL_4_9)
-	if (time.tv64)
-#else
 	if (time)
-#endif
 		log->time = time;
 	else
 		log->time = ktime_get();
@@ -67,11 +63,7 @@ static inline void dpu_event_log_dsim
 	int idx = atomic_inc_return(&decon->d.event_log_idx) % DPU_EVENT_LOG_MAX;
 	struct dpu_log *log = &decon->d.event_log[idx];
 
-#if defined(CONFIG_SUPPORT_KERNEL_4_9)
-	if (time.tv64)
-#else
 	if (time)
-#endif
 		log->time = time;
 	else
 		log->time = ktime_get();
@@ -119,11 +111,7 @@ static inline void dpu_event_log_dpp
 	struct dpu_log *log = &decon->d.event_log[idx];
 	struct dpp_device *dpp = v4l2_get_subdevdata(sd);
 
-#if defined(CONFIG_SUPPORT_KERNEL_4_9)
-	if (time.tv64)
-#else
 	if (time)
-#endif
 		log->time = time;
 	else
 		log->time = ktime_get();
@@ -273,7 +261,7 @@ void DPU_EVENT_LOG_WIN_CONFIG(struct v4l2_subdev *sd, struct decon_win_config_da
 	for (win = 0; win < (MAX_DECON_WIN + 1); win++) {
 		config = &win_config[win];
 		memcpy(&log->data.reg.win_config[win], config,
-			sizeof(struct decon_win_config));
+		sizeof(struct decon_win_config));
 	}
 
 	/* window update case : last window */
@@ -359,7 +347,7 @@ void DPU_EVENT_LOG_INSTANT_OFF(struct v4l2_subdev *sd)
 
 	decon_info("%08x %08x\n", data[0], data[1]);
 }
-#if 0
+
 static int sync_status_str(int status)
 {
 	if (status == 0)
@@ -370,15 +358,14 @@ static int sync_status_str(int status)
 
 	return 9; /*"error";*/
 }
-#endif
+
 void DPU_EVENT_LOG_FENCE(struct v4l2_subdev *sd, struct decon_reg_data *regs, dpu_event_t type)
 {
 	struct decon_device *decon = container_of(sd, struct decon_device, sd);
 	int idx = atomic_inc_return(&decon->d.event_log_idx) % DPU_EVENT_LOG_MAX;
 	struct dpu_log *log = &decon->d.event_log[idx];
 	int win = 0;
-	//struct sync_fence *fence = NULL;
-	struct dma_fence *fence = NULL;
+	struct sync_fence *fence = NULL;
 	static int fence_log_cnt;
 
 	log->time = ktime_get();
@@ -389,29 +376,28 @@ void DPU_EVENT_LOG_FENCE(struct v4l2_subdev *sd, struct decon_reg_data *regs, dp
 
 	--fence_log_cnt;
 
+#if !defined(CONFIG_SUPPORT_LEGACY_FENCE)
 	for (win = 0; win < MAX_DECON_WIN; win++) {
 		log->data.fence.acquire_fence[win][0] = '\0';
 		fence = regs->dma_buf_data[win][0].fence;
-		//log->data.fence.acquire_fence[win][0] = '\0';
-		//fence = regs->dma_buf_data[win][0].fence;
 		if (fence) {
-			snprintf(&log->data.fence.acquire_fence[win][0], ACQUIRE_FENCE_LEN, "%p:%s",
-				fence, fence->ops->get_driver_name(fence));
-			//snprintf(&log->data.fence.acquire_fence[win][0], ACQUIRE_FENCE_LEN, "%p:%s:%d",
-			//	fence, fence->name, sync_status_str(atomic_read(&fence->status)));
+			snprintf(&log->data.fence.acquire_fence[win][0], ACQUIRE_FENCE_LEN, "%p:%s:%d",
+				fence, fence->name, sync_status_str(atomic_read(&fence->status)));
 		}
 	}
 
-//	log->data.fence.release_fence[0] = '\0';
-//.	if (regs->pt) {
-//		snprintf(&log->data.fence.release_fence[0], RELEASE_FENCE_LEN, "decon%d_pt:%d/%d",
-//			decon->id, ((struct sw_sync_pt *)(regs->pt))->value, decon->timeline->value);
-//	}
+	log->data.fence.release_fence[0] = '\0';
+	if (regs->pt) {
+		snprintf(&log->data.fence.release_fence[0], RELEASE_FENCE_LEN, "decon%d_pt:%d/%d",
+			decon->id, ((struct sw_sync_pt *)(regs->pt))->value, decon->timeline->value);
+	}
 
 	log->data.fence.timeline_value = atomic_read(&decon->fence.timeline);
 	log->data.fence.timeline_max = atomic_read(&decon->fence.timeline);
-//	log->data.fence.timeline_value = decon->timeline->value;
-//	log->data.fence.timeline_max = decon->timeline_max;
+#else
+	log->data.fence.timeline_value = decon->timeline->value;
+	log->data.fence.timeline_max = decon->timeline_max;
+#endif
 }
 
 extern void *return_address(int);
@@ -725,7 +711,7 @@ static ssize_t decon_debug_bts_write(struct file *file, const char __user *buf,
 	if (ret < 0)
 		goto out;
 
-	ret = sscanf(buf_data, "%u", &dpu_bts_log_level);
+	ret = kstrtouint(buf_data, 0, &dpu_bts_log_level);
 	if (ret < 0)
 		goto out;
 
@@ -768,7 +754,7 @@ static ssize_t decon_debug_win_write(struct file *file, const char __user *buf,
 	if (ret < 0)
 		goto out;
 
-	ret = sscanf(buf_data, "%u", &win_update_log_level);
+	ret = kstrtouint(buf_data, 0, &win_update_log_level);
 	if (ret < 0)
 		goto out;
 

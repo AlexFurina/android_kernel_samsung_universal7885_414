@@ -19,6 +19,7 @@
 #include <linux/io.h>
 #include <media/v4l2-subdev.h>
 
+#include <linux/exynos-ss.h>
 #include "./panels/decon_lcd.h"
 #include "regs-dsim.h"
 
@@ -40,8 +41,6 @@ extern int dsim_log_level;
 #define MIPI_WR_TIMEOUT			msecs_to_jiffies(33)
 #define MIPI_RD_TIMEOUT			msecs_to_jiffies(100)
 #define DSIM_PL_FIFO_THRESHOLD			2048	/*this value depends on H/W */
-
-#define exynos_ss_printk(...)
 
 #define dsim_err(fmt, ...)							\
 	do {									\
@@ -75,12 +74,6 @@ extern int dsim_log_level;
 	(((q) && ((q)->panel_ops->op)) ? ((q)->panel_ops->op(args)) : 0)
 
 extern struct dsim_device *dsim_drvdata[MAX_DSIM_CNT];
-extern struct dsim_lcd_driver s6e3ha2k_mipi_lcd_driver;
-extern struct dsim_lcd_driver emul_disp_mipi_lcd_driver;
-extern struct dsim_lcd_driver s6e3hf4_mipi_lcd_driver;
-extern struct dsim_lcd_driver s6e3fa0_mipi_lcd_driver;
-extern struct dsim_lcd_driver s6e3fa3_mipi_lcd_driver;
-extern struct dsim_lcd_driver s6e3fa7_mipi_lcd_driver;
 
 /* define video timer interrupt */
 enum {
@@ -193,12 +186,9 @@ struct dsim_resources {
 	struct clk *dphy_byte;
 	struct clk *rgb_vclk0;
 	struct clk *pclk_disp;
-	int lcd_power[3];
-	int lcd_reset;
 	int irq;
 	void __iomem *regs;
 	void __iomem *ss_regs;
-	struct regulator *regulator_18V;
 };
 
 struct panel_private {
@@ -224,11 +214,6 @@ struct dsim_device {
 #if defined(CONFIG_EXYNOS_DOZE)
 	unsigned int doze_state;
 #endif
-	int continuous_underrun_max;
-	int continuous_underrun_cnt;
-#ifdef CONFIG_LCD_HMT
-	unsigned int hmt_on;
-#endif
 
 	struct v4l2_subdev sd;
 	struct dsim_clks clks;
@@ -246,6 +231,12 @@ struct dsim_device {
 
 	int pl_cnt;
 	int line_cnt;
+
+	int continuous_underrun_max;
+	int continuous_underrun_cnt;
+#ifdef CONFIG_LCD_HMT
+	unsigned int			hmt_on;
+#endif
 };
 
 struct dsim_lcd_driver {
@@ -382,7 +373,7 @@ void dsim_reg_enable_word_clock(u32 id, u32 en);
 void dsim_reg_set_esc_clk_prescaler(u32 id, u32 en, u32 p);
 u32 dsim_reg_is_pll_stable(u32 id);
 void dsim_reg_set_cmd_transfer_mode(u32 id, u32 lp);
-#if defined(CONFIG_EXYNOS_SUPPORT_DOZE)
+#if defined(CONFIG_EXYNOS_DOZE)
 int dsim_doze(struct dsim_device *dsim);
 int dsim_doze_suspend(struct dsim_device *dsim);
 void dphy_power_on(struct dsim_device *dsim, int on);

@@ -28,25 +28,20 @@
 #include <soc/samsung/bts.h>
 #include <soc/samsung/exynos-itmon.h>
 
-#if defined(CONFIG_SUPPORT_LEGACY_ION)
-#include <linux/exynos_ion.h>
-#include <linux/ion.h>
-#endif
-#include <linux/exynos_iovmm.h>
-#include <linux/sync_file.h>
+#include <linux/exynos-ss.h>
 
 #include "regs-decon.h"
 #include "./panels/decon_lcd.h"
 #include "decon_abd.h"
 #include "dsim.h"
-//#include "../../../../staging/android/sw_sync.h"
+#if defined(CONFIG_SUPPORT_LEGACY_FENCE)
+#include "../../../../dma-buf/sync_debug.h"
+#endif
 
 #define MAX_DECON_CNT		3
 #define SUCCESS_EXYNOS_SMC	0
 
-#if defined(CONFIG_SUPPORT_LEGACY_ION)
 extern struct ion_device *ion_exynos;
-#endif
 extern struct decon_device *decon_drvdata[MAX_DECON_CNT];
 extern int decon_log_level;
 extern int dpu_bts_log_level;
@@ -66,8 +61,8 @@ extern struct decon_bts_ops decon_bts_control;
 #define MAX_DECON_WIN		4
 #define MAX_DPP_SUBDEV		4	/* check later */
 
-#define MIN_WIN_BLOCK_WIDTH	16
-#define MIN_WIN_BLOCK_HEIGHT	16
+#define MIN_WIN_BLOCK_WIDTH	360
+#define MIN_WIN_BLOCK_HEIGHT	222
 
 #if defined(CONFIG_DPU_20)
 #define CHIP_VER		(7885)
@@ -668,10 +663,9 @@ struct decon_win_config {
 		__u32 color;
 		struct {
 			int				fd_idma[3];
-//			int				fence_fd;
+			int				fence_fd;
 
 #if defined(CONFIG_DPU_20)
-			int				acq_fence;
 			int				rel_fence;
 #endif
 			int				plane_alpha;
@@ -704,7 +698,7 @@ struct decon_reg_data {
 	struct decon_window_regs win_regs[MAX_DECON_WIN];
 	struct decon_dma_buf_data dma_buf_data[MAX_DECON_WIN + 1][MAX_PLANE_CNT];
 #if !defined(CONFIG_SUPPORT_LEGACY_FENCE)
-        struct dma_fence *retire_fence;
+	struct dma_fence *fence;
 #endif
 
 	/*
@@ -722,7 +716,8 @@ struct decon_reg_data {
 	/* protected contents playback */
 	bool protection[MAX_DECON_WIN];
 	/* release fence*/
-//	struct sync_pt *pt;
+	struct sync_pt *pt;
+
 #if defined(CONFIG_SUPPORT_MASK_LAYER)
 	bool mask_layer;
 #endif
@@ -734,13 +729,13 @@ struct decon_win_config_extra {
 };
 
 struct decon_win_config_data_old {
-	int	retire_fence;
+	int	fence;
 	int	fd_odma;
 	struct decon_win_config config[MAX_DECON_WIN + 1];
 };
 
 struct decon_win_config_data {
-	int	retire_fence;
+	int	fence;
 	int	fd_odma;
 	struct decon_win_config config[MAX_DECON_WIN + 1];
 	struct decon_win_config_extra extra;
@@ -850,7 +845,7 @@ typedef enum dpu_event_type {
 #define RELEASE_FENCE_LEN 32
 struct disp_log_fence {
 	char acquire_fence[MAX_DECON_WIN][ACQUIRE_FENCE_LEN];
-	//char release_fence[RELEASE_FENCE_LEN];
+	char release_fence[RELEASE_FENCE_LEN];
 	u32 timeline_value;
 	int timeline_max;
 };
@@ -1089,20 +1084,11 @@ struct decon_bts {
 	u32 disp_freq_minlock;
 };
 
-#if !defined(CONFIG_SUPPORT_LEGACY_FENCE)
-struct decon_fence {
-	char name[8];
-	u64 context;
-	atomic_t timeline;
-	spinlock_t lock;
-};
-#endif
-
 struct decon_device {
 	int id;
 	enum decon_state state;
 
-	atomic_t bypass;
+	unsigned int ignore_vsync;
 	struct abd_protect abd;
 	unsigned int esd_recovery;
 	atomic_t ffu_flag;	/* first frame update */
@@ -1125,12 +1111,13 @@ struct decon_device {
 	struct mutex lock;
 	struct mutex pm_lock;
 	spinlock_t slock;
+
 #if defined(CONFIG_SUPPORT_LEGACY_ION)
 	struct ion_client *ion_client;
 #endif
 
 #if defined(CONFIG_SUPPORT_LEGACY_FENCE)
-	struct sw_sync_timeline *timeline;
+	struct sync_timeline *timeline;
 	int timeline_max;
 #endif
 
@@ -1152,9 +1139,6 @@ struct decon_device {
 	struct decon_win_update win_up;
 	struct decon_hiber hiber;
 	struct decon_bts bts;
-#if !defined(CONFIG_SUPPORT_LEGACY_FENCE)
-        struct decon_fence fence;
-#endif
 
 	int frame_cnt;
 	int frame_cnt_target;
@@ -1163,10 +1147,6 @@ struct decon_device {
 #ifdef CONFIG_LOGGING_BIGDATA_BUG
 	int eint_pend;
 #endif
-#ifdef CONFIG_EXYNOS_SUPPORT_FB_HANDOVER
-	unsigned int reserved_release;
-#endif
-	unsigned int partial_force_disable;
 
 	u32 prev_protection_bitmask;
 	unsigned long prev_aclk_khz;
@@ -1189,6 +1169,10 @@ struct decon_device {
 #ifdef CONFIG_EXYNOS_PD
 	struct exynos_pm_domain *exynos_pd;
 #endif
+#ifdef CONFIG_EXYNOS_SUPPORT_FB_HANDOVER
+	unsigned int reserved_release;
+#endif
+	unsigned int partial_force_disable;
 };
 
 static inline struct decon_device *get_decon_drvdata(u32 id)
@@ -1398,10 +1382,10 @@ static inline bool decon_min_lock_cond(struct decon_device *decon)
 static inline bool is_hmd_running(struct decon_device *decon)
 {
 	struct dsim_device *dsim;
-
 	dsim = container_of(decon->out_sd[0], struct dsim_device, sd);
 
-	if (dsim && dsim->hmt_on)
+	if ((dsim != NULL) &&
+		(dsim->hmt_on))
 		return true;
 	else
 		return false;
@@ -1498,13 +1482,9 @@ void decon_dump(struct decon_device *decon);
 void decon_to_psr_info(struct decon_device *decon, struct decon_mode_info *psr);
 void decon_to_init_param(struct decon_device *decon, struct decon_param *p);
 void decon_create_timeline(struct decon_device *decon, char *name);
-#if defined(CONFIG_DPU_20)
-void decon_create_release_fences(struct decon_device *decon,
-		struct decon_win_config_data *win_data,
-		struct sync_file *sync_file);
-#endif
-
-int decon_create_fence(struct decon_device *decon, struct sync_file **sync_file);
+int decon_create_fence(struct decon_device *decon,
+		struct sync_file **fence, struct decon_reg_data *regs);
+void decon_install_fence(struct sync_file *fence, int fd);
 #if defined(CONFIG_SUPPORT_LEGACY_FENCE)
 int decon_wait_fence(struct sync_file *fence);
 void decon_signal_fence(struct decon_device *decon);
@@ -1532,7 +1512,7 @@ void decon_set_protected_content(struct decon_device *decon,
 int decon_runtime_suspend(struct device *dev);
 int decon_runtime_resume(struct device *dev);
 void decon_dpp_stop(struct decon_device *decon, bool do_reset);
-#if defined(CONFIG_EXYNOS_SUPPORT_DOZE)
+#if defined(CONFIG_EXYNOS_DOZE)
 int decon_set_doze_mode(struct decon_device *decon, u32 mode);
 
 enum doze_state {

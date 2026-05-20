@@ -1,0 +1,834 @@
+--- drivers/video/fbdev/exynos/dpu_7885/decon_core.c
++++ drivers/video/fbdev/exynos/dpu_7885/decon_core.c
+@@ -21,6 +21,8 @@
+ #include <linux/clk-provider.h>
+ #include <linux/console.h>
+ #include <linux/dma-buf.h>
++#include <linux/highmem.h>
++#include <linux/memblock.h>
+ #if defined(CONFIG_SUPPORT_LEGACY_ION)
+ #include <linux/exynos_ion.h>
+ #include <linux/ion.h>
+@@ -28,11 +30,12 @@
+ #else
+ #include <linux/ion_exynos.h>
+ #endif
+-#include <linux/highmem.h>
+-#include <linux/memblock.h>
+ #include <linux/bug.h>
+ #include <linux/of_address.h>
+ #include <linux/debugfs.h>
++#ifdef CONFIG_POWERSUSPEND
++#include <linux/powersuspend.h>
++#endif
+ #include <linux/pinctrl/consumer.h>
+ #include <video/mipi_display.h>
+ #include <media/v4l2-subdev.h>
+@@ -41,15 +44,21 @@
+ #include <soc/samsung/exynos-pd.h>
+ #include <dt-bindings/clock/exynos7885.h>
+ 
++#ifdef CONFIG_STATE_NOTIFIER
++#include <linux/state_notifier.h>
++#endif
++
+ #include "decon.h"
+ #include "dsim.h"
+-#include "./panels/lcd_ctrl.h"
+ #include "./panels/dsim_panel.h"
+ #include "decon_notify.h"
+-//#include "../../../../staging/android/sw_sync.h"
+ #include "../../../../dma-buf/sync_debug.h"
+ #include "dpp.h"
+ 
++#ifdef CONFIG_SAMSUNG_TUI
++#include "stui_inf.h"
++#endif
++
+ /*#define BRINGUP_DECON_BIST*/
+ #define DECON_DEBUG_SFR 0x14860400
+ 
+@@ -250,7 +259,6 @@ void decon_dpp_stop(struct decon_device *decon, bool do_reset)
+ 			clear_bit(i, &decon->dpp_err_stat);
+ 		}
+ 	}
+-	dpp_release_rpm_hold(IDMA_G0);
+ }
+ 
+ static void decon_free_dma_buf(struct decon_device *decon,
+@@ -267,7 +275,6 @@ static void decon_free_dma_buf(struct decon_device *decon,
+ 		dma->fence = NULL;
+ #endif
+ 	}
+-
+ 	ion_iovmm_unmap(dma->attachment, dma->dma_addr);
+ 
+ 	dma_buf_unmap_attachment(dma->attachment, dma->sg_table,
+@@ -276,7 +283,7 @@ static void decon_free_dma_buf(struct decon_device *decon,
+ 	dma_buf_detach(dma->dma_buf, dma->attachment);
+ 	dma_buf_put(dma->dma_buf);
+ #if defined(CONFIG_SUPPORT_LEGACY_ION)
+-	ion_free(decon->ion_client, dma->ion_handle);
++//	ion_free(decon->ion_client, dma->ion_handle);
+ #endif
+ 	memset(dma, 0, sizeof(struct decon_dma_buf_data));
+ }
+@@ -417,27 +424,23 @@ int decon_tui_protection(bool tui_en)
+ 		decon->state = DECON_STATE_TUI;
+ 		aclk_khz = clk_get_rate(decon->res.aclk) / 1000U;
+ 		decon_info("%s:DPU_ACLK(%ld khz)\n", __func__, aclk_khz);
+-#if defined(CONFIG_EXYNOS_BTS)
+ 		decon_info("MIF(%lu), INT(%lu), DISP(%lu), total bw(%u, %u)\n",
+ 				cal_dfs_get_rate(ACPM_DVFS_MIF),
+ 				cal_dfs_get_rate(ACPM_DVFS_INT),
+ 				cal_dfs_get_rate(ACPM_DVFS_DISP),
+ 				decon->bts.prev_total_bw,
+ 				decon->bts.total_bw);
+-#endif
+ 		mutex_unlock(&decon->lock);
+ 	} else {
+ 		mutex_lock(&decon->lock);
+ 		aclk_khz = clk_get_rate(decon->res.aclk) / 1000U;
+ 		decon_info("%s:DPU_ACLK(%ld khz)\n", __func__, aclk_khz);
+-#if defined(CONFIG_EXYNOS_BTS)
+ 		decon_info("MIF(%lu), INT(%lu), DISP(%lu), total bw(%u, %u)\n",
+ 				cal_dfs_get_rate(ACPM_DVFS_MIF),
+ 				cal_dfs_get_rate(ACPM_DVFS_INT),
+ 				cal_dfs_get_rate(ACPM_DVFS_DISP),
+ 				decon->bts.prev_total_bw,
+ 				decon->bts.total_bw);
+-#endif
+ 		decon->state = DECON_STATE_ON;
+ 		decon_hiber_unblock(decon);
+ 		mutex_unlock(&decon->lock);
+@@ -519,12 +522,10 @@ static int decon_enable(struct decon_device *decon)
+ 		}
+ 	}
+ 
+-#if defined(CONFIG_EXYNOS_BTS)
+ 	if (decon->dt.mif_freq)
+ 		decon->bts.ops->bts_update_qos_mif(decon, decon->dt.mif_freq);
+ 	if (decon->dt.disp_freq)
+ 		decon->bts.ops->bts_update_qos_disp(decon, decon->dt.disp_freq);
+-#endif
+ 
+ 	pm_stay_awake(decon->dev);
+ 	dev_warn(decon->dev, "pm_stay_awake");
+@@ -592,8 +593,12 @@ static int decon_disable(struct decon_device *decon)
+ 	int ret = 0;
+ 	struct dsim_device *dsim = NULL;
+ 
+-	if (decon->state == DECON_STATE_TUI)
++	if (decon->state == DECON_STATE_TUI) {
++#ifdef CONFIG_SAMSUNG_TUI
++		stui_cancel_session();
++#endif
+ 		decon_tui_protection(false);
++	}
+ 
+ 	mutex_lock(&decon->lock);
+ 
+@@ -652,9 +657,7 @@ static int decon_disable(struct decon_device *decon)
+ 		decon_dpp_stop(decon, false);
+ 	}
+ 
+-#if defined(CONFIG_EXYNOS_BTS)
+ 	decon->bts.ops->bts_release_bw(decon);
+-#endif
+ 
+ 	ret = v4l2_subdev_call(decon->out_sd[0], video, s_stream, 0);
+ 	if (ret)
+@@ -668,12 +671,10 @@ static int decon_disable(struct decon_device *decon)
+ 		}
+ 	}
+ 
+-#if defined(CONFIG_EXYNOS_BTS)
+ 	if (decon->dt.mif_freq)
+ 		decon->bts.ops->bts_update_qos_mif(decon, 0);
+ 	if (decon->dt.disp_freq)
+ 		decon->bts.ops->bts_update_qos_disp(decon, 0);
+-#endif
+ 
+ 	if (decon->dt.out_type == DECON_OUT_DSI) {
+ 		pm_relax(decon->dev);
+@@ -744,20 +745,32 @@ static int decon_blank(int blank_mode, struct fb_info *info)
+ 	case FB_BLANK_NORMAL:
+ 		DPU_EVENT_LOG(DPU_EVT_BLANK, &decon->sd, ktime_set(0, 0));
+ 		ret = decon_disable(decon);
++#ifdef CONFIG_POWERSUSPEND
++ 		set_power_suspend_state_panel_hook(POWER_SUSPEND_ACTIVE);
++#endif
+ 		if (ret) {
+ 			decon_err("skipped to disable decon\n");
+ 			goto blank_exit;
+ 		}
+ 		atomic_set(&decon->ffu_flag, 2);
++#ifdef CONFIG_STATE_NOTIFIER
++		state_suspend();
++#endif
+ 		break;
+ 	case FB_BLANK_UNBLANK:
+ 		DPU_EVENT_LOG(DPU_EVT_UNBLANK, &decon->sd, ktime_set(0, 0));
+ 		ret = decon_enable(decon);
++#ifdef CONFIG_POWERSUSPEND
++ 		set_power_suspend_state_panel_hook(POWER_SUSPEND_INACTIVE);
++#endif	
+ 		if (ret) {
+ 			decon_err("skipped to enable decon\n");
+ 			goto blank_exit;
+ 		}
+ 		atomic_set(&decon->ffu_flag, 2);
++#ifdef CONFIG_STATE_NOTIFIER
++		state_resume();
++#endif
+ 		break;
+ 	case FB_BLANK_VSYNC_SUSPEND:
+ 	case FB_BLANK_HSYNC_SUSPEND:
+@@ -800,16 +813,14 @@ static void decon_deactivate_vsync(struct decon_device *decon)
+ 	mutex_unlock(&decon->vsync.lock);
+ }
+ 
+-
+-
+ int decon_wait_for_vsync(struct decon_device *decon, u32 timeout)
+ {
+ 	ktime_t timestamp;
+ 	int ret;
+ 	u32 te_pend = 0;
+ 
+-	if (decon->dt.psr_mode == DECON_MIPI_COMMAND_MODE && atomic_read(&decon->bypass))
+-		return 0;
++	if (decon->dt.psr_mode == DECON_MIPI_COMMAND_MODE && decon->ignore_vsync)
++		goto exit;
+ 
+ 	timestamp = decon->vsync.timestamp;
+ 	decon_activate_vsync(decon);
+@@ -825,15 +836,6 @@ int decon_wait_for_vsync(struct decon_device *decon, u32 timeout)
+ 				!ktime_equal(timestamp,
+ 						decon->vsync.timestamp));
+ 	}
+-#else
+-	if (timeout) {
+-		ret = wait_event_interruptible_timeout(decon->vsync.wait,
+-				timestamp != decon->vsync.timestamp,
+-				msecs_to_jiffies(timeout));
+-	} else {
+-		ret = wait_event_interruptible(decon->vsync.wait,
+-				timestamp != decon->vsync.timestamp);
+-	}
+ #endif
+ 
+ 	decon_deactivate_vsync(decon);
+@@ -858,6 +860,7 @@ int decon_wait_for_vsync(struct decon_device *decon, u32 timeout)
+ 
+ 	decon->frm_status &= ~(DPU_FRM_NO_TE | DPU_FRM_TE_TIMEOUT);
+ 
++exit:
+ 	return 0;
+ }
+ 
+@@ -1019,8 +1022,8 @@ static unsigned int decon_map_ion_handle(struct decon_device *decon,
+ 		struct ion_handle *ion_handle, struct dma_buf *buf, int win_no)
+ #else
+ static unsigned int decon_map_ion_handle(struct decon_device *decon,
+-                struct device *dev, struct decon_dma_buf_data *dma,
+-                struct dma_buf *buf, int win_no)
++		struct device *dev, struct decon_dma_buf_data *dma,
++		struct dma_buf *buf, int win_no)
+ #endif
+ {
+ 
+@@ -1050,10 +1053,10 @@ static unsigned int decon_map_ion_handle(struct decon_device *decon,
+ 		goto err_iovmm_map;
+ 	}
+ 
+-#if defined(CONFIG_SUPPORT_LEGACY_ION)
+-	exynos_ion_sync_dmabuf_for_device(dev, dma->dma_buf, dma->dma_buf->size,
+-			DMA_TO_DEVICE);
++//	exynos_ion_sync_dmabuf_for_device(dev, dma->dma_buf, dma->dma_buf->size,
++//			DMA_TO_DEVICE);
+ 
++#if defined(CONFIG_SUPPORT_LEGACY_ION)
+ 	dma->ion_handle = ion_handle;
+ #endif
+ 
+@@ -1079,7 +1082,7 @@ static int decon_import_buffer(struct decon_device *decon, int idx,
+ 	struct dma_buf *buf;
+ 	struct decon_dma_buf_data dma_buf_data[MAX_PLANE_CNT];
+ 	struct dpp_device *dpp;
+-	int  i;
++	int ret = 0, i;
+ 	size_t buf_size = 0;
+ 
+ 	decon_dbg("%s +\n", __func__);
+@@ -1088,21 +1091,20 @@ static int decon_import_buffer(struct decon_device *decon, int idx,
+ 
+ 	regs->plane_cnt[idx] = dpu_get_plane_cnt(config->format);
+ 	for (i = 0; i < regs->plane_cnt[idx]; ++i) {
+-#if defined(CONFIG_SUPPORT_LEGACY_ION)
++#if 0
+ 		handle = ion_import_dma_buf(decon->ion_client, config->fd_idma[i]);
+ 		if (IS_ERR(handle)) {
+ 			decon_err("failed to import fd:%d\n", config->fd_idma[i]);
+-			return  PTR_ERR(handle);
++			ret = PTR_ERR(handle);
++			goto fail;
++
+ 		}
+ #endif
+-
+ 		buf = dma_buf_get(config->fd_idma[i]);
+ 		if (IS_ERR_OR_NULL(buf)) {
+ 			decon_err("failed to get dma_buf:%ld\n", PTR_ERR(buf));
+-#if defined(CONFIG_SUPPORT_LEGACY_ION)
+-        		ion_free(decon->ion_client, handle);
+-#endif
+-			return PTR_ERR(buf);
++			ret = PTR_ERR(buf);
++			goto fail_buf;
+ 		}
+ 
+ 		/* idma_type Should be ODMA_WB */
+@@ -1113,12 +1115,13 @@ static int decon_import_buffer(struct decon_device *decon, int idx,
+ 				&dma_buf_data[i], handle, buf, idx);
+ #else
+ 		buf_size = decon_map_ion_handle(decon, dpp->dev,
+-                                &dma_buf_data[i], buf, idx);
++				&dma_buf_data[i], buf, idx);
+ #endif
++
+ 		if (!buf_size) {
+ 			decon_err("failed to map buffer\n");
+-			dma_buf_put(buf);
+-			return -ENOMEM;
++			ret = -ENOMEM;
++			goto fail_map;
+ 		}
+ 
+ 		regs->dma_buf_data[idx][i] = dma_buf_data[i];
+@@ -1128,7 +1131,15 @@ static int decon_import_buffer(struct decon_device *decon, int idx,
+ 
+ 	decon_dbg("%s -\n", __func__);
+ 
+-	return 0;
++	return ret;
++
++fail_map:
++	dma_buf_put(buf);
++fail_buf:
++//	ion_free(decon->ion_client, handle);
++fail:
++	return ret;
++
+ }
+ 
+ static int decon_check_limitation(struct decon_device *decon, int idx,
+@@ -1212,21 +1223,22 @@ static int decon_set_win_buffer(struct decon_device *decon,
+ 	if (ret)
+ 		goto err;
+ 
+-	//if (config->fence_fd >= 0) {
+-	if (config->acq_fence >= 0) {
++	if (config->fence_fd >= 0) {
+ 		/* fence is managed by buffer not plane */
++/*
+ #if defined(CONFIG_SUPPORT_LEGACY_FENCE)
+-		fence = sync_file_fdget(config->acq_fence);
++		fence = sync_fence_fdget(config->fence_fd);
+ #else
+-		fence = sync_file_get_fence(config->acq_fence);
++		fence = sync_file_get_fence(config->fence_fd);
+ #endif
++*/
+ 		regs->dma_buf_data[idx][0].fence = fence;
+ 		if (!fence) {
+ 			decon_err("failed to import fence fd\n");
+ 			ret = -EINVAL;
+ 			goto err_fdget;
+ 		}
+-		decon_dbg("fence_fd(%d), fence(%p)\n", config->acq_fence, fence);
++		decon_dbg("fence_fd(%d), fence(%p)\n", config->fence_fd, fence);
+ 	}
+ 
+ 	/*
+@@ -1509,7 +1521,7 @@ static void __decon_update_regs(struct decon_device *decon, struct decon_reg_dat
+ 		goto update_exit;
+ #endif
+ 
+-	if (decon_reg_start(decon->id, &psr) < 0 && !atomic_read(&decon->bypass)) {
++	if (decon_reg_start(decon->id, &psr) < 0 && !decon->ignore_vsync) {
+ 		decon_dump(decon);
+ #ifdef CONFIG_LOGGING_BIGDATA_BUG
+ 		log_decon_bigdata(decon);
+@@ -1607,10 +1619,10 @@ static void decon_update_regs(struct decon_device *decon,
+ 	bool video_emul = false;
+ #ifdef CONFIG_LCD_HMT
+ 	struct dsim_device *dsim;
+-
+ 	dsim = container_of(decon->out_sd[0], struct dsim_device, sd);
+-	if (decon->dt.out_type == DECON_OUT_DSI && dsim->hmt_on)
++	if((decon->dt.out_type == DECON_OUT_DSI) && (dsim->hmt_on)) {
+ 		video_emul = true;
++	}
+ #endif
+ 	decon_exit_hiber(decon);
+ 
+@@ -1618,25 +1630,25 @@ static void decon_update_regs(struct decon_device *decon,
+ 
+ 	DPU_EVENT_LOG_FENCE(&decon->sd, regs, DPU_EVT_ACQUIRE_FENCE);
+ 
++/*
+ 	for (i = 0; i < decon->dt.max_win; i++) {
+ 		if (regs->dma_buf_data[i][0].fence) {
+ 			if (decon_wait_fence(regs->dma_buf_data[i][0].fence) < 0)
+ 				decon_abd_save_fto(&decon->abd, regs->dma_buf_data[i][0].fence);
+ 		}
+ 	}
+-
++*/
+ 	decon_check_used_dpp(decon, regs);
+ 
+-#if defined(CONFIG_EXYNOS_BTS)
+ 	/* add calc and update bw : cur > prev */
+ 	decon->bts.ops->bts_calc_bw(decon, regs);
+ 	decon->bts.ops->bts_update_bw(decon, regs, 0);
+-#endif
+ 
+ 	DPU_EVENT_LOG_WINCON(&decon->sd, regs);
+ 
+ 	decon_to_psr_info(decon, &psr);
+-	if (regs->num_of_window || video_emul) {
++
++	if ((regs->num_of_window) || (video_emul)){
+ 		__decon_update_regs(decon, regs);
+ 		if (!regs->num_of_window) {
+ 			__decon_update_clear(decon, regs);
+@@ -1657,8 +1669,8 @@ static void decon_update_regs(struct decon_device *decon,
+ #if defined(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION)
+ 		decon_set_protected_content(decon, NULL);
+ #endif
+-//		decon_dbg("write-back timeline:%d, max:%d\n",
+-//				decon->timeline->value, decon->timeline_max);
++		decon_dbg("write-back timeline:%d, max:%d\n",
++				decon->timeline->value, decon->timeline_max);
+ #if defined(CONFIG_SEC_INCELL)
+ 	} else if (decon->esd_recovery) {
+ 		/* ESD: Do not check frame done */
+@@ -1668,7 +1680,7 @@ static void decon_update_regs(struct decon_device *decon,
+ 		decon->frame_cnt_target = decon->frame_cnt + 1;
+ 		decon_wait_for_vsync(decon, VSYNC_TIMEOUT_MSEC);
+ 		decon_wait_for_vstatus(decon, 50);
+-		if (decon_reg_wait_for_update_timeout(decon->id, SHADOW_UPDATE_TIMEOUT) < 0 && !atomic_read(&decon->bypass)) {
++		if (decon_reg_wait_for_update_timeout(decon->id, SHADOW_UPDATE_TIMEOUT) < 0 && !decon->ignore_vsync) {
+ 			decon_dump(decon);
+ #ifdef CONFIG_LOGGING_BIGDATA_BUG
+ 			log_decon_bigdata(decon);
+@@ -1683,7 +1695,7 @@ static void decon_update_regs(struct decon_device *decon,
+ 			}
+ 		}
+ 
+-		if (!video_emul)
++		if(!video_emul)
+ 			decon_reg_set_trigger(decon->id, &psr, DECON_TRIG_DISABLE);
+ 	}
+ 
+@@ -1692,19 +1704,18 @@ end:
+ 
+ 	decon_release_old_bufs(decon, regs, old_dma_bufs, old_plane_cnt);
+ 	/* signal to acquire fence */
++/*
+ #if defined(CONFIG_SUPPORT_LEGACY_FENCE)
+ 	decon_signal_fence(decon);
+ #else
+-	decon_signal_fence(regs->retire_fence);
+-	dma_fence_put(regs->retire_fence);
++	decon_signal_fence(regs->fence);
++	dma_fence_put(regs->fence);
+ #endif
+-
++*/
+ 	DPU_EVENT_LOG_FENCE(&decon->sd, regs, DPU_EVT_RELEASE_FENCE);
+ 
+-#if defined(CONFIG_EXYNOS_BTS)
+ 	/* add update bw : cur < prev */
+ 	decon->bts.ops->bts_update_bw(decon, regs, 1);
+-#endif
+ 
+ 	decon_dpp_stop(decon, false);
+ #ifdef CONFIG_EXYNOS_SUPPORT_FB_HANDOVER
+@@ -1885,29 +1896,33 @@ static int decon_set_win_config(struct decon_device *decon,
+ {
+ 	int num_of_window = 0;
+ 	struct decon_reg_data *regs;
+-	//struct sync_fence *fence;
+-	struct sync_file *sync_file;
++	struct decon_dma_buf_data *dma;
++#if defined(CONFIG_SUPPORT_LEGACY_FENCE)
++	struct sync_file *fence;
++#else
++        struct sync_file *sync_file;
++#endif
+ 	int ret = 0;
+ 
+ 	decon_dbg("%s +\n", __func__);
+ 
+ 	mutex_lock(&decon->lock);
+ 
+-	if (decon->state == DECON_STATE_OFF ||
+-		atomic_read(&decon->bypass) ||
+-		decon->state == DECON_STATE_TUI) {
+-		//win_data->fence = decon_create_fence(decon, &fence, NULL);
+-		win_data->retire_fence = decon_create_fence(decon, &sync_file);
+-		//if (win_data->fence >= 0)
+-		//	decon_install_fence(fence, win_data->fence);
+-		if (win_data->retire_fence < 0)
+-			goto err;
+-		fd_install(win_data->retire_fence, sync_file->file);
+-		//decon_signal_fence(decon);
++/*	if (decon->state == DECON_STATE_OFF ||
++		decon->state == DECON_STATE_TUI ||
++		(decon->ignore_vsync)) {
++		win_data->fence = decon_create_fence(decon, &fence, NULL);
++		if (win_data->fence >= 0)
++			decon_install_fence(fence, win_data->fence);
++#if defined(CONFIG_SUPPORT_LEGACY_FENCE)
++		decon_signal_fence(decon);
++#else
+ 		decon_signal_fence(sync_file->fence);
++#endif
+ 		goto err;
+-	}
+ 
++	}
++*/
+ 	regs = kzalloc(sizeof(struct decon_reg_data), GFP_KERNEL);
+ 	if (!regs) {
+ 		decon_err("could not allocate decon_reg_data\n");
+@@ -1922,15 +1937,14 @@ static int decon_set_win_config(struct decon_device *decon,
+ 
+ 	num_of_window = decon_get_active_win_count(decon, win_data);
+ 	if (num_of_window) {
+-		//win_data->fence = decon_create_fence(decon, &fence, regs);
+-		win_data->retire_fence = decon_create_fence(decon, &sync_file);
+-		//if (win_data->fence < 0)
+-		if (win_data->retire_fence < 0)
+-			goto err_prepare;
++	//	win_data->fence = decon_create_fence(decon, &fence, regs);
++	//	if (win_data->fence < 0)
++	//		goto err_prepare;
+ 	} else {
+-		//decon->timeline_max++;
+-		//win_data->fence = -1;
+-		win_data->retire_fence = -1;
++#if defined(CONFIG_SUPPORT_LEGACY_FENCE)
++		decon->timeline_max++;
++#endif
++		win_data->fence = -1;
+ 	}
+ 
+ 	dpu_prepare_win_update_config(decon, win_data, regs);
+@@ -1939,20 +1953,6 @@ static int decon_set_win_config(struct decon_device *decon,
+ 	if (ret)
+ 		goto err_prepare;
+ 
+-	//if (win_data->fence >= 0) {
+-	if (win_data->retire_fence >= 0) {
+-		decon_create_release_fences(decon, win_data, sync_file);
+-#if !defined(CONFIG_SUPPORT_LEGACY_FENCE)
+-		regs->retire_fence = dma_fence_get(sync_file->fence);
+-#endif
+-#if 0
+-		decon_install_fence(fence, win_data->fence);
+-#if defined(CONFIG_DPU_20)
+-		decon_create_release_fences(decon, win_data, fence);
+-#endif
+-#endif
+-	}
+-
+ 	decon_hiber_block(decon);
+ 
+ 	mutex_lock(&decon->up.lock);
+@@ -1972,15 +1972,15 @@ static int decon_set_win_config(struct decon_device *decon,
+ 	 * it can be guaranteed to use an unreleased file pointer
+ 	 * when creating a rel_fence in decon_create_release_fences(...)
+ 	 */
+-	if (win_data->retire_fence >= 0)
+-		fd_install(win_data->retire_fence, sync_file->file);
+-
++/*
++	if (win_data->fence >= 0)
++                decon_install_fence(fence, win_data->fence);
++*/
+ 	mutex_unlock(&decon->lock);
+ 
+ #if defined(CONFIG_SUPPORT_MASK_LAYER)
+ 	if (decon->wait_mask_layer_trigger) {
+ 		int timeout = 0;
+-
+ 		timeout = wait_event_interruptible_timeout(decon->wait_mask_layer_trigger_queue,
+ 				!decon->wait_mask_layer_trigger,
+ 				msecs_to_jiffies(100));
+@@ -2000,24 +2000,26 @@ static int decon_set_win_config(struct decon_device *decon,
+ 	return ret;
+ 
+ err_prepare:
+-	//if (win_data->fence >= 0) {
+-	if (win_data->retire_fence >= 0) {
++	if (win_data->fence >= 0) {
+ 		/* video mode should keep previous buffer object */
++/*
+ 		if (decon->lcd_info->mode == DECON_MIPI_COMMAND_MODE) {
+-			//decon_signal_fence(decon);
+ #if defined(CONFIG_SUPPORT_LEGACY_FENCE)
+-			sync_fence_put(fence);
++			decon_signal_fence(decon);
+ #else
+ 			decon_signal_fence(sync_file->fence);
+ #endif
+ 		}
+-		fput(sync_file->file);
+-		put_unused_fd(win_data->retire_fence);
+-		//put_unused_fd(win_data->fence);
++*/
++#if defined(CONFIG_SUPPORT_LEGACY_FENCE)
++                fput(dma->fence->file);
++#else
++                sync_fence_put(fence);
++#endif
++		put_unused_fd(win_data->fence);
+ 	}
+ 	kfree(regs);
+-	//win_data->fence = -1;
+-	win_data->retire_fence = -1;
++	win_data->fence = -1;
+ 	win_data->extra.remained_frames = -1;
+ err:
+ 	mutex_unlock(&decon->lock);
+@@ -2043,7 +2045,7 @@ static int decon_ioctl(struct fb_info *info, unsigned int cmd,
+ 	bool active;
+ 	u32 crc_bit, crc_start;
+ 	u32 crc_data[2];
+-#if defined(CONFIG_EXYNOS_SUPPORT_DOZE)
++#if defined(CONFIG_EXYNOS_DOZE)
+ 	u32 doze;
+ #endif
+ 	decon_hiber_block_exit(decon);
+@@ -2126,7 +2128,7 @@ static int decon_ioctl(struct fb_info *info, unsigned int cmd,
+ 			ret = -EFAULT;
+ 			break;
+ 		}
+-#if defined(CONFIG_SUPPORT_LEGACY_FENCE)
++
+ 		if ((decon->ver == HWC_INIT) ||
+ 				(decon->ver != disp_info.ver)) {
+ 			decon->ver = disp_info.ver;
+@@ -2138,7 +2140,6 @@ static int decon_ioctl(struct fb_info *info, unsigned int cmd,
+ 				decon->timeline_max = 1;
+ 			}
+ 		}
+-#endif
+ 		disp_info.psr_mode = decon->dt.psr_mode;
+ 		disp_info.chip_ver = CHIP_VER;
+ 		disp_info.mres_info = *mres_info;
+@@ -2217,7 +2218,7 @@ static int decon_ioctl(struct fb_info *info, unsigned int cmd,
+ 		}
+ 		break;
+ 
+-#if defined(CONFIG_EXYNOS_SUPPORT_DOZE)
++#if defined(CONFIG_EXYNOS_DOZE)
+ 	case S3CFB_POWER_MODE:
+ 		if (get_user(doze, (int __user *)arg)) {
+ 			ret = -EFAULT;
+@@ -2349,10 +2350,8 @@ int decon_runtime_resume(struct device *dev)
+ 	DPU_EVENT_LOG(DPU_EVT_DECON_RESUME, &decon->sd, ktime_set(0, 0));
+ 	decon_dbg("decon%d %s +\n", decon->id, __func__);
+ 
+-#if defined(CONFIG_CPU_IDLE)
+ 	/* disable idle status for display */
+ 	exynos_update_ip_idle_status(decon->idle_ip_index, 0);
+-#endif
+ 
+ 	decon_dbg("decon%d %s -\n", decon->id, __func__);
+ 
+@@ -2370,9 +2369,7 @@ int decon_runtime_suspend(struct device *dev)
+ 	decon_dbg("decon%d %s +\n", decon->id, __func__);
+ 
+ 	/* enable idle status for display */
+-#if defined(CONFIG_CPU_IDLE)
+ 	exynos_update_ip_idle_status(decon->idle_ip_index, 1);
+-#endif
+ 
+ 	decon_dbg("decon%d %s -\n", decon->id, __func__);
+ 
+@@ -2482,9 +2479,7 @@ static int decon_fb_alloc_memory(struct decon_device *decon, struct decon_win *w
+ #if !defined(BRINGUP_DECON_BIST)
+ 	dma_addr_t map_dma;
+ #if defined(CONFIG_ION_EXYNOS)
+-#if defined(CONFIG_SUPPORT_LEGACY_ION)
+ 	struct ion_handle *handle;
+-#endif
+ 	struct dma_buf *buf;
+ 	struct dpp_device *dpp;
+ 	void *vaddr;
+@@ -2519,15 +2514,17 @@ static int decon_fb_alloc_memory(struct decon_device *decon, struct decon_win *w
+ 		dev_err(decon->dev, "failed to ion_alloc\n");
+ 		return -ENOMEM;
+ 	}
+-
++/*
+ 	buf = ion_share_dma_buf(decon->ion_client, handle);
+ 	if (IS_ERR_OR_NULL(buf)) {
+ 		dev_err(decon->dev, "ion_share_dma_buf() failed\n");
+ 		goto err_share_dma_buf;
+ 	}
+-
++	
+ 	vaddr = ion_map_kernel(decon->ion_client, handle);
++*/
+ #else
++
+ 	buf = ion_alloc_dmabuf("ion_system_heap", (size_t)size, 0);
+ 	if (IS_ERR(buf)) {
+ 		dev_err(decon->dev, "ion_share_dma_buf() failed\n");
+@@ -2537,13 +2534,9 @@ static int decon_fb_alloc_memory(struct decon_device *decon, struct decon_win *w
+ 	vaddr = dma_buf_vmap(buf);
+ #endif
+ 
+-
+ 	memset(vaddr, 0x00, size);
+ 
+ 	fbi->screen_base = vaddr;
+-#if !defined(CONFIG_SUPPORT_LEGACY_ION)
+-	dma_buf_vunmap(buf, vaddr);
+-#endif
+ 
+ 	win->dma_buf_data[1].fence = NULL;
+ 	win->dma_buf_data[2].fence = NULL;
+@@ -2586,9 +2579,7 @@ static int decon_fb_alloc_memory(struct decon_device *decon, struct decon_win *w
+ err_map:
+ 	dma_buf_put(buf);
+ err_share_dma_buf:
+-#if defined(CONFIG_SUPPORT_LEGACY_ION)
+-	ion_free(decon->ion_client, handle);
+-#endif
++//	ion_free(decon->ion_client, handle);
+ 	return -ENOMEM;
+ #endif
+ #endif
+@@ -2751,6 +2742,7 @@ static void decon_parse_dt(struct decon_device *decon)
+ 		}
+ 	}
+ 
++
+ 	if(!of_property_read_u32(dev->of_node, "disp_freq", &decon->dt.disp_freq))
+ 		decon_info("disp_freq(Khz): %u\n", decon->dt.disp_freq);
+ 	else {
+@@ -2838,17 +2830,16 @@ static int decon_init_resources(struct decon_device *decon,
+ 	ret = decon_get_disp_ss_addr(decon);
+ 	if (ret)
+ 		goto err;
+-
+-#if defined(CONFIG_SUPPORT_LEGACY_ION)
++/*
+ 	decon->ion_client = exynos_ion_client_create(name);
+ 	if (IS_ERR(decon->ion_client)) {
+ 		decon_err("failed to ion_client_create\n");
+ 		ret = PTR_ERR(decon->ion_client);
+ 		goto err_ion;
+ 	}
+-#endif
+-
++*/
+ 	return 0;
++
+ #if defined(CONFIG_SUPPORT_LEGACY_ION)
+ err_ion:
+ 	iounmap(decon->res.ss_regs);
+@@ -2953,12 +2944,10 @@ static int decon_initial_display(struct decon_device *decon, bool is_colormap)
+ 		decon_info("disp_freq(Khz): %u\n", decon->dt.disp_freq);
+ 	}
+ 
+-#if defined(CONFIG_EXYNOS_BTS)
+ 	if (decon->dt.mif_freq)
+ 		decon->bts.ops->bts_update_qos_mif(decon, decon->dt.mif_freq);
+ 	if (decon->dt.disp_freq)
+ 		decon->bts.ops->bts_update_qos_disp(decon, decon->dt.disp_freq);
+-#endif
+ 
+ 	decon_to_init_param(decon, &p);
+ #if !defined(BRINGUP_DECON_BIST)
+@@ -3084,7 +3073,7 @@ static int decon_probe(struct platform_device *pdev)
+ 	decon_enter_shutdown_reset(decon);
+ 
+ 	snprintf(device_name, MAX_NAME_SIZE, "decon%d", decon->id);
+-	decon_create_timeline(decon, device_name);
++//	decon_create_timeline(decon, device_name);
+ 
+ 	ret = decon_init_resources(decon, pdev, device_name);
+ 	if (ret)
+@@ -3125,19 +3114,15 @@ static int decon_probe(struct platform_device *pdev)
+ 
+ 	dpu_init_win_update(decon);
+ 
+-#if defined(CONFIG_EXYNOS_BTS)
+ 	decon->bts.ops = &decon_bts_control;
+ 	decon->bts.ops->bts_init(decon);
+-#endif
+ 
+ 	platform_set_drvdata(pdev, decon);
+ 	pm_runtime_enable(dev);
+ 
+-#if defined(CONFIG_CPU_IDLE)
+ 	decon->idle_ip_index = exynos_get_idle_ip_index(dev_name(&pdev->dev));
+ 	if (decon->idle_ip_index < 0)
+ 		decon_warn("Idle ip index is not provided for Decon.\n");
+-#endif
+ #ifdef CONFIG_EXYNOS_ITMON
+ 	if (decon->dt.out_type == DECON_OUT_DSI) {
+ 		decon->itmon_nb.notifier_call = decon_itmon_notifier;
+@@ -3175,8 +3160,9 @@ static int decon_probe(struct platform_device *pdev)
+ 
+ #ifndef CONFIG_EXYNOS_SUPPORT_FB_HANDOVER
+ 	/* To avoid sysmmu fault on DPP driver probe in Video mode */
+-	if (decon->dt.psr_mode == DECON_VIDEO_MODE)
++	if (decon->dt.psr_mode == DECON_VIDEO_MODE) {
+ 		decon_set_black_window(decon);
++	}
+ #endif
+ 
+ 	decon_info("decon%d registered successfully\n", decon->id);
+@@ -3207,9 +3193,7 @@ static int decon_remove(struct platform_device *pdev)
+ 	struct decon_device *decon = platform_get_drvdata(pdev);
+ 	int i;
+ 
+-#if defined(CONFIG_EXYNOS_BTS)
+ 	decon->bts.ops->bts_deinit(decon);
+-#endif
+ 
+ 	pm_runtime_disable(&pdev->dev);
+ 	decon_put_clocks(decon);
+@@ -3243,7 +3227,7 @@ static void decon_shutdown(struct platform_device *pdev)
+ 	DPU_EVENT_LOG(DPU_EVT_DECON_SHUTDOWN, &decon->sd, ktime_set(0, 0));
+ 
+ 	if (decon->dt.psr_mode == DECON_MIPI_COMMAND_MODE)
+-		atomic_set(&decon->bypass, 1);
++		decon->ignore_vsync = 1;
+ 
+ 	decon_hiber_block_exit(decon);
+ 	/* Unused DECON state is DECON_STATE_INIT */
+@@ -3254,6 +3238,7 @@ static void decon_shutdown(struct platform_device *pdev)
+ 	}
+ 
+ 	unlock_fb_info(fbinfo);
++
+ 	decon_info("%s -\n", __func__);
+ }
+ 
+@@ -3290,6 +3275,7 @@ static void exynos_decon_unregister(void)
+ late_initcall(exynos_decon_register);
+ module_exit(exynos_decon_unregister);
+ 
++
+ MODULE_AUTHOR("Jaehoe Yang <jaehoe.yang@samsung.com>");
+ MODULE_AUTHOR("Yeongran Shin <yr613.shin@samsung.com>");
+ MODULE_AUTHOR("Minho Kim <m8891.kim@samsung.com>");

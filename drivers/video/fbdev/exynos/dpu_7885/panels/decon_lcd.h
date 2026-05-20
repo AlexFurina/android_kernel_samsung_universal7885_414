@@ -87,9 +87,6 @@ struct decon_lcd {
 	unsigned int update_min_w;
 	unsigned int update_min_h;
 
-	unsigned int clklane_onoff;
-	unsigned int eotp_disabled;
-
 	unsigned int hs_clk;
 	struct stdphy_pms dphy_pms;
 	unsigned int esc_clk;
@@ -106,11 +103,15 @@ struct decon_lcd {
 	unsigned int data_lane;
 	unsigned int cmd_underrun_lp_ref;
 	unsigned int vt_compensation;
+
 #if defined(CONFIG_DPU_20)
 	unsigned int mres_mode;
 	struct lcd_mres_info dt_lcd_mres;
 	struct lcd_hdr_info dt_lcd_hdr;
 #endif
+
+	unsigned int clklane_onoff;
+	unsigned int eotp_disabled;
 };
 
 struct decon_dsc {

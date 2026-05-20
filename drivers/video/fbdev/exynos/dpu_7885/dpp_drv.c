@@ -15,11 +15,12 @@
 #include <linux/of.h>
 #include <linux/exynos_iovmm.h>
 #include <linux/videodev2_exynos_media.h>
+
 #ifdef CONFIG_EXYNOS_SUPPORT_FB_HANDOVER
 #include <linux/of_reserved_mem.h>
-#include <linux/sec_debug.h>
 #include "../../../../../mm/internal.h"
 #endif
+
 #include "dpp.h"
 #include "decon.h"
 
@@ -664,18 +665,6 @@ err:
 	return ret;
 }
 
-void dpp_release_rpm_hold(u32 id)
-{
-	struct dpp_device *dpp = get_dpp_drvdata(id);
-
-	if(true == dpp->hold_rpm_on_boot) {
-                pm_runtime_put_sync(dpp->dev);
-                dpp->hold_rpm_on_boot = false;
-		dpp_info("released dpp,hold-rpm-on-boot\n");
-        }
-}
-EXPORT_SYMBOL(dpp_release_rpm_hold);
-
 static int dpp_stop(struct dpp_device *dpp, bool reset)
 {
 	int ret = 0;
@@ -734,9 +723,7 @@ static long dpp_subdev_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg
 
 	switch (cmd) {
 	case DPP_WIN_CONFIG:
-		memcpy(&dpp->dpp_config,(struct decon_win_config *)arg,
-				sizeof(struct decon_win_config));
-		dpp->config = &dpp->dpp_config;
+		dpp->config = (struct decon_win_config *)arg;
 		ret = dpp_set_config(dpp);
 		if (ret)
 			dpp_err("failed to configure dpp%d\n", dpp->id);
@@ -1000,9 +987,8 @@ static int dpp_sysmmu_fault_handler(struct iommu_domain *domain,
 static void dpp_parse_dt(struct dpp_device *dpp, struct device *dev)
 {
 #ifdef CONFIG_EXYNOS_SUPPORT_FB_HANDOVER
-	struct device_node *fb_handover_node = NULL;
+	struct device_node *fb_handover_node= NULL;
 	u32 res[3];
-	int ret = 0;
 #endif
 	dpp->id = of_alias_get_id(dev->of_node, "dpp");
 	dpp_info("dpp(%d) probe start..\n", dpp->id);
@@ -1016,18 +1002,8 @@ static void dpp_parse_dt(struct dpp_device *dpp, struct device *dev)
 		decon_err("%s fb_handover_node does not exist!\n", __func__);
 
 	if (!of_property_read_u32_array(fb_handover_node, "reg", res, 3)) {
-		ret = of_reserved_mem_device_init_by_idx(dev, dev->of_node, 0);
-		if (ret)
-			dsim_err("failed reserved mem device init: %d\n", ret);
-
 		dpp->bl_fb_info.phy_addr	= res[1];
-		dpp->bl_fb_info.size		= res[2];
-
-		/* if fb_reserved is defined, Override "one to one mapping" region */
-		if (!of_property_read_u32_array(dev->of_node, "fb_reserved", res, 2)) {
-			dpp->bl_fb_info.phy_addr	= res[0];
-			dpp->bl_fb_info.size		= res[1];
-		}
+		dpp->bl_fb_info.size 		= res[2];
 
 		dpp_info("dpp%d bl_fb_info: 0x%x, size: 0x%x\n",
 			dpp->id,
@@ -1035,12 +1011,6 @@ static void dpp_parse_dt(struct dpp_device *dpp, struct device *dev)
 			dpp->bl_fb_info.size);
 	}
 #endif
-	if ((IDMA_G0 == dpp->id) && (of_property_read_bool(dev->of_node, "dpp,hold-rpm-on-boot"))) {
-		dpp->hold_rpm_on_boot = true;
-		dpp_info("dpp,hold-rpm-on-boot\n");
-	}else {
-		dpp->hold_rpm_on_boot = false;
-	}
 }
 
 static int dpp_init_resources(struct dpp_device *dpp, struct platform_device *pdev)
@@ -1172,9 +1142,6 @@ static int dpp_probe(struct platform_device *pdev)
 				dpp->bl_fb_info.size);
 	}
 #endif
-	if (dpp->hold_rpm_on_boot == true)
-		pm_runtime_get_sync(dev);
-
 	ret = iovmm_activate(dev);
 	if (ret) {
 		dpp_err("failed to activate iovmm\n");
@@ -1266,8 +1233,9 @@ static void dpp_unregister(void)
 	return platform_driver_unregister(&dpp_driver);
 }
 
-device_initcall(dpp_register);
+device_initcall_sync(dpp_register);
 module_exit(dpp_unregister);
+
 #ifdef CONFIG_EXYNOS_SUPPORT_FB_HANDOVER
 void dpu_of_reserved_mem_device_release(struct decon_device *decon)
 {
@@ -1289,13 +1257,7 @@ void dpu_of_reserved_mem_device_release(struct decon_device *decon)
 				dpp->id,
 				dpp->bl_fb_info.phy_addr);
 			memset(&dpp->bl_fb_info, 0, sizeof(struct bootloader_fb_info));
-
-			if (!sec_debug_enter_upload()) {
-				of_reserved_mem_device_release(dpp->dev);
-				dsim_info("%s rmem release.\n", __func__);
-			} else {
-				dsim_info("%s rmem keep.\n", __func__);
-			}
+			of_reserved_mem_device_release(dpp->dev);
 		}
 	}
 
@@ -1305,9 +1267,6 @@ void dpu_of_reserved_mem_device_release(struct decon_device *decon)
 static int rmem_dpu_device_init(struct reserved_mem *rmem, struct device *dev)
 {
 	/* do nothing */
-
-	pr_info("%s\n", __func__);
-
 	return 0;
 }
 
@@ -1318,8 +1277,8 @@ static void rmem_dpu_device_release(struct reserved_mem *rmem, struct device *de
 	struct page *last = phys_to_page((rmem->base + rmem->size) & PAGE_MASK);
 	struct page *page;
 
-	pr_info("%s: base=%pa, size=%pa, first=%pa, last=%pa\n",
-		__func__, &rmem->base, &rmem->size, first, last);
+	dpp_info("%s: base=%pa, size=%pa, first=%pa, last=%pa\n",
+			__func__, &rmem->base, &rmem->size, first, last);
 	free_memsize_reserved(rmem->base, rmem->size);
 
 	for (page = first; page != last; page++) {
@@ -1337,7 +1296,7 @@ static const struct reserved_mem_ops rmem_dpu_ops = {
 
 static int __init dpu_fb_handover_setup(struct reserved_mem *rmem)
 {
-	pr_info("%s: base=%pa, size=%pa\n", __func__, &rmem->base, &rmem->size);
+	dpp_info("%s: base=%pa, size=%pa\n", __func__, &rmem->base, &rmem->size);
 
 	rmem->ops = &rmem_dpu_ops;
 	return 0;

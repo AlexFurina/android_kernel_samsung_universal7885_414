@@ -58,7 +58,7 @@ static int dma_buf_release(struct inode *inode, struct file *file)
 
 	dmabuf = file->private_data;
 
-	BUG_ON(dmabuf->vmapping_counter);
+//	BUG_ON(dmabuf->vmapping_counter);
 
 	/*
 	 * Any fences that a dma-buf poll can wait on should be signaled

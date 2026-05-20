@@ -18,13 +18,13 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/irq.h>
 #include <media/v4l2-subdev.h>
-//#include <linux/exynos-wd.h>
+#include <linux/exynos-wd.h>
 
 #include "decon.h"
 #include "dsim.h"
 #include "dpp.h"
-//#include "../../../../soc/samsung/pwrcal/pwrcal.h"
-//#include "../../../../soc/samsung/pwrcal/S5E8890/S5E8890-vclk.h"
+#include "../../../../soc/samsung/pwrcal/pwrcal.h"
+#include "../../../../soc/samsung/pwrcal/S5E8890/S5E8890-vclk.h"
 #include "../../../../../kernel/irq/internals.h"
 #ifdef CONFIG_EXYNOS_WD_DVFS
 struct task_struct *devfreq_change_task;
@@ -141,7 +141,7 @@ int decon_register_irq(struct decon_device *decon)
 	}
 
 	ret = devm_request_irq(dev, res->start, decon_irq_handler,
-			0, pdev->name, decon);
+				0, pdev->name, decon);
 	if (ret) {
 		decon_err("failed to install FRAME DONE irq\n");
 		return ret;
@@ -155,7 +155,7 @@ int decon_register_irq(struct decon_device *decon)
 	}
 
 	ret = devm_request_irq(dev, res->start, decon_irq_handler,
-			0, pdev->name, decon);
+				0, pdev->name, decon);
 	if (ret) {
 		decon_err("failed to install EXTRA irq\n");
 		return ret;
@@ -889,9 +889,7 @@ int decon_enter_hiber(struct decon_device *decon)
 		decon_dpp_stop(decon, false);
 	}
 
-#if defined(CONFIG_EXYNOS_BTS)
 	decon->bts.ops->bts_release_bw(decon);
-#endif
 
 	decon->state = DECON_STATE_HIBER;
 

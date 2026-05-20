@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __DYNAMIC_AID_H
 #define __DYNAMIC_AID_H __FILE__
 

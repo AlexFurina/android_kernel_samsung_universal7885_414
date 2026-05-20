@@ -57,10 +57,15 @@ config DECON_HIBER
         depends on EXYNOS_DECON_7885
         default n
 
-config EXYNOS_SUPPORT_DOZE
+config EXYNOS_DOZE
 	bool "Suppot Doze mode to aod service"
 	depends on EXYNOS_DECON_7885
 	default n
+
+config EXYNOS_SUPPORT_DOZE
+	bool "Suppot backword compatibility for EXYNOS_DOZE"
+	depends on EXYNOS_DOZE
+	default y
 
 config EXYNOS_SUPPORT_FB_HANDOVER
 	bool "Suppot bootloader framebuffer handover"
@@ -69,8 +74,8 @@ config EXYNOS_SUPPORT_FB_HANDOVER
 
 config DPU_20
 	bool "New fence operation and New header sync with HWC2.0"
-	depends on EXYNOS_DECON_7885
-	default y
+	depends on EXYNOS_DECON_7885 && (ANDROID_VERSION >= 90000)
+	default y if (ANDROID_VERSION >= 90000)
 
 config LCD_HMT
 	bool "Suppot video emul & aid reverse to VR"
@@ -86,6 +91,17 @@ config LOGGING_BIGDATA_BUG
 	bool "Logging extra information when decon bug"
 	depends on SEC_DEBUG
 	default n
+
+config SUPPORT_LEGACY_ION
+	bool "Support legacy ION API"
+        depends on EXYNOS_DECON_7885
+        default n
+
+config SUPPORT_LEGACY_FENCE
+	bool "Support legacy fence API"
+        depends on EXYNOS_DECON_7885
+        default y
+
 endif
 
 source "drivers/video/fbdev/exynos/dpu_7885/panels/Kconfig"

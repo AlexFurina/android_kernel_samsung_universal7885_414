@@ -1,6 +1,9 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) Samsung Electronics Co., Ltd.
+ * linux/drivers/video/fbdev/exynos/panel/dpui.c
+ *
+ * Samsung Common LCD DPUI(display use info) LOGGING Driver.
+ *
+ * Copyright (c) 2016 Samsung Electronics
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as

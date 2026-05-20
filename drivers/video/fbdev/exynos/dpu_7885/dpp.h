@@ -22,11 +22,7 @@
 #include <linux/pm_qos.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
-#if defined(CONFIG_SUPPORT_LEGACY_ION)
 #include <linux/exynos_iovmm.h>
-#else
-#include <linux/ion_exynos.h>
-#endif
 #include <soc/samsung/bts.h>
 
 #include "decon.h"
@@ -86,8 +82,6 @@ extern int dpp_log_level;
 			&& (config->format <= DECON_PIXEL_FORMAT_YVU420M))
 #define is_vgr(dpp) ((dpp->id == IDMA_VGF0) || (dpp->id == IDMA_VGF1))
 #define is_wb(dpp) (dpp->id == ODMA_WB)
-
-#define exynos_ss_printk(...)
 
 #define dpp_err(fmt, ...)							\
 	do {									\
@@ -233,8 +227,6 @@ struct dpp_device {
 #ifdef CONFIG_EXYNOS_SUPPORT_FB_HANDOVER
 	struct bootloader_fb_info bl_fb_info;
 #endif
-	struct decon_win_config dpp_config;
-	bool hold_rpm_on_boot;
 };
 
 struct dpp_params_info {
@@ -364,8 +356,6 @@ static inline void dpp_select_format(struct dpp_device *dpp,
 	vi->yuv420 = is_yuv420(config);
 	vi->wb = is_wb(dpp);
 }
-
-void dpp_release_rpm_hold(u32 id);
 
 /* DPU DMA low-level APIs exposed to DPP driver */
 u32 dma_reg_get_irq_status(u32 id);

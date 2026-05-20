@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __PANEL_POC_H__
 #define __PANEL_POC_H__
 

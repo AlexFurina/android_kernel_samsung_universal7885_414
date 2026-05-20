@@ -1,6 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) Samsung Electronics Co., Ltd.
+ * linux/drivers/video/fbdev/exynos/panel/dpui.h
+ *
+ * Header file for Samsung Common LCD Driver.
+ *
+ * Copyright (c) 2016 Samsung Electronics
  * Gwanghui Lee <gwanghui.lee@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify

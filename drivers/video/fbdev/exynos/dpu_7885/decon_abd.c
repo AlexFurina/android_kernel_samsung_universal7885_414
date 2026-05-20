@@ -27,6 +27,7 @@
 #include "../../../../../kernel/irq/internals.h"
 #if defined(CONFIG_ARCH_EXYNOS)
 #include <linux/exynos_iovmm.h>
+#include <soc/samsung/exynos-devfreq.h>
 #endif
 #if defined(CONFIG_CAL_IF)
 #include <soc/samsung/cal-if.h>
@@ -49,9 +50,8 @@
 #if defined(CONFIG_SEC_DEBUG)
 #include <linux/sec_debug.h>
 #endif
-#include <soc/samsung/exynos-devfreq.h>
 
-#if defined(CONFIG_ARCH_EXYNOS) && defined(CONFIG_DPU_20)
+#if defined(CONFIG_ARCH_EXYNOS) && defined(CONFIG_EXYNOS_DPU20)
 #include "decon.h"
 #include "dpp.h"
 #include "dsim.h"
@@ -59,17 +59,15 @@
 #include "../dpu30/decon.h"
 #include "../dpu30/dpp.h"
 #include "../dpu30/dsim.h"
+#include "panel.h"
 #endif
 
 #include "decon_abd.h"
 #include "decon_board.h"
 #include "decon_notify.h"
 
-#if defined(CONFIG_EXYNOS_DPU30)
-#include "panel.h"
-#endif
-
 #define dbg_info(fmt, ...)		pr_info(pr_fmt("decon: "fmt), ##__VA_ARGS__)
+#define dbg_none(fmt, ...)		pr_debug(pr_fmt("decon: "fmt), ##__VA_ARGS__)
 
 #define abd_printf(m, ...)	\
 {	if (m) seq_printf(m, __VA_ARGS__); else dbg_info(__VA_ARGS__);	}	\
@@ -169,45 +167,59 @@ static inline struct decon_device *get_abd_container_of(struct abd_protect *abd)
 	return container;
 }
 
-static void set_frame_update_bypass(struct abd_protect *abd, unsigned int bypass)
+#if defined(CONFIG_SOC_EXYNOS7885) || defined(CONFIG_SOC_EXYNOS9610)
+static void set_frame_bypass(struct abd_protect *abd, unsigned int bypass)
 {
 	struct decon_device *container = get_abd_container_of(abd);
 
-	dbg_info("%s: %d\n", __func__, bypass);
+	if (bypass)
+		dbg_info("%s: %d\n", __func__, bypass);
+
+	container->ignore_vsync = bypass;
+}
+
+static int get_frame_bypass(struct abd_protect *abd)
+{
+	struct decon_device *container = get_abd_container_of(abd);
+
+	return container->ignore_vsync;
+}
+#else
+static void set_frame_bypass(struct abd_protect *abd, unsigned int bypass)
+{
+	struct decon_device *container = get_abd_container_of(abd);
+
+	if (bypass)
+		dbg_info("%s: %d\n", __func__, bypass);
 
 	atomic_set(&container->bypass, bypass);
 }
 
-static int get_frame_update_bypass(struct abd_protect *abd)
+static int get_frame_bypass(struct abd_protect *abd)
 {
 	struct decon_device *container = get_abd_container_of(abd);
 
 	return atomic_read(&container->bypass);
 }
+#endif
 
-static void set_lcdconnected(struct abd_protect *abd, unsigned int flag)
+#if defined(CONFIG_EXYNOS_DPU20)
+static void set_mipi_rw_bypass(struct abd_protect *abd, unsigned int flag)
 {
-#if defined(CONFIG_DPU_20)
 	struct decon_device *container = get_abd_container_of(abd);
 	struct dsim_device *dsim = v4l2_get_subdevdata(container->out_sd[0]);
 
-	dsim->priv.lcdconnected = flag;
-#endif
+	dsim->priv.lcdconnected = !flag;
 }
 
-static int get_lcdconnected(struct abd_protect *abd)
+static int get_mipi_rw_bypass(struct abd_protect *abd)
 {
-#if defined(CONFIG_DPU_20)
 	struct decon_device *container = get_abd_container_of(abd);
 	struct dsim_device *dsim = v4l2_get_subdevdata(container->out_sd[0]);
 
-	return dsim->priv.lcdconnected;
-#else
-	return 1;
-#endif
+	return !dsim->priv.lcdconnected;
 }
 
-#if defined(CONFIG_DPU_20)
 static inline int get_boot_lcdtype(void)
 {
 	return (int)lcdtype;
@@ -218,6 +230,15 @@ static inline unsigned int get_boot_lcdconnected(void)
 	return get_boot_lcdtype() ? 1 : 0;
 }
 #else
+static void set_mipi_rw_bypass(struct abd_protect *abd, unsigned int flag)
+{
+}
+
+static int get_mipi_rw_bypass(struct abd_protect *abd)
+{
+	return 0;
+}
+
 static inline int get_boot_lcdtype(void)
 {
 	return boot_panel_id;
@@ -346,7 +367,12 @@ void decon_abd_save_fto(struct abd_protect *abd, void *fence)
 	memset(event_log, 0, sizeof(struct fto_log));
 	event_log->stamp = local_clock();
 	event_log->ktime = ktime_get_real_seconds();
+#if defined(CONFIG_SOC_EXYNOS7885)
+//	memcpy(&event_log->fence, fence, sizeof(struct sync_fence));
+	memcpy(&event_log->fence, fence, sizeof(struct sync_file));
+#else
 	memcpy(&event_log->fence, fence, sizeof(struct dma_fence));
+#endif
 
 	if (!first->count) {
 		memset(first_log, 0, sizeof(struct fto_log));
@@ -379,7 +405,7 @@ void decon_abd_save_udr(struct abd_protect *abd, unsigned long mif, unsigned lon
 		return;
 
 	if (!mif | !iint | !disp) {
-#if defined(CONFIG_DPU_20)
+#if defined(CONFIG_EXYNOS_DPU20)
 		mif = cal_dfs_get_rate(ACPM_DVFS_MIF);
 		iint = cal_dfs_get_rate(ACPM_DVFS_INT);
 		disp = cal_dfs_get_rate(ACPM_DVFS_DISP);
@@ -524,7 +550,7 @@ static void _decon_abd_pin_enable(struct abd_protect *abd, struct abd_pin_info *
 		(pin->level == pin->active_level) ? "abnormal" : "normal");
 
 	if (pin->name && !strcmp(pin->name, "pcd"))
-		set_frame_update_bypass(abd, (pin->level == pin->active_level) ? 1 : 0);
+		set_frame_bypass(abd, (pin->level == pin->active_level) ? 1 : 0);
 
 	if (pin->irq)
 		decon_abd_pin_enable_irq(pin->irq, on);
@@ -551,10 +577,10 @@ void decon_abd_enable(struct abd_protect *abd, unsigned int enable)
 		return;
 
 	if (abd->enable == enable)
-		dbg_info("%s: already %s\n", __func__, enable ? "enabled" : "disabled");
+		dbg_none("%s: already %s\n", __func__, enable ? "enabled" : "disabled");
 
 	if (abd->enable != enable)
-		dbg_info("%s: lcdconnected: %d\n", __func__, get_lcdconnected(abd));
+		dbg_info("%s: bypass: %d,%d\n", __func__, get_mipi_rw_bypass(abd), get_frame_bypass(abd));
 
 	if (!abd->enable && enable) {	/* off -> on */
 		abd->f_lcdon.lcdon_flag = 0;
@@ -605,7 +631,7 @@ irqreturn_t decon_abd_handler(int irq, void *dev_id)
 		goto exit;
 
 	if (i == ABD_PIN_PCD)
-		set_frame_update_bypass(abd, 1);
+		set_frame_bypass(abd, 1);
 
 	list_for_each_entry(pin_handler, &pin->handler_list, node) {
 		if (pin_handler && pin_handler->handler)
@@ -774,9 +800,20 @@ static void decon_abd_print_fto(struct seq_file *m, struct abd_fto *trace)
 		tv = ns_to_timeval(log->stamp);
 		rtc_time_to_tm(log->ktime, &tm);
 
+#if defined(CONFIG_SOC_EXYNOS9810)
+/*
+		abd_printf(m, "%d-%02d-%02d %02d:%02d:%02d / %lu.%06lu / winid: %d, %s:%s\n",
+			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec,
+			(unsigned long)tv.tv_sec, tv.tv_usec, log->winid, log->fence.name, sync_status_str(atomic_read(&log->fence.status)));
+*/
+		abd_printf(m, "%d-%02d-%02d %02d:%02d:%02d / %lu.%06lu / winid: %d, %s\n",
+			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec,
+			(unsigned long)tv.tv_sec, tv.tv_usec, log->winid, log->fence.name, sync_status_str(fence_get_status(log->fence.fence)));
+#else
 		abd_printf(m, "%d-%02d-%02d %02d:%02d:%02d / %lu.%06lu / winid: %d, %s\n",
 			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec,
 			(unsigned long)tv.tv_sec, tv.tv_usec, log->winid, sync_status_str(dma_fence_get_status_locked(&log->fence)));
+#endif
 	}
 }
 
@@ -926,7 +963,7 @@ static int decon_abd_show(struct seq_file *m, void *unused)
 	unsigned int i = 0;
 
 	abd_printf(m, "==========_DECON_ABD_==========\n");
-	abd_printf(m, "bypass: %d, lcdconnected: %d, lcdtype: %8X\n", get_frame_update_bypass(abd), get_lcdconnected(abd), get_boot_lcdtype());
+	abd_printf(m, "bypass: %d,%d, lcdtype: %6X\n", get_frame_bypass(abd), get_mipi_rw_bypass(abd), get_boot_lcdtype());
 
 	for (i = 0; i < ABD_PIN_MAX; i++) {
 		if (abd->pin[i].p_first.count) {
@@ -990,7 +1027,7 @@ static int decon_abd_reboot_notifier(struct notifier_block *this,
 	decon_abd_enable(abd, 0);
 
 	abd_printf(m, "==========_DECON_ABD_==========\n");
-	abd_printf(m, "bypass: %d, lcdconnected: %d, lcdtype: %8X\n", get_frame_update_bypass(abd), get_lcdconnected(abd), get_boot_lcdtype());
+	abd_printf(m, "bypass: %d,%d, lcdtype: %6X\n", get_frame_bypass(abd), get_mipi_rw_bypass(abd), get_boot_lcdtype());
 
 	for (i = 0; i < ABD_PIN_MAX; i++) {
 		if (abd->pin[i].p_first.count) {
@@ -1093,7 +1130,7 @@ static int decon_abd_pin_register_function(struct abd_protect *abd, struct abd_p
 		decon_abd_save_pin(abd, pin, trace, 1);
 
 		if (pin->name && !strcmp(pin->name, "pcd"))
-			set_frame_update_bypass(abd, 1);
+			set_frame_bypass(abd, 1);
 	}
 
 	if (pin->irq) {
@@ -1147,7 +1184,7 @@ static int decon_abd_con_set_dummy_blank(struct abd_protect *abd, struct fb_info
 	} else {
 		_decon_abd_pin_enable(abd, &abd->pin[ABD_PIN_CON], 0);
 		fbinfo->fbops->fb_blank = abd->fbops.fb_blank;
-		set_frame_update_bypass(abd, 0);
+		set_frame_bypass(abd, 0);
 		abd->con_blank = 0;
 		ret = NOTIFY_DONE;
 	}
@@ -1170,7 +1207,7 @@ static int decon_abd_con_fb_blank(struct abd_protect *abd)
 
 	dbg_info("%s\n", __func__);
 
-	set_lcdconnected(abd, 0);
+	set_mipi_rw_bypass(abd, 1);
 
 	_decon_abd_fb_blank(fbinfo, FB_BLANK_POWERDOWN);
 
@@ -1290,8 +1327,8 @@ static int decon_abd_con_pin_register_hanlder(struct abd_protect *abd)
 
 	pin.active_level = !(flags & OF_GPIO_ACTIVE_LOW);
 	irqf_type = (flags & OF_GPIO_ACTIVE_LOW) ? IRQF_TRIGGER_FALLING : IRQF_TRIGGER_RISING;
-	dbg_info("%s: %s is active %s, %s\n", __func__, keyword, pin.active_level ? "high" : "low",
-		(irqf_type == IRQF_TRIGGER_RISING) ? "rising" : "falling");
+	dbg_info("%s: %s is active %s%s\n", __func__, keyword, pin.active_level ? "high" : "low",
+		(irqf_type == IRQF_TRIGGER_RISING) ? ", rising" : ", falling");
 
 	pin.level = gpio_get_value(pin.gpio);
 	if (pin.level != pin.active_level)
@@ -1431,6 +1468,7 @@ static void decon_abd_pin_register(struct abd_protect *abd)
 	decon_abd_pin_register_function(abd, &abd->pin[ABD_PIN_DET], "det", decon_abd_handler);
 	decon_abd_pin_register_function(abd, &abd->pin[ABD_PIN_ERR], "err", decon_abd_handler);
 	decon_abd_pin_register_function(abd, &abd->pin[ABD_PIN_CON], "con", decon_abd_handler);
+	decon_abd_pin_register_function(abd, &abd->pin[ABD_PIN_LOG], "log", decon_abd_handler);
 
 	abd->pin_early_notifier.notifier_call = decon_abd_pin_early_notifier_callback;
 	abd->pin_early_notifier.priority = decon_nb_priority_max.priority - 1;
@@ -1517,12 +1555,12 @@ static int __init decon_abd_init(void)
 
 	find_lcd_class_device();
 
-	dbg_info("%s: lcdtype: %8X\n", __func__, get_boot_lcdtype());
+	dbg_info("%s: lcdtype: %6X\n", __func__, get_boot_lcdtype());
 
 	if (get_boot_lcdconnected())
 		decon_abd_pin_register(abd);
 	else
-		set_frame_update_bypass(abd, 1);
+		set_frame_bypass(abd, 1);
 
 	decon_abd_enable(abd, 1);
 

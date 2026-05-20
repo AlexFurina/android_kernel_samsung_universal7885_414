@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 #include <video/mipi_display.h>
 #include "poc.h"
 #include "dpui.h"
@@ -22,6 +21,7 @@ const char * const poc_op_string[] = {
 	ret = dsim_write_hl_data(poc_dev, cmd, size);			\
 	if (ret < 0) {							\
 		dsim_err("%s: failed to write %s\n", __func__, #cmd);	\
+		goto tx_fail;	\
 	}	\
 } while (0)
 
