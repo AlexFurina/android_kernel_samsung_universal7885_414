@@ -222,6 +222,42 @@ config MFD_CROS_EC_SPI
 	  response time cannot be guaranteed, we support ignoring
 	  'pre-amble' bytes before the response actually starts.
 
+config MFD_MADERA
+	bool
+
+config MFD_MADERA_I2C
+	bool "Cirrus Logic Madera codecs with I2C"
+	select REGMAP
+	select REGMAP_IRQ
+	select MFD_CORE
+	select REGMAP_I2C
+	select MFD_MADERA
+	select MADERA_IRQ
+	depends on I2C
+	help
+	  Support for the Cirrus Logic Madera platform audio SoC
+	  core functionality controlled via I2C.
+
+config MFD_MADERA_SPI
+	bool "Cirrus Logic Madera codecs with SPI"
+	select REGMAP
+	select REGMAP_IRQ
+	select MFD_CORE
+	select REGMAP_SPI
+	select MFD_MADERA
+	select MADERA_IRQ
+	depends on SPI_MASTER
+	help
+	  Support for the Cirrus Logic Madera platform audio SoC
+	  core functionality controlled via SPI.
+
+config MFD_CS47L92
+	bool "Cirrus Logic CS47L92/93"
+	select PINCTRL_CS47L92
+	depends on MFD_MADERA
+	help
+	  Support for Cirrus Logic CS47L92 and CS47L93 Smart Codecs
+
 config MFD_ASIC3
 	bool "Compaq ASIC3"
 	depends on GPIOLIB && ARM
@@ -1043,6 +1079,17 @@ config MFD_S2MPB02
 	  This is a Power Management IC with Flash on chip.
 	  This driver provides common support for accessing the device;
 	  additional drivers
+
+config MFD_S2MPS18
+	bool "SAMSUNG Electronics S2MPS18 PMIC Series Support"
+	depends on I2C=y
+	select MFD_CORE
+	select REGULATOR
+	help
+	 Support for the Samsung Electronics MFD series.
+	 This driver provides common support for accessing the device,
+	 additional drivers must be enabled in order to use the functionality
+	 of the device
 
 config MFD_S2MU106
     bool "SAMSUNG Electronics IF PMIC Series Support"
