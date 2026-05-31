@@ -29,6 +29,10 @@
 #include <linux/blkzoned.h>
 #include <linux/blk-crypt.h>
 
+#ifdef CONFIG_MMC_SRPMB
+#include <linux/mmc/ioctl.h>
+#endif
+
 struct module;
 struct scsi_ioctl_command;
 
@@ -1987,6 +1991,10 @@ struct block_device_operations {
 	void (*swap_slot_free_notify) (struct block_device *, unsigned long);
 	struct module *owner;
 	const struct pr_ops *pr_ops;
+
+#ifdef CONFIG_MMC_SRPMB
+	int (*srpmb_access) (struct block_device *bdev, struct mmc_ioc_cmd *icmd);
+#endif
 };
 
 extern int __blkdev_driver_ioctl(struct block_device *, fmode_t, unsigned int,

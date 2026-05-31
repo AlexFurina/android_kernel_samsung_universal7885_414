@@ -71,7 +71,6 @@ static struct pm_qos_constraints cpu_dma_constraints = {
 	.no_constraint_value = PM_QOS_CPU_DMA_LAT_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &cpu_dma_lat_notifier,
-	.mlock = __MUTEX_INITIALIZER(cpu_dma_constraints.mlock),
 };
 static struct pm_qos_object cpu_dma_pm_qos = {
 	.constraints = &cpu_dma_constraints,
@@ -86,7 +85,6 @@ static struct pm_qos_constraints network_lat_constraints = {
 	.no_constraint_value = PM_QOS_NETWORK_LAT_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &network_lat_notifier,
-	.mlock = __MUTEX_INITIALIZER(network_lat_constraints.mlock),
 };
 static struct pm_qos_object network_lat_pm_qos = {
 	.constraints = &network_lat_constraints,
@@ -100,7 +98,6 @@ static struct pm_qos_constraints device_tput_constraints = {
 	.default_value = PM_QOS_DEVICE_THROUGHPUT_DEFAULT_VALUE,
 	.type = PM_QOS_FORCE_MAX,
 	.notifiers = &device_throughput_notifier,
-	.mlock = __MUTEX_INITIALIZER(device_tput_constraints.mlock),
 };
 static struct pm_qos_object device_throughput_pm_qos = {
 	.constraints = &device_tput_constraints,
@@ -114,7 +111,6 @@ static struct pm_qos_constraints device_tput_max_constraints = {
 	.default_value = PM_QOS_DEVICE_THROUGHPUT_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &device_throughput_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(device_tput_max_constraints.mlock),
 };
 static struct pm_qos_object device_throughput_max_pm_qos = {
 	.constraints = &device_tput_max_constraints,
@@ -128,7 +124,6 @@ static struct pm_qos_constraints intcam_tput_constraints = {
 	.default_value = PM_QOS_INTCAM_THROUGHPUT_DEFAULT_VALUE,
 	.type = PM_QOS_FORCE_MAX,
 	.notifiers = &intcam_throughput_notifier,
-	.mlock = __MUTEX_INITIALIZER(intcam_tput_constraints.mlock),
 };
 static struct pm_qos_object intcam_throughput_pm_qos = {
 	.constraints = &intcam_tput_constraints,
@@ -142,7 +137,6 @@ static struct pm_qos_constraints intcam_tput_max_constraints = {
 	.default_value = PM_QOS_INTCAM_THROUGHPUT_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &intcam_throughput_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(intcam_tput_max_constraints.mlock),
 };
 static struct pm_qos_object intcam_throughput_max_pm_qos = {
 	.constraints = &intcam_tput_max_constraints,
@@ -156,7 +150,6 @@ static struct pm_qos_constraints bus_tput_constraints = {
 	.default_value = PM_QOS_BUS_THROUGHPUT_DEFAULT_VALUE,
 	.type = PM_QOS_MAX,
 	.notifiers = &bus_throughput_notifier,
-	.mlock = __MUTEX_INITIALIZER(bus_tput_constraints.mlock),
 };
 static struct pm_qos_object bus_throughput_pm_qos = {
 	.constraints = &bus_tput_constraints,
@@ -170,7 +163,6 @@ static struct pm_qos_constraints bus_tput_max_constraints = {
 	.default_value = PM_QOS_BUS_THROUGHPUT_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &bus_throughput_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(bus_tput_max_constraints.mlock),
 };
 static struct pm_qos_object bus_throughput_max_pm_qos = {
 	.constraints = &bus_tput_max_constraints,
@@ -185,7 +177,6 @@ static struct pm_qos_constraints network_tput_constraints = {
 	.no_constraint_value = PM_QOS_NETWORK_THROUGHPUT_DEFAULT_VALUE,
 	.type = PM_QOS_MAX,
 	.notifiers = &network_throughput_notifier,
-	.mlock = __MUTEX_INITIALIZER(network_tput_constraints.mlock),
 };
 static struct pm_qos_object network_throughput_pm_qos = {
 	.constraints = &network_tput_constraints,
@@ -201,7 +192,6 @@ static struct pm_qos_constraints memory_bw_constraints = {
 	.no_constraint_value = PM_QOS_MEMORY_BANDWIDTH_DEFAULT_VALUE,
 	.type = PM_QOS_SUM,
 	.notifiers = &memory_bandwidth_notifier,
-	.mlock = __MUTEX_INITIALIZER(memory_bw_constraints.mlock),
 };
 static struct pm_qos_object memory_bandwidth_pm_qos = {
 	.constraints = &memory_bw_constraints,
@@ -215,7 +205,6 @@ static struct pm_qos_constraints cluster1_freq_min_constraints = {
 	.default_value = PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE,
 	.type = PM_QOS_MAX,
 	.notifiers = &cluster1_freq_min_notifier,
-	.mlock = __MUTEX_INITIALIZER(cluster1_freq_min_constraints.mlock),
 };
 static struct pm_qos_object cluster1_freq_min_pm_qos = {
 	.constraints = &cluster1_freq_min_constraints,
@@ -229,7 +218,6 @@ static struct pm_qos_constraints cluster1_freq_max_constraints = {
 	.default_value = PM_QOS_CPU_FREQ_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &cluster1_freq_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(cluster1_freq_max_constraints.mlock),
 };
 static struct pm_qos_object cluster1_freq_max_pm_qos = {
 	.constraints = &cluster1_freq_max_constraints,
@@ -243,7 +231,6 @@ static struct pm_qos_constraints cluster0_freq_min_constraints = {
 	.default_value = PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE,
 	.type = PM_QOS_MAX,
 	.notifiers = &cluster0_freq_min_notifier,
-	.mlock = __MUTEX_INITIALIZER(cluster0_freq_min_constraints.mlock),
 };
 static struct pm_qos_object cluster0_freq_min_pm_qos = {
 	.constraints = &cluster0_freq_min_constraints,
@@ -257,7 +244,6 @@ static struct pm_qos_constraints cluster0_freq_max_constraints = {
 	.default_value = PM_QOS_CPU_FREQ_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &cluster0_freq_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(cluster0_freq_max_constraints.mlock),
 };
 static struct pm_qos_object cluster0_freq_max_pm_qos = {
 	.constraints = &cluster0_freq_max_constraints,
@@ -271,7 +257,6 @@ static struct pm_qos_constraints cpu_online_min_constraints = {
 	.default_value = PM_QOS_CPU_ONLINE_MIN_DEFAULT_VALUE,
 	.type = PM_QOS_MAX,
 	.notifiers = &cpu_online_min_notifier,
-	.mlock = __MUTEX_INITIALIZER(cpu_online_min_constraints.mlock),
 };
 static struct pm_qos_object cpu_online_min_pm_qos = {
 	.constraints = &cpu_online_min_constraints,
@@ -285,7 +270,6 @@ static struct pm_qos_constraints cpu_online_max_constraints = {
 	.default_value = PM_QOS_CPU_ONLINE_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &cpu_online_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(cpu_online_max_constraints.mlock),
 };
 static struct pm_qos_object cpu_online_max_pm_qos = {
 	.constraints = &cpu_online_max_constraints,
@@ -299,7 +283,6 @@ static struct pm_qos_constraints display_tput_constraints = {
 	.default_value = PM_QOS_DISPLAY_THROUGHPUT_DEFAULT_VALUE,
 	.type = PM_QOS_MAX,
 	.notifiers = &display_throughput_notifier,
-	.mlock = __MUTEX_INITIALIZER(display_tput_constraints.mlock),
 };
 static struct pm_qos_object display_throughput_pm_qos = {
 	.constraints = &display_tput_constraints,
@@ -313,7 +296,6 @@ static struct pm_qos_constraints display_tput_max_constraints = {
 	.default_value = PM_QOS_DISPLAY_THROUGHPUT_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &display_throughput_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(display_tput_max_constraints.mlock),
 };
 static struct pm_qos_object display_throughput_max_pm_qos = {
 	.constraints = &display_tput_max_constraints,
@@ -327,7 +309,6 @@ static struct pm_qos_constraints cam_tput_constraints = {
 	.default_value = PM_QOS_CAM_THROUGHPUT_DEFAULT_VALUE,
 	.type = PM_QOS_MAX,
 	.notifiers = &cam_throughput_notifier,
-	.mlock = __MUTEX_INITIALIZER(cam_tput_constraints.mlock),
 };
 static struct pm_qos_object cam_throughput_pm_qos = {
 	.constraints = &cam_tput_constraints,
@@ -341,7 +322,6 @@ static struct pm_qos_constraints aud_tput_constraints = {
 	.default_value = PM_QOS_AUD_THROUGHPUT_DEFAULT_VALUE,
 	.type = PM_QOS_MAX,
 	.notifiers = &aud_throughput_notifier,
-	.mlock = __MUTEX_INITIALIZER(aud_tput_constraints.mlock),
 };
 static struct pm_qos_object aud_throughput_pm_qos = {
 	.constraints = &aud_tput_constraints,
@@ -356,7 +336,6 @@ static struct pm_qos_constraints iva_tput_constraints = {
 	.default_value = PM_QOS_IVA_THROUGHPUT_DEFAULT_VALUE,
 	.type = PM_QOS_MAX,
 	.notifiers = &iva_throughput_notifier,
-	.mlock = __MUTEX_INITIALIZER(iva_tput_constraints.mlock),
 };
 static struct pm_qos_object iva_throughput_pm_qos = {
 	.constraints = &iva_tput_constraints,
@@ -370,7 +349,6 @@ static struct pm_qos_constraints score_tput_constraints = {
 	.default_value = PM_QOS_SCORE_THROUGHPUT_DEFAULT_VALUE,
 	.type = PM_QOS_MAX,
 	.notifiers = &score_throughput_notifier,
-	.mlock = __MUTEX_INITIALIZER(score_tput_constraints.mlock),
 };
 static struct pm_qos_object score_throughput_pm_qos = {
 	.constraints = &score_tput_constraints,
@@ -384,14 +362,24 @@ static struct pm_qos_constraints fsys0_tput_constraints = {
 	.default_value = PM_QOS_FSYS0_THROUGHPUT_DEFAULT_VALUE,
 	.type = PM_QOS_MAX,
 	.notifiers = &fsys0_throughput_notifier,
-	.mlock = __MUTEX_INITIALIZER(fsys0_tput_constraints.mlock),
 };
 static struct pm_qos_object fsys0_throughput_pm_qos = {
 	.constraints = &fsys0_tput_constraints,
 	.name = "fsys0_throughput",
 };
 #endif
-
+static BLOCKING_NOTIFIER_HEAD(fsys_throughput_notifier);
+static struct pm_qos_constraints fsys_tput_constraints = {
+	.list = PLIST_HEAD_INIT(fsys_tput_constraints.list),
+	.target_value = PM_QOS_FSYS_THROUGHPUT_DEFAULT_VALUE,
+	.default_value = PM_QOS_FSYS_THROUGHPUT_DEFAULT_VALUE,
+	.type = PM_QOS_MAX,
+	.notifiers = &fsys_throughput_notifier,
+};
+static struct pm_qos_object fsys_throughput_pm_qos = {
+	.constraints = &fsys_tput_constraints,
+	.name = "fsys_throughput",
+};
 static BLOCKING_NOTIFIER_HEAD(cam_throughput_max_notifier);
 static struct pm_qos_constraints cam_tput_max_constraints = {
 	.list = PLIST_HEAD_INIT(cam_tput_max_constraints.list),
@@ -399,7 +387,6 @@ static struct pm_qos_constraints cam_tput_max_constraints = {
 	.default_value = PM_QOS_CAM_THROUGHPUT_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &cam_throughput_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(cam_tput_max_constraints.mlock),
 };
 static struct pm_qos_object cam_throughput_max_pm_qos = {
 	.constraints = &cam_tput_max_constraints,
@@ -413,7 +400,6 @@ static struct pm_qos_constraints aud_tput_max_constraints = {
 	.default_value = PM_QOS_AUD_THROUGHPUT_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &aud_throughput_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(aud_tput_max_constraints.mlock),
 };
 static struct pm_qos_object aud_throughput_max_pm_qos = {
 	.constraints = &aud_tput_max_constraints,
@@ -428,7 +414,6 @@ static struct pm_qos_constraints iva_tput_max_constraints = {
 	.default_value = PM_QOS_IVA_THROUGHPUT_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &iva_throughput_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(iva_tput_max_constraints.mlock),
 };
 static struct pm_qos_object iva_throughput_max_pm_qos = {
 	.constraints = &iva_tput_max_constraints,
@@ -442,7 +427,6 @@ static struct pm_qos_constraints score_tput_max_constraints = {
 	.default_value = PM_QOS_SCORE_THROUGHPUT_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &score_throughput_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(score_tput_max_constraints.mlock),
 };
 static struct pm_qos_object score_throughput_max_pm_qos = {
 	.constraints = &score_tput_max_constraints,
@@ -456,14 +440,24 @@ static struct pm_qos_constraints fsys0_tput_max_constraints = {
 	.default_value = PM_QOS_FSYS0_THROUGHPUT_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &fsys0_throughput_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(fsys0_tput_max_constraints.mlock),
 };
 static struct pm_qos_object fsys0_throughput_max_pm_qos = {
 	.constraints = &fsys0_tput_max_constraints,
 	.name = "fsys0_throughput_max",
 };
 #endif
-
+static BLOCKING_NOTIFIER_HEAD(fsys_throughput_max_notifier);
+static struct pm_qos_constraints fsys_tput_max_constraints = {
+	.list = PLIST_HEAD_INIT(fsys_tput_max_constraints.list),
+	.target_value = PM_QOS_FSYS_THROUGHPUT_MAX_DEFAULT_VALUE,
+	.default_value = PM_QOS_FSYS_THROUGHPUT_MAX_DEFAULT_VALUE,
+	.type = PM_QOS_MIN,
+	.notifiers = &fsys_throughput_max_notifier,
+};
+static struct pm_qos_object fsys_throughput_max_pm_qos = {
+	.constraints = &fsys_tput_max_constraints,
+	.name = "fsys_throughput_max",
+};
 static BLOCKING_NOTIFIER_HEAD(mfc_throughput_notifier);
 static struct pm_qos_constraints mfc_tput_constraints = {
 	.list = PLIST_HEAD_INIT(mfc_tput_constraints.list),
@@ -471,7 +465,6 @@ static struct pm_qos_constraints mfc_tput_constraints = {
 	.default_value = PM_QOS_MFC_THROUGHPUT_DEFAULT_VALUE,
 	.type = PM_QOS_MAX,
 	.notifiers = &mfc_throughput_notifier,
-	.mlock = __MUTEX_INITIALIZER(mfc_tput_constraints.mlock),
 };
 static struct pm_qos_object mfc_throughput_pm_qos = {
 	.constraints = &mfc_tput_constraints,
@@ -485,7 +478,6 @@ static struct pm_qos_constraints mfc_tput_max_constraints = {
 	.default_value = PM_QOS_MFC_THROUGHPUT_MAX_DEFAULT_VALUE,
 	.type = PM_QOS_MIN,
 	.notifiers = &mfc_throughput_max_notifier,
-	.mlock = __MUTEX_INITIALIZER(mfc_tput_max_constraints.mlock),
 };
 static struct pm_qos_object mfc_throughput_max_pm_qos = {
 	.constraints = &mfc_tput_max_constraints,
@@ -514,12 +506,14 @@ static struct pm_qos_object *pm_qos_array[] = {
 	&display_throughput_max_pm_qos,
 	&cam_throughput_pm_qos,
 	&aud_throughput_pm_qos,
+	&fsys_throughput_pm_qos,
 #ifdef CONFIG_SOC_EXYNOS9810
 	&iva_throughput_pm_qos,
 	&score_throughput_pm_qos,
 	&fsys0_throughput_pm_qos,
 #endif
 	&cam_throughput_max_pm_qos,
+	&fsys_throughput_max_pm_qos,
 	&aud_throughput_max_pm_qos,
 #ifdef CONFIG_SOC_EXYNOS9810
 	&iva_throughput_max_pm_qos,
@@ -680,7 +674,6 @@ int pm_qos_update_target(struct pm_qos_constraints *c, struct plist_node *node,
 	int prev_value, curr_value, new_value;
 	int ret;
 
-	mutex_lock(&c->mlock);
 	spin_lock_irqsave(&pm_qos_lock, flags);
 	prev_value = pm_qos_get_value(c);
 	if (value == PM_QOS_DEFAULT_VALUE)
@@ -719,7 +712,6 @@ int pm_qos_update_target(struct pm_qos_constraints *c, struct plist_node *node,
 		blocking_notifier_call_chain(c->notifiers,
 					     (unsigned long)curr_value,
 					     NULL);
-		mutex_unlock(&c->mlock);
 		return 1;
 	}
 
@@ -734,7 +726,6 @@ int pm_qos_update_target(struct pm_qos_constraints *c, struct plist_node *node,
 	} else {
 		ret = 0;
 	}
-	mutex_unlock(&c->mlock);
 	return ret;
 }
 

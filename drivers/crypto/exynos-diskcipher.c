@@ -60,7 +60,7 @@ int exynos_fmp_crypt_clear(struct bio *bio, void *table_addr)
 }
 
 int exynos_fmp_crypt_cfg(struct bio *bio, void *table_addr,
-			u32 page_idx, u32 sector_unit)
+			u32 page_idx, u32 sector_unit, bool cmdq_enabled)
 {
 	struct crypto_diskcipher *dtfm = crypto_diskcipher_get(bio);
 	u64 iv;
@@ -72,7 +72,7 @@ int exynos_fmp_crypt_cfg(struct bio *bio, void *table_addr,
 		return -EINVAL;
 	} else if (dtfm) {
 		req.table = table_addr;
-		req.cmdq_enabled = 0;
+		req.cmdq_enabled = cmdq_enabled;
 		req.iv = &iv;
 		req.ivsize = sizeof(iv);
 #ifdef CONFIG_EXYNOS_FMP_FIPS

@@ -21,7 +21,9 @@
 #define RESULT_READ_REQ				0x0005
 #define RPMB_END_ADDRESS			0x4000
 
-#define RPMB_PACKET_SIZE 			512
+#define RPMB_PACKET_SIZE			512
+#define RPMB_REQRES				510
+#define RPMB_RESULT				508
 
 #define WRITE_COUNTER_DATA_LEN_ERROR		0x601
 #define WRITE_COUNTER_SECURITY_OUT_ERROR	0x602
@@ -33,8 +35,11 @@
 #define READ_LEN_ERROR				0x608
 #define READ_DATA_SECURITY_OUT_ERROR		0x609
 #define READ_DATA_SECURITY_IN_ERROR		0x60A
+#define RPMB_INVALID_COMMAND			0x60B
+#define RPMB_FAIL_SUSPEND_STATUS		0x60C
 
-#define PASS_STATUS 				0xBABA
+#define RPMB_IN_PROGRESS			0xDCDC
+#define RPMB_PASSED				0xBABA
 
 #define IS_INCLUDE_RPMB_DEVICE			"0:0:0:1"
 
@@ -53,6 +58,8 @@ struct _mmc_rpmb_ctx {
 	struct work_struct work;
 	struct block_device *bdev;
 	struct wake_lock wakelock;
+	spinlock_t lock;
+	struct notifier_block pm_notifier;
 };
 
 struct _mmc_rpmb_req {

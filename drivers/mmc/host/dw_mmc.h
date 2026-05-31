@@ -162,7 +162,7 @@ struct dw_mci {
 	spinlock_t lock;
 	spinlock_t irq_lock;
 	void __iomem *regs;
-	void __iomem *fmp_regs;
+	void __iomem *cq_regs;
 	void __iomem *fifo_reg;
 	u32 data_addr_override;
 	bool wm_aligned;
@@ -170,6 +170,7 @@ struct dw_mci {
 	struct scatterlist *sg;
 	struct sg_mapping_iter sg_miter;
 
+	struct dw_mci_slot	*cur_slot;
 	struct mmc_request *mrq;
 	struct mmc_command *cmd;
 	struct mmc_data *data;
@@ -195,9 +196,9 @@ struct dw_mci {
 	resource_size_t phy_regs;
 
 	unsigned int desc_sz;
-	struct pm_qos_request pm_qos_int_lock;
-	struct pm_qos_request pm_qos_mif_lock;
+	struct pm_qos_request pm_qos_lock;
 	struct delayed_work qos_work;
+	struct delayed_work     hwacg_work;
 	bool qos_cntrl;
 	u32 cmd_status;
 	u32 data_status;
@@ -225,6 +226,7 @@ struct dw_mci {
 	void *priv;
 	struct clk *biu_clk;
 	struct clk *ciu_clk;
+	struct clk *ciu_gate;
 	atomic_t biu_clk_cnt;
 	atomic_t ciu_clk_cnt;
 	atomic_t biu_en_win;
@@ -285,6 +287,10 @@ struct dw_mci {
 	struct timer_list cmd11_timer;
 	struct timer_list cto_timer;
 	struct timer_list dto_timer;
+
+	/* CMD Queuing Host interface */
+	struct cmdq_host *cq_host;
+	int                     prv_hwacg_state;
 
 	/* channel id */
 	u32 ch_id;
@@ -362,9 +368,8 @@ struct dw_mci_board {
 	bool only_once_tune;
 
 	/* INT QOS khz */
-	unsigned int qos_dvfs_int_level;
-	/* MIF QOS khz */
-	unsigned int qos_dvfs_mif_level;
+	unsigned int qos_dvfs_level;
+	unsigned int qos_sd3_dvfs_level;
 	/* SSC RATE */
 	unsigned int ssc_rate;
 
@@ -628,7 +633,7 @@ do {	\
 #define SDMMC_CTRL_FIFO_RESET		BIT(1)
 #define SDMMC_CTRL_RESET		BIT(0)
 /* Clock Enable register defines */
-#define SDMMC_CLKEN_LOW_PWR		BIT(16)
+#define SDMMC_CLKEN_LOW_PWR		0
 #define SDMMC_CLKEN_ENABLE		BIT(0)
 /* time-out register defines */
 #define SDMMC_TMOUT_DATA(n)		_SBF(8, (n))
@@ -751,8 +756,6 @@ do {	\
 /* Register access macros */
 #define mci_readl(dev, reg)			\
 	readl_relaxed((dev)->regs + SDMMC_##reg)
-#define mci_fmp_readl(dev, reg)			\
-	readl_relaxed((dev)->fmp_regs + SDMMC_##reg)
 #define mci_writel(dev, reg, value)			\
 	writel_relaxed((value), (dev)->regs + SDMMC_##reg)
 
@@ -833,7 +836,7 @@ enum dw_mci_misc_control {
 #define SDMMC_HTO_TMOUT_SHIFT		8
 
 extern u32 dw_mci_calc_timeout(struct dw_mci *host);
-extern int dw_mci_probe(struct dw_mci *host);
+extern int dw_mci_probe(struct dw_mci *host, struct platform_device *pdev);
 extern void dw_mci_remove(struct dw_mci *host);
 #ifdef CONFIG_PM
 extern int dw_mci_runtime_suspend(struct device *device);
@@ -915,6 +918,20 @@ struct dw_mci_cmd_log {
 	u8 status_count;	/* TBD : It can be changed */
 };
 
+#define	NUM_OF_CQ_LOG_CTX	5
+struct dw_mci_cq_cmd_log {
+	u64	send_time;
+	u64	done_time;
+/*
+ *	context to be stored
+ *
+ *	idx 0 - tag
+ *	idx 1 - doorbell
+ */
+	u32	data1[NUM_OF_CQ_LOG_CTX];
+	u32	data2[NUM_OF_CQ_LOG_CTX];
+};
+
 enum dw_mci_req_log_state {
 	STATE_REQ_START = 0,
 	STATE_REQ_CMD_PROCESS,
@@ -941,6 +958,8 @@ struct dw_mci_req_log {
 struct dw_mci_debug_info {
 	struct dw_mci_cmd_log cmd_log[DWMCI_LOG_MAX];
 	atomic_t cmd_log_count;
+	struct dw_mci_cq_cmd_log	cq_cmd_log[DWMCI_LOG_MAX];
+	atomic_t			cq_cmd_log_count;
 	struct dw_mci_req_log req_log[DWMCI_REQ_LOG_MAX];
 	atomic_t req_log_count;
 	unsigned char en_logging;
@@ -983,21 +1002,21 @@ struct dw_mci_tuning_data {
 struct dw_mci_drv_data {
 	unsigned long	*caps;
 	u32		num_caps;
-	int (*init) (struct dw_mci * host);
-	void (*set_ios) (struct dw_mci * host, struct mmc_ios * ios);
-	int (*parse_dt) (struct dw_mci * host);
-	int (*execute_tuning) (struct dw_mci_slot * slot, u32 opcode,
-			       struct dw_mci_tuning_data * tuning_data);
-	int (*prepare_hs400_tuning) (struct dw_mci * host, struct mmc_ios * ios);
-	int (*switch_voltage) (struct mmc_host * mmc, struct mmc_ios * ios);
-	void (*hwacg_control) (struct dw_mci * host, u32 flag);
-	int (*misc_control) (struct dw_mci * host, enum dw_mci_misc_control control, void *priv);
-	int (*crypto_engine_cfg) (struct dw_mci * host,
+	int (*init)(struct dw_mci *host);
+	void (*set_ios)(struct dw_mci *host, struct mmc_ios *ios);
+	int (*parse_dt)(struct dw_mci *host);
+	int (*execute_tuning)(struct dw_mci_slot *slot, u32 opcode,
+			       struct dw_mci_tuning_data *tuning_data);
+	int (*prepare_hs400_tuning)(struct dw_mci *host, struct mmc_ios *ios);
+	int (*switch_voltage)(struct mmc_host *mmc, struct mmc_ios *ios);
+	void (*hwacg_control)(struct dw_mci *host, u32 flag, int mode);
+	int (*misc_control)(struct dw_mci *host, enum dw_mci_misc_control control, void *priv);
+	int (*crypto_engine_cfg)(struct dw_mci *host,
 				  void *desc,
 				  struct mmc_data * data,
 				  struct page * page, int page_index,
 				  int sector_offset, bool cmdq_enabled);
-	int (*crypto_engine_clear) (struct dw_mci * host, void *desc, bool cmdq_enabled);
+	int (*crypto_engine_clear) (struct dw_mci * host, void *desc, struct mmc_data * data, bool cmdq_enabled);
 	int (*crypto_sec_cfg) (struct dw_mci * host, bool init);
 	int (*access_control_abort) (struct dw_mci * host);
 	void (*ssclk_control) (struct dw_mci * host, int enable);

@@ -132,7 +132,7 @@ extern void dw_mci_reg_dump(struct dw_mci *host);
 #define SDMMC_HS400_DLINE_CTRL		0x188
 
 /* Protector Register */
-#define SDMMC_EMMCP_BASE		0x0
+#define SDMMC_EMMCP_BASE	0x1000
 #define SDMMC_MPSTAT			(SDMMC_EMMCP_BASE + 0x0008)
 #define SDMMC_MPSECURITY		(SDMMC_EMMCP_BASE + 0x0010)
 #define SDMMC_MPENCKEY			(SDMMC_EMMCP_BASE + 0x0020)
@@ -249,8 +249,14 @@ extern void dw_mci_reg_dump(struct dw_mci *host);
 
 /* HWACG Control */
 #define MMC_HWACG_CONTROL			BIT(4)
+#define W_INIT					3
+#define W_FREE					2
 #define HWACG_Q_ACTIVE_EN			1
 #define HWACG_Q_ACTIVE_DIS			0
+
+#define HWACG_WORK_INIT				2
+#define CMDQ_MODE				1
+#define LEGACY_MODE                             0
 
 /* Phase 7 Mux Control */
 #define sample_path_sel_en(dev, reg) ({\

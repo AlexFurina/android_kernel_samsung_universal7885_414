@@ -9,7 +9,6 @@
 #include <linux/notifier.h>
 #include <linux/device.h>
 #include <linux/workqueue.h>
-#include <linux/mutex.h>
 
 enum {
 	PM_QOS_RESERVED = 0,
@@ -33,6 +32,7 @@ enum {
 	PM_QOS_DISPLAY_THROUGHPUT_MAX,
 	PM_QOS_CAM_THROUGHPUT,
 	PM_QOS_AUD_THROUGHPUT,
+	PM_QOS_FSYS_THROUGHPUT,
 #ifdef CONFIG_SOC_EXYNOS9810
 	PM_QOS_IVA_THROUGHPUT,
 	PM_QOS_SCORE_THROUGHPUT,
@@ -40,6 +40,7 @@ enum {
 #endif
 	PM_QOS_CAM_THROUGHPUT_MAX,
 	PM_QOS_AUD_THROUGHPUT_MAX,
+	PM_QOS_FSYS_THROUGHPUT_MAX,
 #ifdef CONFIG_SOC_EXYNOS9810
 	PM_QOS_IVA_THROUGHPUT_MAX,
 	PM_QOS_SCORE_THROUGHPUT_MAX,
@@ -89,7 +90,8 @@ enum pm_qos_flags_status {
 #endif
 #define PM_QOS_MFC_THROUGHPUT_DEFAULT_VALUE	0
 #define PM_QOS_MFC_THROUGHPUT_MAX_DEFAULT_VALUE	INT_MAX
-
+#define PM_QOS_FSYS_THROUGHPUT_DEFAULT_VALUE	0
+#define PM_QOS_FSYS_THROUGHPUT_MAX_DEFAULT_VALUE	INT_MAX
 #define PM_QOS_NETWORK_THROUGHPUT_DEFAULT_VALUE	0
 #define PM_QOS_MEMORY_BANDWIDTH_DEFAULT_VALUE	0
 #define PM_QOS_RESUME_LATENCY_DEFAULT_VALUE	0
@@ -156,7 +158,6 @@ struct pm_qos_constraints {
 	s32 no_constraint_value;
 	enum pm_qos_type type;
 	struct blocking_notifier_head *notifiers;
-	struct mutex mlock;
 };
 
 struct pm_qos_flags {

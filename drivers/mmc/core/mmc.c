@@ -29,6 +29,9 @@
 #include "sd_ops.h"
 #include "pwrseq.h"
 
+#include <linux/io.h>
+#include "../host/cmdq_hci.h"
+
 #define DEFAULT_CMD6_TIMEOUT_MS	500
 #define MIN_CACHE_EN_TIMEOUT_MS 1600
 
@@ -622,8 +625,15 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 
 	/* eMMC v5 or later */
 	if (card->ext_csd.rev >= 7) {
-		memcpy(card->ext_csd.fwrev, &ext_csd[EXT_CSD_FIRMWARE_VERSION],
-		       MMC_FIRMWARE_LEN);
+		u64 mmc_fwrev = 0;	/* Handle FW as the Number. Not Array */
+
+		for (idx = 0; idx < MMC_FIRMWARE_LEN ; idx++) {
+			card->ext_csd.fwrev[idx] =
+				ext_csd[EXT_CSD_FIRMWARE_VERSION + MMC_FIRMWARE_LEN - 1 - idx];
+			mmc_fwrev |= card->ext_csd.fwrev[idx] << ((MMC_FIRMWARE_LEN - 1 - idx) * 8);
+		}
+		pr_info("%s: eMMC Firmware version: %llu\n", mmc_hostname(card->host), mmc_fwrev);
+
 		card->ext_csd.ffu_capable =
 			(ext_csd[EXT_CSD_SUPPORTED_MODE] & 0x1) &&
 			!(ext_csd[EXT_CSD_FW_CONFIG] & 0x1);
@@ -636,22 +646,40 @@ static int mmc_decode_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	}
 
 	/* eMMC v5.1 or later */
-	if (card->ext_csd.rev >= 8) {
+	if (card->ext_csd.rev >= 7) {
 		card->ext_csd.cmdq_support = ext_csd[EXT_CSD_CMDQ_SUPPORT] &
 					     EXT_CSD_CMDQ_SUPPORTED;
-		card->ext_csd.cmdq_depth = (ext_csd[EXT_CSD_CMDQ_DEPTH] &
-					    EXT_CSD_CMDQ_DEPTH_MASK) + 1;
-		/* Exclude inefficiently small queue depths */
-		if (card->ext_csd.cmdq_depth <= 2) {
-			card->ext_csd.cmdq_support = false;
-			card->ext_csd.cmdq_depth = 0;
-		}
 		if (card->ext_csd.cmdq_support) {
+			/*
+			 * Queue Depth = N + 1,
+			 * see JEDEC JESD84-B51 section 7.4.19
+			 */
+			card->ext_csd.cmdq_depth = (ext_csd[EXT_CSD_CMDQ_DEPTH] &
+					    EXT_CSD_CMDQ_DEPTH_MASK) + 1;
+			/* Exclude inefficiently small queue depths */
+			if (card->ext_csd.cmdq_depth <= 2) {
+				card->ext_csd.cmdq_support = false;
+				card->ext_csd.cmdq_depth = 0;
+			}
 			pr_debug("%s: Command Queue supported depth %u\n",
 				 mmc_hostname(card->host),
 				 card->ext_csd.cmdq_depth);
 		}
+		card->ext_csd.barrier_support =
+			ext_csd[EXT_CSD_BARRIER_SUPPORT];
+		card->ext_csd.cache_flush_policy =
+			ext_csd[EXT_CSD_CACHE_FLUSH_POLICY];
+		pr_info("%s: cache barrier support %d flush policy %d\n",
+				mmc_hostname(card->host),
+				card->ext_csd.barrier_support,
+				card->ext_csd.cache_flush_policy);
+	} else {
+		card->ext_csd.cmdq_support = 0;
+		card->ext_csd.cmdq_depth = 0;
+		card->ext_csd.barrier_support = 0;
+		card->ext_csd.cache_flush_policy = 0;
 	}
+
 out:
 	return err;
 }
@@ -767,6 +795,43 @@ static int mmc_compare_ext_csds(struct mmc_card *card, unsigned bus_width)
 	return err;
 }
 
+static ssize_t mmc_gen_unique_number_show(struct device *dev,
+			      struct device_attribute *attr,
+			      char *buf)
+{
+	struct mmc_card *card = mmc_dev_to_card(dev);
+	char gen_pnm[3];
+	int i;
+
+	switch (card->cid.manfid) {
+		case 0x02:	/* Sandisk	-> [3][4] */
+		case 0x45:
+			sprintf(gen_pnm, "%.*s", 2, card->cid.prod_name + 3);
+			break;
+		case 0x11:	/* Toshiba	-> [1][2] */
+		case 0x90:	/* Hynix */
+			sprintf(gen_pnm, "%.*s", 2, card->cid.prod_name + 1);
+			break;
+		case 0x13:
+		case 0xFE:	/* Micron 	-> [4][5] */
+			sprintf(gen_pnm, "%.*s", 2, card->cid.prod_name + 4);
+			break;
+		case 0x15:	/* Samsung 	-> [0][1] */
+		default:
+			sprintf(gen_pnm, "%.*s", 2, card->cid.prod_name + 0);
+			break;
+	}
+	/* Convert to Captal */
+	for (i = 0 ; i < 2 ; i++)
+	{
+		if (gen_pnm[i] >= 'a' && gen_pnm[i] <= 'z')
+			gen_pnm[i] -= ('a' - 'A');
+	}
+	return sprintf(buf, "C%s%02X%08X%02X\n",
+			gen_pnm, card->cid.prv, card->cid.serial, UNSTUFF_BITS(card->raw_cid, 8, 8));
+}
+
+
 MMC_DEV_ATTR(cid, "%08x%08x%08x%08x\n", card->raw_cid[0], card->raw_cid[1],
 	card->raw_cid[2], card->raw_cid[3]);
 MMC_DEV_ATTR(csd, "%08x%08x%08x%08x\n", card->raw_csd[0], card->raw_csd[1],
@@ -790,6 +855,8 @@ MMC_DEV_ATTR(enhanced_area_offset, "%llu\n",
 		card->ext_csd.enhanced_area_offset);
 MMC_DEV_ATTR(enhanced_area_size, "%u\n", card->ext_csd.enhanced_area_size);
 MMC_DEV_ATTR(raw_rpmb_size_mult, "%#x\n", card->ext_csd.raw_rpmb_size_mult);
+MMC_DEV_ATTR(enhanced_rpmb_supported, "%#x\n",
+		card->ext_csd.enhanced_rpmb_supported);
 MMC_DEV_ATTR(rel_sectors, "%#x\n", card->ext_csd.rel_sectors);
 MMC_DEV_ATTR(ocr, "0x%08x\n", card->ocr);
 MMC_DEV_ATTR(cmdq_en, "%d\n", card->ext_csd.cmdq_en);
@@ -825,6 +892,7 @@ static ssize_t mmc_dsr_show(struct device *dev,
 }
 
 static DEVICE_ATTR(dsr, S_IRUGO, mmc_dsr_show, NULL);
+static DEVICE_ATTR(unique_number, (S_IRUSR|S_IRGRP), mmc_gen_unique_number_show, NULL);
 
 static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_cid.attr,
@@ -846,10 +914,12 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_enhanced_area_offset.attr,
 	&dev_attr_enhanced_area_size.attr,
 	&dev_attr_raw_rpmb_size_mult.attr,
+	&dev_attr_enhanced_rpmb_supported.attr,
 	&dev_attr_rel_sectors.attr,
 	&dev_attr_ocr.attr,
 	&dev_attr_dsr.attr,
 	&dev_attr_cmdq_en.attr,
+	&dev_attr_unique_number.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(mmc_std);
@@ -1514,6 +1584,43 @@ static int mmc_hs200_tuning(struct mmc_card *card)
 	return mmc_execute_tuning(card);
 }
 
+static int mmc_select_cmdq(struct mmc_card *card)
+{
+	struct mmc_host *host = card->host;
+	int ret = 0;
+
+	if (!host->cmdq_ops) {
+		pr_err("%s: host controller doesn't support CMDQ\n",
+		       mmc_hostname(host));
+		return 0;
+	}
+
+	ret = mmc_set_blocklen(card, MMC_CARD_CMDQ_BLK_SIZE);
+	if (ret)
+		goto out;
+
+	ret = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_CMDQ_MODE_EN, 1,
+			 card->ext_csd.generic_cmd6_time);
+	if (ret)
+		goto out;
+
+	mmc_card_set_cmdq(card);
+	ret = host->cmdq_ops->enable(card->host);
+	if (ret) {
+		pr_err("%s: failed (%d) enabling CMDQ on host\n",
+			mmc_hostname(host), ret);
+		mmc_card_clr_cmdq(card);
+		ret = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_CMDQ_MODE_EN, 0,
+				 card->ext_csd.generic_cmd6_time);
+		if (ret)
+			goto out;
+	}
+
+	pr_info("%s: CMDQ enabled on card\n", mmc_hostname(host));
+out:
+	return ret;
+}
+
 /*
  * Handle the detection and initialisation of a card.
  *
@@ -1541,6 +1648,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	 * respond.
 	 * mmc_go_idle is needed for eMMC that are asleep
 	 */
+reinit:
 	mmc_go_idle(host);
 
 	/* The extra bit indicates that we support high capacity */
@@ -1793,15 +1901,25 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		}
 	}
 
+	if (!oldcard)
+		host->card = card;
+
 	/*
 	 * In some cases (e.g. RPMB or mmc_test), the Command Queue must be
 	 * disabled for a time, so a flag is needed to indicate to re-enable the
 	 * Command Queue.
 	 */
-	card->reenable_cmdq = card->ext_csd.cmdq_en;
-
-	if (!oldcard)
-		host->card = card;
+	if (card->ext_csd.cmdq_support && (card->host->caps2 &
+					   MMC_CAP2_CMD_QUEUE)) {
+		err = mmc_select_cmdq(card);
+		if (err) {
+			pr_err("%s: selecting CMDQ mode: failed: %d\n",
+					   mmc_hostname(card->host), err);
+			card->ext_csd.cmdq_support = 0;
+			oldcard = card;
+			goto reinit;
+		}
+	}
 
 	return 0;
 
@@ -1949,6 +2067,17 @@ static int _mmc_suspend(struct mmc_host *host, bool is_suspend)
 	if (mmc_card_suspended(host->card))
 		goto out;
 
+	if (host->card->cmdq_init) {
+		BUG_ON(host->cmdq_ctx.active_reqs);
+
+		err = mmc_cmdq_halt(host, true);
+		if (err) {
+			pr_err("%s: halt: failed: %d\n", __func__, err);
+			goto out;
+		}
+		host->cmdq_ops->disable(host, true);
+	}
+
 	if (mmc_card_doing_bkops(host->card)) {
 		err = mmc_stop_bkops(host->card);
 		if (err)
@@ -1972,6 +2101,10 @@ static int _mmc_suspend(struct mmc_host *host, bool is_suspend)
 		mmc_card_set_suspended(host->card);
 	}
 out:
+	/* Kick CMDQ thread to process any requests came in while suspending */
+	if (host->card->cmdq_init)
+		wake_up(&host->cmdq_ctx.wait);
+
 	mmc_release_host(host);
 	return err;
 }
@@ -1982,6 +2115,25 @@ out:
 static int mmc_suspend(struct mmc_host *host)
 {
 	int err;
+
+	if (host->pm_caps & MMC_PM_SKIP_MMC_RESUME_INIT) {
+		if (host->card->cmdq_init) {
+			struct cmdq_host *cq_host = mmc_cmdq_private(host);
+			BUG_ON(host->cmdq_ctx.active_reqs);
+			/* cmdq halt */
+			err = mmc_cmdq_halt_on_empty_queue(host);
+			if (err) {
+				pr_err("%s: halt: failed: %d\n", mmc_hostname(host), err);
+				return err;
+			}
+			host->cmdq_ops->disable(host, true);
+
+			if (cq_host->ops->resume_skip)
+				cq_host->ops->resume_skip(host);
+		}
+
+		return 0;
+	}
 
 	err = _mmc_suspend(host, true);
 	if (!err) {
@@ -2007,6 +2159,12 @@ static int _mmc_resume(struct mmc_host *host)
 
 	mmc_power_up(host, host->card->ocr);
 	err = mmc_init_card(host, host->card->ocr, host->card);
+
+	if (!err && mmc_card_cmdq(host->card)) {
+		err = mmc_cmdq_halt(host, false);
+		if (err)
+			pr_err("%s: un-halt: failed: %d\n", __func__, err);
+	}
 	mmc_card_clr_suspended(host->card);
 
 out:
@@ -2040,7 +2198,42 @@ static int mmc_shutdown(struct mmc_host *host)
  */
 static int mmc_resume(struct mmc_host *host)
 {
+	int err = 0;
+	u32 status;
+
+	if (host->pm_caps & MMC_PM_SKIP_MMC_RESUME_INIT) {
+		mmc_claim_host(host);
+
+		/* Check status */
+		err = mmc_send_status(host->card, &status);
+		mmc_release_host(host);
+
+		if (!err && (R1_CURRENT_STATE(status) == R1_STATE_TRAN)) {
+			if (host->card->cmdq_init) {
+				struct cmdq_host *cq_host = mmc_cmdq_private(host);
+
+				/* Unhalt */
+				err = mmc_cmdq_halt(host, false);
+				if (err)
+					pr_err("%s: un-halt: failed: %d\n", __func__, err);
+
+				/* Enable CMDQ engine */
+				host->cmdq_ops->enable(host);
+
+				/* Host DMA reset */
+				if (cq_host->ops->reset)
+					cq_host->ops->reset(host);
+			}
+			return 0;
+		}
+		mmc_power_off(host);
+		mmc_card_set_suspended(host->card);
+		err = mmc_resume(host);
+		return err;
+	}
+
 	pm_runtime_enable(&host->card->dev);
+
 	return 0;
 }
 
@@ -2076,7 +2269,6 @@ static int mmc_runtime_resume(struct mmc_host *host)
 
 	return 0;
 }
-
 static int mmc_can_reset(struct mmc_card *card)
 {
 	u8 rst_n_function;

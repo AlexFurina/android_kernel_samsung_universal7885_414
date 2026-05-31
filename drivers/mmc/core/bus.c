@@ -140,6 +140,14 @@ static void mmc_bus_shutdown(struct device *dev)
 	struct mmc_host *host = card->host;
 	int ret;
 
+	if (!drv || !card) {
+		pr_debug("%s: %s: drv or card is NULL. SDcard/tray was removed\n", dev_name(dev), __func__);
+		return;
+	}
+
+	/* disable rescan in shutdown sequence */
+	host->rescan_disable = 1;
+
 	if (dev->driver && drv->shutdown)
 		drv->shutdown(card);
 

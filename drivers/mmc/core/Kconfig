@@ -109,5 +109,5 @@ config MMC_SANITIZE
 	bool "Enable Sanitize (Default No)"
 	default n
 	help
-	  Sanitize is disabled when there is a concern
+	  Sanitize is diabled when there is a concern 
 	  about lifetime and performance.

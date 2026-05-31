@@ -96,6 +96,8 @@ extern const u8 tuning_blk_pattern_8bit[MMC_TUNING_BLK_PATTERN_8BIT_SIZE];
 #define MMC_EXECUTE_READ_TASK    46   /* adtc [20:16] task id    R1  */
 #define MMC_EXECUTE_WRITE_TASK   47   /* adtc [20:16] task id    R1  */
 #define MMC_CMDQ_TASK_MGMT       48   /* ac   [20:16] task id    R1b */
+#define DISCARD_QUEUE           0x1
+#define DISCARD_TASK            0x2
 
 static inline bool mmc_op_multi(u32 opcode)
 {
@@ -295,6 +297,7 @@ static inline bool mmc_op_multi(u32 opcode)
 #define EXT_CSD_PWR_CL_200_360		237	/* RO */
 #define EXT_CSD_PWR_CL_DDR_52_195	238	/* RO */
 #define EXT_CSD_PWR_CL_DDR_52_360	239	/* RO */
+#define EXT_CSD_CACHE_FLUSH_POLICY      240     /* RO */
 #define EXT_CSD_BKOPS_STATUS		246	/* RO */
 #define EXT_CSD_POWER_OFF_LONG_TIME	247	/* RO */
 #define EXT_CSD_GENERIC_CMD6_TIME	248	/* RO */
@@ -306,6 +309,7 @@ static inline bool mmc_op_multi(u32 opcode)
 #define EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_B	269	/* RO */
 #define EXT_CSD_CMDQ_DEPTH		307	/* RO */
 #define EXT_CSD_CMDQ_SUPPORT		308	/* RO */
+#define EXT_CSD_BARRIER_SUPPORT         486     /* RO */
 #define EXT_CSD_SUPPORTED_MODE		493	/* RO */
 #define EXT_CSD_TAG_UNIT_SIZE		498	/* RO */
 #define EXT_CSD_DATA_TAG_SUPPORT	499	/* RO */

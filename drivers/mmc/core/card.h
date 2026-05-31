@@ -17,6 +17,8 @@
 #define mmc_card_id(c)		(dev_name(&(c)->dev))
 #define mmc_dev_to_card(d)	container_of(d, struct mmc_card, dev)
 
+#define mmc_get_drvdata(c)	dev_get_drvdata(&(c)->dev)
+#define mmc_set_drvdata(c,d)	dev_set_drvdata(&(c)->dev, d)
 /* Card states */
 #define MMC_STATE_PRESENT	(1<<0)		/* present in sysfs */
 #define MMC_STATE_READONLY	(1<<1)		/* card is read-only */
@@ -25,6 +27,7 @@
 #define MMC_CARD_REMOVED	(1<<4)		/* card has been removed */
 #define MMC_STATE_DOING_BKOPS	(1<<5)		/* card is doing BKOPS */
 #define MMC_STATE_SUSPENDED	(1<<6)		/* card is suspended */
+#define MMC_STATE_CMDQ		(1<<12)         /* card is in cmd queue mode */
 
 #define mmc_card_present(c)	((c)->state & MMC_STATE_PRESENT)
 #define mmc_card_readonly(c)	((c)->state & MMC_STATE_READONLY)
@@ -33,6 +36,7 @@
 #define mmc_card_removed(c)	((c) && ((c)->state & MMC_CARD_REMOVED))
 #define mmc_card_doing_bkops(c)	((c)->state & MMC_STATE_DOING_BKOPS)
 #define mmc_card_suspended(c)	((c)->state & MMC_STATE_SUSPENDED)
+#define mmc_card_cmdq(c)       ((c)->state & MMC_STATE_CMDQ)
 
 #define mmc_card_set_present(c)	((c)->state |= MMC_STATE_PRESENT)
 #define mmc_card_set_readonly(c) ((c)->state |= MMC_STATE_READONLY)
@@ -43,6 +47,8 @@
 #define mmc_card_clr_doing_bkops(c)	((c)->state &= ~MMC_STATE_DOING_BKOPS)
 #define mmc_card_set_suspended(c) ((c)->state |= MMC_STATE_SUSPENDED)
 #define mmc_card_clr_suspended(c) ((c)->state &= ~MMC_STATE_SUSPENDED)
+#define mmc_card_set_cmdq(c)           ((c)->state |= MMC_STATE_CMDQ)
+#define mmc_card_clr_cmdq(c)           ((c)->state &= ~MMC_STATE_CMDQ)
 
 /*
  * The world is not perfect and supplies us with broken mmc/sdio devices.
