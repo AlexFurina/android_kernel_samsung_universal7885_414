@@ -24,6 +24,7 @@
 #include <linux/shm_ipc.h>
 #include <linux/smc.h>
 #include <linux/modem_notifier.h>
+#include <soc/samsung/pmu-cp.h>
 #include <soc/samsung/exynos-pmu.h>
 
 #include "modem_prj.h"
@@ -32,6 +33,7 @@
 #include "uart_switch.h"
 
 #include <soc/samsung/cal-if.h>
+#include <soc/samsung/exynos-modem-ctrl.h>
 
 #ifdef CONFIG_EXYNOS_BUSMONITOR
 #include <linux/exynos-busmon.h>
