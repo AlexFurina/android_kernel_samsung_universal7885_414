@@ -25,6 +25,8 @@ extern void *memcpy_align_4(void *dest, const void *src, unsigned int n);
 
 extern struct acpm_framework *acpm_initdata;
 extern void __iomem *acpm_srambase;
+#ifdef CONFIG_SOC_EXYNOS9610
 extern void exynos_acpm_timer_clear(void);
+#endif
 
 #endif

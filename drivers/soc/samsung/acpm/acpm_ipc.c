@@ -106,7 +106,9 @@ void timestamp_write(void)
 		acpm_debug->timestamps[tmp_index] = sched_clock();
 
 		__raw_writel(tmp_index, acpm_debug->time_index);
+#ifdef CONFIG_SOC_EXYNOS9610
 		exynos_acpm_timer_clear();
+#endif
 
 		spin_unlock(&acpm_debug->lock);
 	}

@@ -286,10 +286,12 @@ void acpm_enter_wfi(void)
 	}
 }
 
+#ifdef CONFIG_SOC_EXYNOS9610
 void exynos_acpm_timer_clear(void)
 {
 	writel(exynos_acpm->timer_cnt, exynos_acpm->timer_base + EXYNOS_TIMER_APM_TCVR);
 }
+#endif
 
 void exynos_acpm_reboot(void)
 {
@@ -387,7 +389,9 @@ static int acpm_probe(struct platform_device *pdev)
 
 	acpm_debugfs_init(acpm);
 
+#ifdef CONFIG_SOC_EXYNOS9610
 	exynos_acpm_timer_clear();
+#endif
 	return ret;
 }
 
