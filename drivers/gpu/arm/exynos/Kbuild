@@ -156,6 +156,7 @@ ifeq ($(CONFIG_MALI_EXYNOS_DEBUG), y)
 	mali_kbase-$(CONFIG_SOC_EXYNOS9820) += $(BACKEND_DIR)/gpexbe_debug_v2.o
 	mali_kbase-$(CONFIG_SOC_EXYNOS9830) += $(BACKEND_DIR)/gpexbe_debug_v2.o
 	mali_kbase-$(CONFIG_SOC_EXYNOS9610) += $(BACKEND_DIR)/gpexbe_debug_v2_9611.o
+        mali_kbase-$(CONFIG_SOC_EXYNOS7885) += $(BACKEND_DIR)/gpexbe_debug_v2_9611.o
 	mali_kbase-$(CONFIG_SOC_EXYNOS9630) += $(BACKEND_DIR)/gpexbe_debug_v2.o
 	mali_kbase-$(CONFIG_SOC_EXYNOS3830) += $(BACKEND_DIR)/gpexbe_debug_v2.o
 	mali_kbase-$(CONFIG_SOC_EXYNOS2100) += $(BACKEND_DIR)/gpexbe_debug_v3.o
