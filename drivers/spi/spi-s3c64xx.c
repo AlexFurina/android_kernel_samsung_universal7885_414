@@ -1707,14 +1707,22 @@ static int s3c64xx_spi_probe(struct platform_device *pdev)
 	}
 
 	/* Setup clocks */
+#ifdef CONFIG_SOC_EXYNOS9610
 	sdd->clk = devm_clk_get(&pdev->dev, "gate_spi_clk");
+#else
+	sdd->clk = devm_clk_get(&pdev->dev, "spi");
+#endif
 	if (IS_ERR(sdd->clk)) {
 		dev_err(&pdev->dev, "Unable to acquire clock 'spi'\n");
 		ret = PTR_ERR(sdd->clk);
 		goto err0;
 	}
 
+#ifdef CONFIG_SOC_EXYNOS9610
 	sdd->src_clk = devm_clk_get(&pdev->dev, "ipclk_spi");
+#else
+	sdd->src_clk = devm_clk_get(&pdev->dev, "spi_busclk0");
+#endif
 	if (IS_ERR(sdd->src_clk)) {
 		dev_err(&pdev->dev,
 			"Unable to acquire clock '%s'\n", clk_name);
