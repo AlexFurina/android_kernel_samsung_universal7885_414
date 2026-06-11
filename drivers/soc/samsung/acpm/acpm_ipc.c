@@ -254,10 +254,12 @@ void acpm_stop_log(void)
 	acpm_stop_log_req = true;
 }
 
+#ifdef CONFIG_SOC_EXYNOS9610
 static void acpm_update_log(struct work_struct *work)
 {
 	acpm_log_print();
 }
+#endif
 
 static void acpm_debug_logging(struct work_struct *work)
 {
@@ -886,8 +888,10 @@ static int acpm_ipc_probe(struct platform_device *pdev)
 
 	channel_init();
 
+#ifdef CONFIG_SOC_EXYNOS9610
 	update_log_wq = create_freezable_workqueue("acpm_update_log");
 	INIT_WORK(&acpm_debug->update_log_work, acpm_update_log);
+#endif
 
 	if (acpm_debug->period) {
 		debug_logging_wq = create_freezable_workqueue("acpm_debug_logging");
