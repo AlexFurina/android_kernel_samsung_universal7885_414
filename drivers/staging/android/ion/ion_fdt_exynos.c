@@ -110,6 +110,7 @@ static int __init exynos_ion_reserved_mem_setup(struct reserved_mem *rmem)
 
 RESERVEDMEM_OF_DECLARE(ion, "exynos9820-ion", exynos_ion_reserved_mem_setup);
 
+#include <linux/soc/samsung/exynos-soc.h>
 #define MAX_HPA_EXCEPTION_AREAS 4
 
 static int hpa_num_exception_areas;
@@ -152,6 +153,12 @@ static bool __init register_hpa_heap(struct device_node *np,
 		pheap.align = align;
 	else
 		pheap.align = SZ_64K;
+	/*
+	 * workaround to some h/w protection unit that needs 128KB for its
+	 * minimum alignment requirement.
+	 */
+	if (exynos_soc_info.revision < EXYNOS_SUB_REV1)
+		pheap.align = max_t(phys_addr_t, pheap.align, SZ_128K);
 
 	pheap.type = ION_HEAP_TYPE_HPA;
 	heap = ion_hpa_heap_create(&pheap, hpa_alloc_exceptions,

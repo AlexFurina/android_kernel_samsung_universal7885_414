@@ -1076,7 +1076,6 @@ out:
 	}
 	case EXT4_IOC_SHUTDOWN:
 		return ext4_shutdown(sb, arg);
-
 #ifdef CONFIG_FSCRYPT_SDP
 	case FS_IOC_GET_SDP_INFO:
 	case FS_IOC_SET_SDP_POLICY:
@@ -1084,7 +1083,6 @@ out:
 	case FS_IOC_SET_PROTECTED:
 	case FS_IOC_ADD_CHAMBER:
 	case FS_IOC_REMOVE_CHAMBER:
-	case FS_IOC_DUMP_FILE_KEY:
 		return fscrypt_sdp_ioctl(filp, cmd, arg);
 #endif
 
@@ -1163,7 +1161,6 @@ long ext4_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case FS_IOC_SET_PROTECTED:
 	case FS_IOC_ADD_CHAMBER:
 	case FS_IOC_REMOVE_CHAMBER:
-	case FS_IOC_DUMP_FILE_KEY:
 #endif
 		break;
 	default:

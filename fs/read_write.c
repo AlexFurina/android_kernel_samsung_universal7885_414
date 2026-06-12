@@ -25,12 +25,11 @@
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
 
-#ifdef CONFIG_FSCRYPT_SDP
-#include <linux/fscrypto_sdp_cache.h>
-#endif
-
 #ifdef CONFIG_SECURITY_DEFEX
 #include <linux/defex.h>
+#endif
+#ifdef CONFIG_FSCRYPT_SDP
+#include <linux/fscrypto_sdp_cache.h>
 #endif
 
 const struct file_operations generic_ro_fops = {
@@ -569,7 +568,6 @@ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_
 		if (task_defex_enforce(current, file, -__NR_write))
 			return -EPERM;
 #endif
-
 		if (count > MAX_RW_COUNT)
 			count =  MAX_RW_COUNT;
 		file_start_write(file);

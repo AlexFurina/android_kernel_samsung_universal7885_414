@@ -495,12 +495,10 @@ static int __init sec_debug_reset_reason_init(void)
 		return -ENOMEM;
 #endif
 
-#if 0	/* not used */
-	dev = sec_device_create(NULL, "sec_reset_reason");
-	ret = sysfs_create_group(&dev->kobj, &sec_reset_reason_attr_group);
-	if (ret)
-		pr_err("%s : could not create sysfs noden", __func__);
-#endif
+//	dev = sec_device_create(NULL, "sec_reset_reason");
+//	ret = sysfs_create_group(&dev->kobj, &sec_reset_reason_attr_group);
+//	if (ret)
+//		pr_err("%s : could not create sysfs noden", __func__);
 
 	return 0;
 }

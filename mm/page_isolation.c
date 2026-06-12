@@ -264,7 +264,7 @@ __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
 
 /* Caller should ensure that requested range is in a single zone */
 int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
-			bool skip_hwpoisoned_pages)
+			bool skip_hwpoisoned_pages, gfp_t gfp_mask)
 {
 	unsigned long pfn, flags;
 	struct page *page;
@@ -289,7 +289,7 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 	pfn = __test_page_isolated_in_pageblock(start_pfn, end_pfn,
 						skip_hwpoisoned_pages);
 
-	if (pfn < end_pfn) {
+	if (pfn < end_pfn && !(gfp_mask & __GFP_NOWARN)) {
 		pr_info("%s: page of pfn %lu is not isolated\n", __func__, pfn);
 		__dump_page(pfn_to_page(pfn), "isolation failure");
 	}

@@ -115,14 +115,12 @@ void sec_debug_get_kevent_info(struct ess_info_offset *p, int type)
 		p->per_core = 1;
 		break;
 
-#ifdef CONFIG_DEBUG_SNAPSHOT_FREQ
 	case DSS_KEVENT_FREQ:
 		p->base = kevent_base_pa + (unsigned long)(dss_log->freq) - kevent_base_va;
 		p->nr = DSS_LOG_MAX_NUM;
 		p->size = sizeof(struct __freq_log);
 		p->per_core = 0;
 		break;
-#endif
 
 	case DSS_KEVENT_IDLE:
 		p->base = kevent_base_pa + (unsigned long)(dss_log->cpuidle) - kevent_base_va;
@@ -138,14 +136,12 @@ void sec_debug_get_kevent_info(struct ess_info_offset *p, int type)
 		p->per_core = 0;
 		break;
 
-#ifdef CONFIG_DEBUG_SNAPSHOT_ACPM
 	case DSS_KEVENT_ACPM:
 		p->base = kevent_base_pa + (unsigned long)(dss_log->acpm) - kevent_base_va;
 		p->nr = DSS_LOG_MAX_NUM;
 		p->size = sizeof(struct __acpm_log);
 		p->per_core = 0;
 		break;
-#endif
 
 	default:
 		p->base = 0;
@@ -157,6 +153,7 @@ void sec_debug_get_kevent_info(struct ess_info_offset *p, int type)
 
 	p->last = sec_debug_get_kevent_index_addr(type);
 }
+
 
 /* Variable for assigning virtual address base */
 static size_t g_dbg_snapshot_vaddr_base = DSS_FIXED_VIRT_BASE;
@@ -317,7 +314,7 @@ static inline void dbg_snapshot_hook_logbuf(const char *buf, size_t size)
 			*((unsigned long long *)(item->head_ptr + item->entry.size - (size_t)0x08)) = SEC_LKMSG_MAGICKEY;
 #endif
 #ifdef CONFIG_SEC_PM_DEBUG
-			if (unlikely(!sec_log_full))
+			if (!sec_log_full)
 				sec_log_full = true;
 #endif
 		}
@@ -576,9 +573,6 @@ static int __init dbg_snapshot_item_reserved_mem_setup(struct reserved_mem *reme
 	if (i == ARRAY_SIZE(dss_items))
 		return -ENODEV;
 
-	if (!remem->base && !remem->size)
-		return -ENODEV;
-
 	dss_items[i].entry.paddr = remem->base;
 	dss_items[i].entry.size = remem->size;
 	dss_items[i].entry.enabled = true;
@@ -739,7 +733,7 @@ static void __init dbg_snapshot_fixmap(void)
 
 	/* output the information of debug-snapshot */
 	dbg_snapshot_output();
-
+	
 #ifdef CONFIG_SEC_DEBUG
 	sec_debug_save_last_kmsg(dss_items[dss_desc.log_kernel_num].head_ptr,
 			dss_items[dss_desc.log_kernel_num].curr_ptr,

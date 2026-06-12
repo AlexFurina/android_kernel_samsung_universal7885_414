@@ -12,14 +12,14 @@ config SEC_HQM_DEVICE
 comment "Samsung TSP Logging Options"
 config SEC_DEBUG_TSP_LOG
 	default n
-	bool "Enable tsp log support" if EMBEDDED
+	tristate "Enable tsp log support" if EMBEDDED
 	depends on SEC_EXT
 	help
 	  This option enables additional log buffer for tsp log.
 
 config SEC_PM_BIGDATA
 	bool "Enable Samsung Mobile Power management big data support"
-	default n
+	default y
 	depends on SEC_PM
 	help
 	  This option enables Samsung Mobile Power management big data support.
@@ -74,6 +74,12 @@ config SEC_SUPPORT_VST
 	default n
 	help
 	  Samsung TN NAD Feature, support NAD 4.0 feature.
+
+config SEC_GPIO
+	default n
+	bool "Enable gpio detection for PCB type"
+	help
+	  Return FPCB type for factory test
 
 comment "Logging Heavy Task Cpu Options"
 config SEC_HEAVY_TASK_CPU

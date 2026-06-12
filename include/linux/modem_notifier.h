@@ -23,7 +23,15 @@ enum modem_event {
 	MODEM_EVENT_WATCHDOG	= 9,
 };
 
+#if IS_ENABLED(CONFIG_SHM_IPC)
 extern int register_modem_event_notifier(struct notifier_block *nb);
 extern void modem_notify_event(enum modem_event evt);
+#else
+static inline int register_modem_event_notifier(struct notifier_block *nb)
+{
+	return 0;
+}
+static inline void modem_notify_event(enum modem_event evt) {}
+#endif
 
 #endif/*__MODEM_NOTIFIER_H__*/

@@ -28,6 +28,7 @@
 #include <linux/security.h>
 #include <linux/syscalls.h>
 #include <linux/debug-snapshot.h>
+#include <linux/ems.h>
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -44,6 +45,11 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
 #include "walt.h"
+
+
+#ifdef CONFIG_FAST_TRACK
+#include <cpu/ftt/ftt.h>
+#endif
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
@@ -772,8 +778,6 @@ static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 		psi_enqueue(p, flags & ENQUEUE_WAKEUP);
 	}
 
-	update_cpu_active_ratio(rq, p, EMS_PART_ENQUEUE);
-
 	p->sched_class->enqueue_task(rq, p, flags);
 }
 
@@ -786,8 +790,6 @@ static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 		sched_info_dequeued(rq, p);
 		psi_dequeue(p, flags & DEQUEUE_SLEEP);
 	}
-
-	update_cpu_active_ratio(rq, p, EMS_PART_DEQUEUE);
 
 	p->sched_class->dequeue_task(rq, p, flags);
 }
@@ -966,8 +968,10 @@ static struct rq *move_queued_task(struct rq *rq, struct rq_flags *rf,
 
 	p->on_rq = TASK_ON_RQ_MIGRATING;
 	dequeue_task(rq, p, DEQUEUE_NOCLOCK);
+	rq_unpin_lock(rq, rf);
+	double_lock_balance(rq, cpu_rq(new_cpu));
 	set_task_cpu(p, new_cpu);
-	rq_unlock(rq, rf);
+	double_rq_unlock(cpu_rq(new_cpu), rq);
 
 	rq = cpu_rq(new_cpu);
 
@@ -2108,6 +2112,9 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags,
 
 	walt_try_to_wake_up(p);
 
+	if (sched_feat(EXYNOS_MS))
+		update_last_waked_ns_task(p);
+
 	p->sched_contributes_to_load = !!task_contributes_to_load(p);
 	p->state = TASK_WAKING;
 
@@ -2241,14 +2248,15 @@ static void __sched_fork(unsigned long clone_flags, struct task_struct *p)
 #endif
 
 	INIT_LIST_HEAD(&p->se.group_node);
-#if 0
 #ifdef CONFIG_SCHED_EMS
 	rcu_assign_pointer(p->band, NULL);
 	INIT_LIST_HEAD(&p->band_members);
 #endif
-#endif
 	walt_init_new_task_load(p);
 
+#ifdef CONFIG_FAST_TRACK
+	init_task_ftt_info(p);
+#endif
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	p->se.cfs_rq			= NULL;
 #endif
@@ -2530,6 +2538,8 @@ void wake_up_new_task(struct task_struct *p)
 
 	raw_spin_lock_irqsave(&p->pi_lock, rf.flags);
 
+	newbie_join_band(p);
+
 	walt_init_new_task_load(p);
 
 	p->state = TASK_RUNNING;
@@ -2547,8 +2557,6 @@ void wake_up_new_task(struct task_struct *p)
 	rq = __task_rq_lock(p, &rf);
 	update_rq_clock(rq);
 	post_init_entity_util_avg(&p->se);
-
-	update_cpu_active_ratio(rq, p, EMS_PART_WAKEUP_NEW);
 
 	activate_task(rq, p, ENQUEUE_NOCLOCK);
 	walt_mark_task_starting(p);
@@ -3106,9 +3114,6 @@ void scheduler_tick(void)
 
 	rq_lock(rq, &rf);
 
-	set_part_period_start(rq);
-	update_cpu_active_ratio(rq, NULL, EMS_PART_UPDATE);
-
 	walt_set_window_start(rq, &rf);
 	walt_update_task_ravg(rq->curr, rq, TASK_UPDATE,
 			walt_ktime_clock(), 0);
@@ -3127,6 +3132,8 @@ void scheduler_tick(void)
 	trigger_load_balance(rq);
 #endif
 	rq_last_tick_reset(rq);
+
+	update_band(curr, -1);
 }
 
 #ifdef CONFIG_NO_HZ_FULL
@@ -4000,7 +4007,7 @@ int idle_cpu(int cpu)
 	if (rq->curr != rq->idle)
 		return 0;
 
-	if (rq->nr_running)
+	if (rq->nr_running == 1)
 		return 0;
 
 #ifdef CONFIG_SMP
@@ -6026,11 +6033,6 @@ void __init sched_init(void)
 
 		INIT_LIST_HEAD(&rq->cfs_tasks);
 
-#ifdef CONFIG_SCHED_EMS
-		INIT_LIST_HEAD(&rq->sse_cfs_tasks);
-		INIT_LIST_HEAD(&rq->uss_cfs_tasks);
-#endif
-
 		rq_attach_root(rq, &def_root_domain);
 #ifdef CONFIG_NO_HZ_COMMON
 		rq->last_load_update_tick = jiffies;
@@ -6046,6 +6048,8 @@ void __init sched_init(void)
 	}
 
 	set_load_weight(&init_task);
+
+	alloc_bands();
 
 	/*
 	 * The boot idle thread does lazy MMU switching as well:
@@ -6075,7 +6079,6 @@ void __init sched_init(void)
 	init_schedstats();
 
 	psi_init();
-	init_ems();
 
 	scheduler_running = 1;
 }

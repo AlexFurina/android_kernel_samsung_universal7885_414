@@ -31,6 +31,5 @@ static inline void log_suspend_abort_reason(const char *fmt, ...) { }
 
 #ifdef CONFIG_SEC_PM_DEBUG
 void log_wakeup_reason_name(const char *name);
-#endif /* CONFIG_SEC_PM_DEBUG */
-
+#endif
 #endif /* _LINUX_WAKEUP_REASON_H */

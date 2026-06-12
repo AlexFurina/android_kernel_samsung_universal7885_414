@@ -74,7 +74,7 @@ void get_derived_permission_inode_new(struct dentry *parent,
 	struct qstr q_media = QSTR_LITERAL("media");
 	struct qstr q_cache = QSTR_LITERAL("cache");
 #if defined(CONFIG_SDCARD_FS_SUPPORT_KNOX)
-	/* @fs.sec -- 75C3FE66DEDF62B1A944CAC8EFC8A4D0 -- */
+	/* refer to perm_t in sdcardfs.h */
 	struct qstr q_knox = QSTR_LITERAL("knox");
 	struct qstr q_shared = QSTR_LITERAL("shared");
 #endif

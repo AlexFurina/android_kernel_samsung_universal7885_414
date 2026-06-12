@@ -777,7 +777,10 @@ static void check_stack_usage(void)
 #else
 static inline void check_stack_usage(void) {}
 #endif
-
+#ifdef CONFIG_FAST_TRACK
+#include <cpu/ftt/ftt.h>
+extern struct ftt_stat fttstat;
+#endif
 void __noreturn do_exit(long code)
 {
 	struct task_struct *tsk = current;
@@ -786,6 +789,7 @@ void __noreturn do_exit(long code)
 #ifdef CONFIG_SECURITY_DEFEX
 	task_defex_zero_creds(current);
 #endif
+
 	profile_task_exit(tsk);
 	kcov_task_exit(tsk);
 
@@ -830,6 +834,7 @@ void __noreturn do_exit(long code)
 	}
 
 	exit_signals(tsk);  /* sets PF_EXITING */
+	sync_band(tsk, LEAVE_BAND);
 
 	/*
 	 * Ensure that all new tsk->pi_lock acquisitions must observe
@@ -886,6 +891,10 @@ void __noreturn do_exit(long code)
 	exit_task_namespaces(tsk);
 	exit_task_work(tsk);
 	exit_thread(tsk);
+#ifdef CONFIG_FAST_TRACK
+	if(tsk->se.ftt_mark)
+		fttstat.ftt_cnt--;
+#endif
 
 	/*
 	 * Flush inherited counters to the parent - before the parent

@@ -311,13 +311,13 @@
 #endif
 
 #ifdef CONFIG_UH_RKP
-#define RKP_RO_DATA							\
+#define RKP_RO_PGT					\
 	PG_IDMAP								\
 	PG_SWAP									\
 	PG_RESERVED								\
 	PG_TRAMP
 #else
-#define RKP_RO_DATA
+#define RKP_RO_PGT
 #endif
 
 /*
@@ -357,7 +357,7 @@
 		*(.kdp_ro)						\
 		VMLINUX_SYMBOL(__stop_kdp_ro) = .;		\
 		VMLINUX_SYMBOL(__start_rkp_ro_pgt) = .;		\
-		RKP_RO_DATA						\
+		RKP_RO_PGT						\
 		VMLINUX_SYMBOL(__stop_rkp_ro_pgt) = .;		\
 	}								\
 									\

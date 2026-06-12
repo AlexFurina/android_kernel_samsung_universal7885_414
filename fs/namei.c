@@ -4614,6 +4614,7 @@ int vfs_rename2(struct vfsmount *mnt,
 				       new_dir, new_dentry, flags);
 	if (error)
 		goto out;
+
 #ifdef CONFIG_FSCRYPT_SDP
 	fscrypt_sdp_check_rename_post(old_dir, old_dentry,
 						new_dir, new_dentry);

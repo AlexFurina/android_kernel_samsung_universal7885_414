@@ -80,7 +80,7 @@
 #define	RET_UH_LKM_BLOCK_FORCE			0x00000002
 
 /* Return codes for lkm_block function */
-#define	RET_LKM_BLOCK_SUCCESS			0
+#define	RET_LKM_BLOCK_SUCCESS				0
 #define	RET_LKM_BLOCK_FAIL				-1
 #endif
 /*

@@ -525,7 +525,6 @@ int kbase_debug_job_fault_context_init(struct kbase_context *kctx)
 	 * Because this memory will keep the register address and value
 	 */
 	kctx->reg_dump = vmalloc(0x4000 * 2);
-
 	if (kctx->reg_dump != NULL) {
 		if (kbase_debug_job_fault_reg_snapshot_init(kctx, 0x4000) ==
 		    false) {
@@ -536,7 +535,6 @@ int kbase_debug_job_fault_context_init(struct kbase_context *kctx)
 		atomic_set(&kctx->job_fault_count, 0);
 	}
 	return 0;
-
 }
 
 /*

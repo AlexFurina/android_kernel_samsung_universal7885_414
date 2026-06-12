@@ -739,7 +739,6 @@ config PAGE_COUNTER
 
 config MEMCG
 	bool "Memory controller"
-	default y
 	select PAGE_COUNTER
 	select EVENTFD
 	help
@@ -748,7 +747,6 @@ config MEMCG
 config MEMCG_SWAP
 	bool "Swap controller"
 	depends on MEMCG && SWAP
-	default y
 	help
 	  Provides control over the swap space consumed by tasks in a cgroup.
 
@@ -1091,6 +1089,17 @@ config SCHED_EMS_TUNE
 	  This option supports tuner for Exynos mobile scheduler.
 
 	  If unsure, say N.
+
+config SIMPLIFIED_ENERGY_MODEL
+	bool "Enable simplified energy model feature"
+	depends on SCHED_EMS
+	default n
+	help
+	  This option enables support for simplified energy model. This allows
+	  using a simple energy table declared per_cpu instead of using the EAS
+	  energy table.
+
+	  Say N if unsure.
 
 config SCHED_USE_FLUID_RT
 	bool "Enable Fluid RT scheduler feature"
@@ -2070,3 +2079,5 @@ config ASN1
 	  functions to call on what tags.
 
 source "kernel/Kconfig.locks"
+
+source "kernel/ftt/Kconfig"

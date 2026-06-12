@@ -61,65 +61,6 @@ inline struct sdp_info *fscrypt_sdp_alloc_sdp_info(void)
 	return ci_sdp_info;
 }
 
-void dump_file_key_hex(const char* tag, uint8_t *data, size_t data_len)
-{
-	static const char *hex = "0123456789ABCDEF";
-	static const char delimiter = ' ';
-	int i;
-	char *buf;
-	size_t buf_len;
-
-	if (tag == NULL || data == NULL || data_len <= 0) {
-		return;
-	}
-
-	buf_len = data_len * 3;
-	buf = (char *)kmalloc(buf_len, GFP_ATOMIC);
-	if (buf == NULL) {
-		return;
-	}
-	for (i= 0 ; i < data_len ; i++) {
-		buf[i*3 + 0] = hex[(data[i] >> 4) & 0x0F];
-		buf[i*3 + 1] = hex[(data[i]) & 0x0F];
-		buf[i*3 + 2] = delimiter;
-	}
-	buf[buf_len - 1] = '\0';
-	printk(KERN_ERR
-		"[%s] %s(len=%d) : %s\n", "DEK_DBG", tag, data_len, buf);
-	kfree(buf);
-}
-
-#ifdef CONFIG_SDP_KEY_DUMP
-int fscrypt_sdp_dump_file_key(struct inode *inode)
-{
-	struct fscrypt_info *ci = inode->i_crypt_info;
-	struct fscrypt_key file_encryption_key;
-	int res;
-
-	inode_lock(inode);
-
-	DEK_LOGE("dump file key for ino (%ld)\n", inode->i_ino);
-
-	memset(&file_encryption_key, 0, sizeof(file_encryption_key));
-	if (!ci->ci_sdp_info) {
-		DEK_LOGE("ci_sdp_info is null\n");
-		res = fscrypt_get_encryption_key(inode, &file_encryption_key);
-	} else {
-		res = fscrypt_get_encryption_key_classified(inode, &file_encryption_key);
-	}
-	if (res) {
-		DEK_LOGE("failed to retrieve file encryption key, rc:%d\n", res);
-		goto out;
-	}
-	dump_file_key_hex("FILE ENCRYPTION KEY", file_encryption_key.raw, file_encryption_key.size);
-	memzero_explicit(file_encryption_key.raw, file_encryption_key.size);
-
-out:
-	inode_unlock(inode);
-	return res;
-}
-#endif
-
 int fscrypt_sdp_set_sdp_policy(struct inode *inode, int engine_id)
 {
 	struct fscrypt_info *ci = inode->i_crypt_info;
@@ -144,6 +85,10 @@ int fscrypt_sdp_set_sdp_policy(struct inode *inode, int engine_id)
 	}
 
 	res = inode->i_sb->s_cop->get_context(inode, &ctx, sizeof(ctx));
+	if (res == offsetof(struct fscrypt_context, knox_flags)) {
+		ctx.knox_flags = 0;
+		res = sizeof(ctx);
+	}
 	if (res != sizeof(ctx)) {
 		if (res >= 0)
 		DEK_LOGE("set_policy: failed to get fscrypt ctx (err:%d)\n", res);
@@ -254,6 +199,10 @@ int fscrypt_sdp_set_sensitive(struct inode *inode, int engine_id, struct fscrypt
 		DEK_LOGE("%s: Failed to get fscrypt ctx (err:%d)\n", __func__, rc);
 		return rc;
 	}
+	if (rc == offsetof(struct fscrypt_context, knox_flags)) {
+		ctx.knox_flags = 0;
+		rc = sizeof(ctx);
+	}
 
 	if (!is_dir) {
 		//run setsensitive with nonce from ctx
@@ -295,6 +244,10 @@ int fscrypt_sdp_set_protected(struct inode *inode, int engine_id)
 	}
 
 	rc = inode->i_sb->s_cop->get_context(inode, &ctx, sizeof(ctx));
+	if (rc == offsetof(struct fscrypt_context, knox_flags)) {
+		ctx.knox_flags = 0;
+		rc = sizeof(ctx);
+	}
 	if (rc != sizeof(ctx)) {
 		DEK_LOGE("set_protected: failed to get fscrypt ctx (err:%d)\n", rc);
 		return -EINVAL;
@@ -405,6 +358,10 @@ int fscrypt_sdp_initialize(struct inode *inode, int engine_id, struct fscrypt_ke
 		return res;
 
 	res = inode->i_sb->s_cop->get_context(inode, &ctx, sizeof(ctx));
+	if (res == offsetof(struct fscrypt_context, knox_flags)) {
+		ctx.knox_flags = 0;
+		res = sizeof(ctx);
+	}
 	if (res != sizeof(ctx)) {
 		if (res >= 0)
 			res = -EEXIST;
@@ -477,6 +434,10 @@ int fscrypt_sdp_add_chamber_directory(int engine_id, struct inode *inode)
 			   "%s: Failed to get fscrypt ctx (err:%d)\n", __func__, rc);
 		return rc;
 	}
+	if (rc == offsetof(struct fscrypt_context, knox_flags)) {
+		ctx.knox_flags = 0;
+		rc = sizeof(ctx);
+	}
 
 	if (!ci->ci_sdp_info) {
 		struct sdp_info *ci_sdp_info = fscrypt_sdp_alloc_sdp_info();
@@ -537,6 +498,10 @@ int fscrypt_sdp_remove_chamber_directory(struct inode *inode)
 		DEK_LOGE(KERN_ERR
 			   "%s: Failed to get fscrypt ctx (err:%d)\n", __func__, rc);
 		return rc;
+	}
+	if (rc == offsetof(struct fscrypt_context, knox_flags)) {
+		ctx.knox_flags = 0;
+		rc = sizeof(ctx);
 	}
 
 	if (!ci->ci_sdp_info)
@@ -901,7 +866,6 @@ inline int __fscrypt_sdp_finish_set_sensitive(struct inode *inode,
 	struct fscrypt_sdp_context sdp_ctx;
 	struct fscrypt_key fek;
 	u8 enonce[MAX_EN_BUF_LEN];
-	sdp_fs_command_t *cmd = NULL;
 
 	if ((crypt_info->ci_sdp_info->sdp_flags & SDP_DEK_TO_SET_SENSITIVE)
 			|| (crypt_info->ci_sdp_info->sdp_flags & SDP_DEK_TO_CONVERT_KEY_TYPE)) {
@@ -921,7 +885,7 @@ inline int __fscrypt_sdp_finish_set_sensitive(struct inode *inode,
 			}
 			if (res) {
 				DEK_LOGE("set_sensitive: failed to find fek (err:%d)\n", res);
-				goto out;
+				return res;
 			}
 		}
 #if DEK_DEBUG
@@ -987,15 +951,6 @@ inline int __fscrypt_sdp_finish_set_sensitive(struct inode *inode,
 
 out:
 	memzero_explicit(&fek, sizeof(fek));
-	if (res) {
-		cmd = sdp_fs_command_alloc(FSOP_AUDIT_FAIL_ENCRYPT, current->tgid,
-				crypt_info->ci_sdp_info->engine_id, -1, inode->i_ino, res,
-				GFP_NOFS);
-		if (cmd) {
-			sdp_fs_request(cmd, NULL);
-			sdp_fs_command_free(cmd);
-		}
-	}
 	return res;
 }
 
@@ -1090,6 +1045,10 @@ inline int __fscrypt_sdp_thread_convert_sdp_key(void *arg)
 
 		if (ci && ci->ci_sdp_info) {
 			rc = inode->i_sb->s_cop->get_context(inode, &ctx, sizeof(ctx));
+			if (rc == offsetof(struct fscrypt_context, knox_flags)) {
+				ctx.knox_flags = 0;
+				rc = sizeof(ctx);
+			}
 			if (rc != sizeof(ctx)) {
 				if (rc > 0 )
 					rc = -EINVAL;

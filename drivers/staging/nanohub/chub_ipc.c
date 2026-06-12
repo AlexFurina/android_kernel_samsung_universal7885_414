@@ -169,8 +169,8 @@ void *ipc_get_chub_map(void)
 	struct chub_bootargs *map = (struct chub_bootargs *)(sram_base + MAP_INFO_OFFSET);
 
 	if (strncmp(OS_UPDT_MAGIC, map->magic, sizeof(OS_UPDT_MAGIC))) {
-		CSP_PRINTF_ERROR("%s: %s: %p has wrong magic key: %s -> %s\n",
-			NAME_PREFIX, __func__, map, OS_UPDT_MAGIC, map->magic);
+		CSP_PRINTF_ERROR("%s: %s: map has wrong magic key: %s -> %s\n",
+			NAME_PREFIX, __func__, OS_UPDT_MAGIC, map->magic);
 		return 0;
 	}
 
@@ -227,29 +227,19 @@ void *ipc_get_chub_map(void)
 
 	if (((u32)ipc_addr[IPC_REG_PERSISTBUF].base + ipc_addr[IPC_REG_PERSISTBUF].offset) >
 			((u32)ipc_addr[IPC_REG_IPC].base + ipc_addr[IPC_REG_IPC].offset))
-		CSP_PRINTF_INFO("%s: %s: wrong persistbuf addr:%p, %d, ipc_end:0x%x\n",
-			NAME_PREFIX, __func__,
-			ipc_addr[IPC_REG_PERSISTBUF].base, ipc_addr[IPC_REG_PERSISTBUF].offset, map->ipc_end);
+		CSP_PRINTF_INFO("%s: %s: wrong persistbuf, offset %d, ipc_end:0x%x\n",
+			NAME_PREFIX, __func__, ipc_addr[IPC_REG_PERSISTBUF].offset, map->ipc_end);
 
 	CSP_PRINTF_INFO
-	    ("%s: contexthub map information(v%u)\n bl(%p %d)\n os(%p %d)\n ipc(%p %d)\n ram(%p %d)\n shared(%p %d)\n dump(%p %d)\n",
-	     NAME_PREFIX, map->ipc_version,
-	     ipc_addr[IPC_REG_BL].base, ipc_addr[IPC_REG_BL].offset,
-	     ipc_addr[IPC_REG_OS].base, ipc_addr[IPC_REG_OS].offset,
-	     ipc_addr[IPC_REG_IPC].base, ipc_addr[IPC_REG_IPC].offset,
-	     ipc_addr[IPC_REG_RAM].base, ipc_addr[IPC_REG_RAM].offset,
-	     ipc_addr[IPC_REG_SHARED].base, ipc_addr[IPC_REG_SHARED].offset,
-	     ipc_addr[IPC_REG_DUMP].base, ipc_addr[IPC_REG_DUMP].offset);
+	    ("%s: contexthub map information(v%u)\n bl(%d)\n os(%d)\n ipc(%d)\n ram(%d)\n shared(%d)\n dump(%d)\n",
+	     NAME_PREFIX, map->ipc_version, ipc_addr[IPC_REG_BL].offset, ipc_addr[IPC_REG_OS].offset,
+	     ipc_addr[IPC_REG_IPC].offset, ipc_addr[IPC_REG_RAM].offset, ipc_addr[IPC_REG_SHARED].offset, ipc_addr[IPC_REG_DUMP].offset);
 
 	CSP_PRINTF_INFO
-		("%s: ipc_map information\n ipc(%p %d)\n data_c2a(%p %d)\n data_a2c(%p %d)\n evt_c2a(%p %d)\n evt_a2c(%p %d)\n log(%p %d)\n persistbuf(%p %d)\n",
-		NAME_PREFIX, ipc_get_base(IPC_REG_IPC), ipc_get_offset(IPC_REG_IPC),
-		ipc_get_base(IPC_REG_IPC_C2A), ipc_get_offset(IPC_REG_IPC_C2A),
-		ipc_get_base(IPC_REG_IPC_A2C), ipc_get_offset(IPC_REG_IPC_A2C),
-		ipc_get_base(IPC_REG_IPC_EVT_C2A), ipc_get_offset(IPC_REG_IPC_EVT_C2A),
-		ipc_get_base(IPC_REG_IPC_EVT_A2C), ipc_get_offset(IPC_REG_IPC_EVT_A2C),
-		ipc_get_base(IPC_REG_LOG), ipc_get_offset(IPC_REG_LOG),
-		ipc_get_base(IPC_REG_PERSISTBUF), ipc_get_offset(IPC_REG_PERSISTBUF));
+		("%s: ipc_map information\n ipc(%d)\n data_c2a(%d)\n data_a2c(%d)\n evt_c2a(%d)\n evt_a2c(%d)\n log(%d)\n persistbuf(%d)\n",
+		NAME_PREFIX, ipc_get_offset(IPC_REG_IPC), ipc_get_offset(IPC_REG_IPC_C2A), ipc_get_offset(IPC_REG_IPC_A2C),
+		ipc_get_offset(IPC_REG_IPC_EVT_C2A), ipc_get_offset(IPC_REG_IPC_EVT_A2C), ipc_get_offset(IPC_REG_LOG),
+		ipc_get_offset(IPC_REG_PERSISTBUF));
 
 	CSP_PRINTF_INFO
 		("%s: ipc_map data_ch:size:%d on %d channel. evt_ch:%d\n",
@@ -396,7 +386,7 @@ int ipc_check_reset_valid()
 	int ret = 0;
 	struct ipc_map_area *map = ipc_get_base(IPC_REG_IPC);
 
-	for (i = 0; i < IPC_DATA_MAX; i++)
+ 	for (i = 0; i < IPC_DATA_MAX; i++)
 		if (map->data[i].dq || map->data[i].eq ||
 			map->data[i].full || (map->data[i].empty != 1)) {
 			CSP_PRINTF_INFO("%s: %s: ipc_data_%s invalid: eq:%d, dq:%d, full:%d, empty:%d\n",
@@ -408,7 +398,7 @@ int ipc_check_reset_valid()
 			ret = -EINVAL;
 		}
 
-	for (i = 0; i < IPC_EVT_MAX; i++)
+ 	for (i = 0; i < IPC_EVT_MAX; i++)
 		if (map->evt[i].ctrl.eq || map->evt[i].ctrl.dq ||
 			map->evt[i].ctrl.full || (map->evt[i].ctrl.empty != 1)) {
 			CSP_PRINTF_INFO("%s: %s: ipc_evt_%s invalid: eq:%d, dq:%d, full:%d, empty:%d\n",
@@ -599,8 +589,8 @@ void ipc_print_evt(enum ipc_evt_list evtq)
 	int i;
 
 	if (ipc_evt) {
-		CSP_PRINTF_INFO("%s: evt(%p)-%s: eq:%d dq:%d full:%d irq:%d\n",
-			NAME_PREFIX, ipc_evt, IPC_GET_EVT_NAME(evtq), ipc_evt->ctrl.eq,
+		CSP_PRINTF_INFO("%s: evt-%s: eq:%d dq:%d full:%d irq:%d\n",
+			NAME_PREFIX, IPC_GET_EVT_NAME(evtq), ipc_evt->ctrl.eq,
 			ipc_evt->ctrl.dq, ipc_evt->ctrl.full,
 			ipc_evt->ctrl.irq);
 
@@ -770,7 +760,13 @@ void ipc_dump_mailbox_sfr(struct mailbox_sfr *mailbox)
 	mailbox->INTMR1  = __raw_readl(ipc_own[AP].base + REG_MAILBOX_INTMR1);
 	mailbox->INTSR1	 = __raw_readl(ipc_own[AP].base + REG_MAILBOX_INTSR1);
 	mailbox->INTMSR1 = __raw_readl(ipc_own[AP].base + REG_MAILBOX_INTMSR1);
-    pr_info("%s: 0x%x/ c2a: 0x%x 0x%x 0x%x 0x%x 0x%x/ a2c: 0x%x 0x%x 0x%x 0x%x 0x%x\n",
+        pr_info("%s: 0x%x/0x%x 0x%x 0x%x 0x%x 0x%x/0x%x 0x%x 0x%x 0x%x 0x%x\n",
+		        __func__, mailbox->MCUCTL, mailbox->INTGR0, mailbox->INTCR0,
+			mailbox->INTMR0, mailbox->INTSR0, mailbox->INTMSR0,
+			mailbox->INTGR1, mailbox->INTCR1, mailbox->INTMR1,
+			mailbox->INTSR1, mailbox->INTMSR1);
+
+	pr_info("%s: 0x%x/ c2a: 0x%x 0x%x 0x%x 0x%x 0x%x/ a2c: 0x%x 0x%x 0x%x 0x%x 0x%x\n",
 		__func__, mailbox->MCUCTL,
 		mailbox->INTGR0, mailbox->INTCR0, mailbox->INTMR0, mailbox->INTSR0, mailbox->INTMSR0,
 		mailbox->INTGR1, mailbox->INTCR1, mailbox->INTMR1, mailbox->INTSR1, mailbox->INTMSR1);

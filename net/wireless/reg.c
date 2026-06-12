@@ -1817,7 +1817,7 @@ static void reg_set_request_processed(void)
 	struct regulatory_request *lr = get_last_request();
 
 #ifdef CONFIG_CFG80211_REG_NOT_UPDATED
-	printk(KERN_INFO "regulatory is not upadted via %s.\n", __func__);
+	printk(KERN_INFO "regulatory is not updated via %s.\n", __func__);
 	return;
 #endif
 
@@ -2366,7 +2366,7 @@ static void reg_todo(struct work_struct *work)
 static void queue_regulatory_request(struct regulatory_request *request)
 {
 #ifdef CONFIG_CFG80211_REG_NOT_UPDATED
-	printk(KERN_INFO "regulatory is not upadted via %s.\n", __func__);
+	printk(KERN_INFO "regulatory is not updated via %s.\n", __func__);
 	if (!request)
 		kfree(request);
 	return;
@@ -2646,7 +2646,7 @@ static void restore_regulatory_settings(bool reset_user)
 	struct cfg80211_registered_device *rdev;
 
 #ifdef CONFIG_CFG80211_REG_NOT_UPDATED
-	printk(KERN_INFO "regulatory is not upadted via %s.\n", __func__);
+	printk(KERN_INFO "regulatory is not updated via %s.\n", __func__);
 	return;
 #endif
 

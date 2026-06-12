@@ -21,6 +21,9 @@ EXPORT_SYMBOL(lpcharge);
 int charging_night_mode;
 EXPORT_SYMBOL(charging_night_mode);
 
+int temp_control_test;
+EXPORT_SYMBOL(temp_control_test);
+
 static int sec_bat_is_lpm_check(char *str)
 {
 	if (strncmp(str, "charger", 7) == 0)
@@ -44,7 +47,11 @@ static int __init charging_mode(char *str)
 	if (get_option(&str, &mode)) {
 		charging_night_mode = mode & 0x000000FF;
 
-		printk(KERN_ERR "charging_mode() : 0x%x(%d)\n", charging_night_mode, charging_night_mode);
+		printk(KERN_ERR "charging_night_mode : 0x%x(%d)\n", charging_night_mode, charging_night_mode);
+
+		temp_control_test = (mode & 0x00FF0000) >> 16;
+
+		printk(KERN_ERR "temp_control_test : 0x%x(%d)\n", temp_control_test, temp_control_test);
 
 		return 0;
 	}
@@ -60,7 +67,7 @@ EXPORT_SYMBOL(fg_reset);
 
 static int sec_bat_get_fg_reset(char *val)
 {
-	fg_reset = strncmp(val, "1", 1) ? 0 : 1;
+	get_option(&val, &fg_reset);
 	pr_info("%s, fg_reset:%d\n", __func__, fg_reset);
 	return 1;
 }
@@ -71,9 +78,9 @@ EXPORT_SYMBOL(factory_mode);
 
 static int sec_bat_get_factory_mode(char *val)
 {
-        factory_mode = strncmp(val, "1", 1) ? 0 : 1;
-        pr_info("%s, factory_mode : %d\n", __func__, factory_mode);
-        return 1;
+	factory_mode = strncmp(val, "1", 1) ? 0 : 1;
+	pr_info("%s, factory_mode : %d\n", __func__, factory_mode);
+	return 1;
 }
 __setup("factory_mode=", sec_bat_get_factory_mode);
 #endif

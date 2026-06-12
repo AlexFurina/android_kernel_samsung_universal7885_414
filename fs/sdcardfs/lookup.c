@@ -194,7 +194,6 @@ static struct dentry *__sdcardfs_interpose(struct dentry *dentry,
 		ret_dentry = ERR_CAST(inode);
 		goto out;
 	}
-	/* @fs.sec -- CF593884E59B4620A14A470FFFCFF518 -- */
 	update_derived_permission_lock(dentry, inode);
 
 	ret_dentry = d_splice_alias(inode, dentry);
@@ -233,7 +232,7 @@ static int sdcardfs_name_match(struct dir_context *ctx, const char *name,
 	struct sdcardfs_name_data *buf = container_of(ctx, struct sdcardfs_name_data, ctx);
 	struct qstr candidate = QSTR_INIT(name, namelen);
 
-	if (qstr_case_eq(buf->to_find, &candidate)) {
+	if (qstr_n_case_eq(buf->to_find, &candidate)) {
 		memcpy(buf->name, name, namelen);
 		buf->name[namelen] = 0;
 		buf->found = true;
@@ -361,7 +360,6 @@ put_name:
 	if (err && err != -ENOENT)
 		goto out;
 
-	/* @fs.sec -- F9900EE95E79043A8353C910A9515324 -- */
 	lower_dentry = lookup_one_len_unlocked(dentry->d_name.name,
 			lower_dir_dentry, dentry->d_name.len);
 	if (unlikely(IS_ERR(lower_dentry))) {

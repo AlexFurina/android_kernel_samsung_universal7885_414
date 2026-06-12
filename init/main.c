@@ -102,9 +102,9 @@
 #ifdef CONFIG_UH
 #include <linux/uh_fault_handler.h>
 #include <linux/uh.h>
+#endif
 #ifdef CONFIG_UH_RKP
 #include <linux/rkp.h>
-#endif
 #endif
 
 #ifdef CONFIG_SECURITY_DEFEX
@@ -484,10 +484,10 @@ static int __init do_early_param(char *param, char *val,
 
 #ifdef CONFIG_RKP_KDP
 	if ((strncmp(param, "bootmode", 9) == 0)) {
-		//printk("\n RKP22 In Recovery Mode= %d\n", *val);
-		if ((strncmp(val, "2", 2) == 0)) {
-			is_recovery = 1;
-		}
+			//printk("\n RKP22 In Recovery Mode= %d\n",*val);
+			if ((strncmp(val, "2", 2) == 0)) {
+				is_recovery = 1;
+			}
 	}
 #endif
 
@@ -556,7 +556,6 @@ static void __init mm_init(void)
 rkp_init_t rkp_init_data __rkp_ro = {
 	.magic = RKP_INIT_MAGIC,
 	.vmalloc_start = VMALLOC_START,
-	.no_fimc_verify = 0,
 	.fimc_phys_addr = 0,
 	._text = (u64)_text,
 	._etext = (u64)_etext,
@@ -564,7 +563,6 @@ rkp_init_t rkp_init_data __rkp_ro = {
 	._erodata = (u64)__end_rodata,
 	 .large_memory = 0,
 };
-
 sparse_bitmap_for_kernel_t* rkp_s_bitmap_ro __rkp_ro = 0;
 sparse_bitmap_for_kernel_t* rkp_s_bitmap_dbl __rkp_ro = 0;
 sparse_bitmap_for_kernel_t* rkp_s_bitmap_buffer __rkp_ro = 0;
@@ -575,26 +573,29 @@ static void __init rkp_init(void)
 	rkp_init_data.vmalloc_end = (u64)high_memory;
 	rkp_init_data.init_mm_pgd = (u64)__pa(swapper_pg_dir);
 	rkp_init_data.id_map_pgd = (u64)__pa(idmap_pg_dir);
-	rkp_init_data.zero_pg_addr = (u64)__pa(empty_zero_page);
-#ifdef CONFIG_UH_RKP_FIMC_CHECK
+#ifdef CONFIG_UNMAP_KERNEL_AT_EL0
+	rkp_init_data.tramp_pgd = (u64)__pa(tramp_pg_dir);
+#endif
+#ifndef CONFIG_UH_RKP_FIMC_CHECK
 	rkp_init_data.no_fimc_verify = 1;
 #endif
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
-	rkp_init_data.tramp_pgd = (u64)__pa(tramp_pg_dir);
 	rkp_init_data.tramp_valias = (u64)TRAMP_VALIAS;
 #endif
+	rkp_init_data.zero_pg_addr = (u64)__pa(empty_zero_page);
 	rkp_s_bitmap_ro = (sparse_bitmap_for_kernel_t *)
 		uh_call(UH_APP_RKP, RKP_GET_RO_BITMAP, 0, 0, 0, 0);
 	rkp_s_bitmap_dbl = (sparse_bitmap_for_kernel_t *)
 		uh_call(UH_APP_RKP, RKP_GET_DBL_BITMAP, 0, 0, 0, 0);
 	uh_call(UH_APP_RKP, RKP_START, (u64)&rkp_init_data, (u64)kimage_voffset, 0, 0);
-}
 
+}
 static void __init rkp_robuffer_init(void)
 {
 	rkp_s_bitmap_buffer = (sparse_bitmap_for_kernel_t *)
 		uh_call(UH_APP_RKP, RKP_GET_RKP_GET_BUFFER_BITMAP, 0, 0, 0, 0);
 }
+
 #endif
 
 #ifdef CONFIG_RKP_KDP
@@ -609,9 +610,8 @@ static int __init verifiedboot_state_setup(char *str)
 {
 	strlcpy(verifiedbootstate, str, sizeof(verifiedbootstate));
 
-	if (!strncmp(verifiedbootstate, "orange", sizeof("orange")))
+	if(!strncmp(verifiedbootstate, "orange", sizeof("orange")))
 		__check_verifiedboot = 1;
-
 	return 0;
 }
 __setup("androidboot.verifiedbootstate=", verifiedboot_state_setup);
@@ -622,23 +622,23 @@ void kdp_init(void)
 
 	cred.credSize 	= sizeof(struct cred);
 	cred.sp_size	= rkp_get_task_sec_size();
-	cred.pgd_mm 	= offsetof(struct mm_struct, pgd);
-	cred.uid_cred	= offsetof(struct cred, uid);
-	cred.euid_cred	= offsetof(struct cred, euid);
-	cred.gid_cred	= offsetof(struct cred, gid);
-	cred.egid_cred	= offsetof(struct cred, egid);
+	cred.pgd_mm 	= offsetof(struct mm_struct,pgd);
+	cred.uid_cred	= offsetof(struct cred,uid);
+	cred.euid_cred	= offsetof(struct cred,euid);
+	cred.gid_cred	= offsetof(struct cred,gid);
+	cred.egid_cred	= offsetof(struct cred,egid);
 
-	cred.bp_pgd_cred 	= offsetof(struct cred, bp_pgd);
-	cred.bp_task_cred 	= offsetof(struct cred, bp_task);
-	cred.type_cred 		= offsetof(struct cred, type);
-	cred.security_cred 	= offsetof(struct cred, security);
-	cred.usage_cred 	= offsetof(struct cred, use_cnt);
+	cred.bp_pgd_cred 	= offsetof(struct cred,bp_pgd);
+	cred.bp_task_cred 	= offsetof(struct cred,bp_task);
+	cred.type_cred 		= offsetof(struct cred,type);
+	cred.security_cred 	= offsetof(struct cred,security);
+	cred.usage_cred 	= offsetof(struct cred,use_cnt);
 
-	cred.cred_task  	= offsetof(struct task_struct, cred);
-	cred.mm_task 		= offsetof(struct task_struct, mm);
-	cred.pid_task		= offsetof(struct task_struct, pid);
-	cred.rp_task		= offsetof(struct task_struct, real_parent);
-	cred.comm_task 		= offsetof(struct task_struct, comm);
+	cred.cred_task  	= offsetof(struct task_struct,cred);
+	cred.mm_task 		= offsetof(struct task_struct,mm);
+	cred.pid_task		= offsetof(struct task_struct,pid);
+	cred.rp_task		= offsetof(struct task_struct,real_parent);
+	cred.comm_task 		= offsetof(struct task_struct,comm);
 
 	cred.bp_cred_secptr 	= rkp_get_offset_bp_cred();
 
@@ -651,7 +651,8 @@ void kdp_init(void)
 #endif
 	uh_call(UH_APP_RKP, RKP_KDP_X40, (u64)&cred, 0, 0, 0);
 }
-#endif /* CONFIG_RKP_KDP */
+#endif /*CONFIG_RKP_KDP*/
+
 
 asmlinkage __visible void __init start_kernel(void)
 {
@@ -699,7 +700,6 @@ asmlinkage __visible void __init start_kernel(void)
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 	pr_notice("Kernel command line: %s\n", boot_command_line);
 #endif
-
 	parse_early_param();
 	after_dashes = parse_args("Booting kernel",
 				  static_command_line, __start___param,
@@ -726,7 +726,7 @@ asmlinkage __visible void __init start_kernel(void)
 #endif
 #ifdef CONFIG_RKP_KDP
 	rkp_cred_enable = 1;
-#endif
+#endif /*CONFIG_RKP_KDP*/
 	ftrace_init();
 
 	/* trace_printk can be enabled here */
@@ -834,9 +834,9 @@ asmlinkage __visible void __init start_kernel(void)
 #endif
 	thread_stack_cache_init();
 #ifdef CONFIG_RKP_KDP
-	if (rkp_cred_enable) 
+	if (rkp_cred_enable)
 		kdp_init();
-#endif
+#endif /*CONFIG_RKP_KDP*/
 	cred_init();
 	fork_init();
 	proc_caches_init();
@@ -952,6 +952,9 @@ static bool __init_or_module initcall_blacklisted(initcall_t fn)
 __setup("initcall_blacklist=", initcall_blacklist);
 
 #ifdef CONFIG_SEC_BOOTSTAT
+
+static bool __init_or_module initcall_sec_debug = true;
+
 static int __init_or_module do_one_initcall_sec_debug(initcall_t fn)
 {
 	ktime_t calltime, delta, rettime;
@@ -981,7 +984,8 @@ static int __init_or_module do_one_initcall_sec_debug(initcall_t fn)
 
 	return ret;
 }
-#else
+#endif
+
 static int __init_or_module do_one_initcall_debug(initcall_t fn)
 {
 	ktime_t calltime, delta, rettime;
@@ -999,7 +1003,6 @@ static int __init_or_module do_one_initcall_debug(initcall_t fn)
 
 	return ret;
 }
-#endif
 
 int __init_or_module do_one_initcall(initcall_t fn)
 {
@@ -1010,14 +1013,14 @@ int __init_or_module do_one_initcall(initcall_t fn)
 	if (initcall_blacklisted(fn))
 		return -EPERM;
 
-#ifdef CONFIG_SEC_BOOTSTAT
-	ret = do_one_initcall_sec_debug(fn);
-#else
 	if (initcall_debug)
 		ret = do_one_initcall_debug(fn);
+#ifdef CONFIG_SEC_BOOTSTAT
+	else if (initcall_sec_debug)
+		ret = do_one_initcall_sec_debug(fn);
+#endif
 	else
 		ret = fn();
-#endif
 
 	msgbuf[0] = 0;
 
@@ -1200,6 +1203,7 @@ static int __ref kernel_init(void *unused)
 	int ret;
 
 	kernel_init_freeable();
+
 #ifdef CONFIG_SEC_GPIO_DVS
 	/************************ Caution !!! ****************************/
 	/* This function must be located in appropriate INIT position
@@ -1208,7 +1212,8 @@ static int __ref kernel_init(void *unused)
 	/************************ Caution !!! ****************************/
 	pr_info("%s: GPIO DVS: check init gpio\n", __func__);
 	gpio_dvs_check_initgpio();
-#endif /* CONFIG_SEC_GPIO_DVS */
+#endif
+
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
 	ftrace_free_init_mem();
@@ -1321,5 +1326,4 @@ static noinline void __init kernel_init_freeable(void)
 #ifdef CONFIG_SECURITY_DEFEX
 	defex_load_rules();
 #endif
-
 }

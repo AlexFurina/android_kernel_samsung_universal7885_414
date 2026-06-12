@@ -56,12 +56,11 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/ext4.h>
 
-
 #ifdef CONFIG_FSCRYPT_SDP
 #include <linux/fscrypto_sdp_cache.h>
 #endif
 
-extern void (*ufs_debug_func)(void *);
+void (*ufs_debug_func)(void *) = NULL;
 
 static struct ext4_lazy_init *ext4_li_info;
 static struct mutex ext4_li_mtx;
@@ -374,14 +373,9 @@ static void __save_error_info(struct super_block *sb, const char *func,
 	le32_add_cpu(&es->s_error_count, 1);
 }
 
-/* @fs.sec -- ed6287f38b4c758f36cd7864940cdbd81e26efee -- */
-extern int ignore_fs_panic;
-
 static void save_error_info(struct super_block *sb, const char *func,
 			    unsigned int line)
 {
-	if (unlikely(ignore_fs_panic))
-		return;
 	__save_error_info(sb, func, line);
 	ext4_commit_super(sb, 1);
 }
@@ -424,6 +418,9 @@ static void ext4_journal_commit_callback(journal_t *journal, transaction_t *txn)
 	}
 	spin_unlock(&sbi->s_md_lock);
 }
+
+/* @fs.sec -- ed6287f38b4c758f36cd7864940cdbd81e26efee -- */
+extern int ignore_fs_panic;
 
 /* Deal with the reporting of failure conditions on a filesystem such as
  * inconsistencies detected or read IO failures.
@@ -723,11 +720,9 @@ void __ext4_abort(struct super_block *sb, const char *function,
 			jbd2_journal_abort(EXT4_SB(sb)->s_journal, -EIO);
 		save_error_info(sb, function, line);
 	}
-	if (test_opt(sb, ERRORS_PANIC)) {
+	if (test_opt(sb, ERRORS_PANIC) && !ignore_fs_panic) {
 		if (EXT4_SB(sb)->s_journal &&
 		  !(EXT4_SB(sb)->s_journal->j_flags & JBD2_REC_ERR))
-			return;
-		if (ignore_fs_panic)
 			return;
 		if (ufs_debug_func)
 			ufs_debug_func(NULL);
@@ -3568,7 +3563,8 @@ static void ext4_set_resv_clusters(struct super_block *sb)
 			 sbi->s_cluster_bits);
 
 	do_div(resv_clusters, 50);
-	resv_clusters = min_t(ext4_fsblk_t, resv_clusters, 4096);
+	/* Do not reserve clusters */
+	resv_clusters = min_t(ext4_fsblk_t, resv_clusters, 0);
 
 	atomic64_set(&sbi->s_resv_clusters, resv_clusters);
 }
@@ -5996,11 +5992,26 @@ void print_bh(struct super_block *sb, struct buffer_head *bh
 		return;
 
 	if (bh) {
+		struct ext4_sb_info *sbi = EXT4_SB(sb);
+
 		printk(KERN_ERR " print_bh: bh %p,"
 				" bh->b_size %lu, bh->b_data %p\n",
 				(void *) bh, (long unsigned int) bh->b_size,
 				(void *) bh->b_data);
 		print_block_data(sb, bh->b_blocknr, bh->b_data, start, len);
+		/* Debugging for FDE device */
+		if (strnlen(sbi->s_es->s_volume_name, 16) == strlen("data") &&
+		    strncmp(sbi->s_es->s_volume_name, "data", strlen("data")) == 0) {
+			lock_buffer(bh);
+			bh->b_end_io = end_buffer_read_sync;
+			get_bh(bh);
+			set_buffer_bypass(bh);
+			submit_bh(REQ_OP_READ, 0, bh);
+			wait_on_buffer(bh);
+			if (buffer_uptodate(bh))
+				print_block_data(sb, bh->b_blocknr, bh->b_data,
+						start, len);
+		}
 	} else {
 		printk(KERN_ERR " print_bh: bh is null!\n");
 	}

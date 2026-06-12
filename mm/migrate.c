@@ -294,9 +294,9 @@ void remove_migration_ptes(struct page *old, struct page *new, bool locked)
 	};
 
 	if (locked)
-		rmap_walk_locked(new, &rwc);
+		rmap_walk_locked(new, &rwc, NULL);
 	else
-		rmap_walk(new, &rwc);
+		rmap_walk(new, &rwc, NULL);
 }
 
 /*

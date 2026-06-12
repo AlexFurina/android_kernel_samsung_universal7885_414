@@ -28,16 +28,15 @@
 #include <linux/suspend.h>
 #include <linux/syscore_ops.h>
 #include <linux/ftrace.h>
+#include <linux/rtc.h>
 #include <trace/events/power.h>
 #include <linux/compiler.h>
 #include <linux/moduleparam.h>
 #include <linux/wakeup_reason.h>
-#ifdef CONFIG_SEC_PM_DEBUG
-#include <linux/rtc.h>
-#include <linux/regulator/machine.h>
-#endif
 #include <linux/sec_debug.h>
-
+#ifdef CONFIG_SEC_PERF_BIG_AFFINITY_RESUME
+#include <linux/cpumask.h>
+#endif
 #include "power.h"
 
 const char * const pm_labels[] = {
@@ -67,6 +66,20 @@ static DECLARE_WAIT_QUEUE_HEAD(s2idle_wait_head);
 
 enum s2idle_states __read_mostly s2idle_state;
 static DEFINE_RAW_SPINLOCK(s2idle_lock);
+
+#ifdef CONFIG_SEC_PERF_BIG_AFFINITY_RESUME
+static struct cpumask fast_cpu_mask;
+static struct cpumask backup_cpu_mask;
+
+static void init_pm_cpumask(void)
+{
+	int i;
+	cpumask_clear(&fast_cpu_mask);
+	for (i = 4; i < nr_cpu_ids; i++) {
+		cpumask_set_cpu(i, &fast_cpu_mask);
+	}
+}
+#endif
 
 void s2idle_set_ops(const struct platform_s2idle_ops *ops)
 {
@@ -195,6 +208,9 @@ void __init pm_states_init(void)
 	 * initialize mem_sleep_states[] accordingly here.
 	 */
 	mem_sleep_states[PM_SUSPEND_TO_IDLE] = mem_sleep_labels[PM_SUSPEND_TO_IDLE];
+#ifdef CONFIG_SEC_PERF_BIG_AFFINITY_RESUME
+	init_pm_cpumask();
+#endif
 }
 
 static int __init mem_sleep_default_setup(char *str)
@@ -376,7 +392,7 @@ static int suspend_prepare(suspend_state_t state)
 			log_suspend_abort_reason("PM_SUSPEND_PREPARE failed: "
 					"%ps (%d)", callback, nr_calls);
 		}
-#endif /* CONFIG_SEC_PM_DEBUG */
+#endif
 		nr_calls--;
 		goto Finish;
 	}
@@ -389,6 +405,9 @@ static int suspend_prepare(suspend_state_t state)
 		printk("canceled.\n");
 		trace_suspend_resume(TPS("sync_filesystems"), 0, false);
 		error = -EBUSY;
+#ifdef CONFIG_SEC_PM_DEBUG
+		log_suspend_abort_reason("intr_sync failed");
+#endif
 		goto Finish;
 	}
 	pr_cont("done.\n");
@@ -410,7 +429,7 @@ static int suspend_prepare(suspend_state_t state)
 	dpm_save_failed_step(SUSPEND_FREEZE);
 #ifdef CONFIG_SEC_PM_DEBUG
 	log_suspend_abort_reason("Freezing processes failed: %d", error);
-#endif /* CONFIG_SEC_PM_DEBUG */
+#endif
  Finish:
 	__pm_notifier_call_chain(PM_POST_SUSPEND, nr_calls, NULL);
 	pm_restore_console();
@@ -454,9 +473,6 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 			suspend_stats.failed_devs[last_dev]);
 		goto Platform_finish;
 	}
-#ifdef CONFIG_SEC_PM_DEBUG
-	regulator_show_enabled();
-#endif /* CONFIG_SEC_PM_DEBUG */
 	error = platform_suspend_prepare_late(state);
 	if (error)
 		goto Devices_early_resume;
@@ -518,6 +534,10 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 
  Enable_cpus:
 	enable_nonboot_cpus();
+#ifdef CONFIG_SEC_PERF_BIG_AFFINITY_RESUME
+	cpumask_copy(&backup_cpu_mask, &current->cpus_allowed);
+	set_cpus_allowed_ptr(current, &fast_cpu_mask);
+#endif
 
  Platform_wake:
 	platform_resume_noirq(state);
@@ -582,6 +602,12 @@ int suspend_devices_and_enter(suspend_state_t state)
  Close:
 	platform_resume_end(state);
 	pm_suspend_target_state = PM_SUSPEND_ON;
+#ifdef CONFIG_SEC_PERF_BIG_AFFINITY_RESUME
+	if (!cpumask_empty(&backup_cpu_mask)) {
+		cpumask_copy(&current->cpus_allowed, &backup_cpu_mask);
+		cpumask_clear(&backup_cpu_mask);
+	}
+#endif
 	return error;
 
  Recover_platform:
@@ -657,7 +683,6 @@ static int enter_state(suspend_state_t state)
 	return error;
 }
 
-#ifdef CONFIG_SEC_PM_DEBUG
 static void pm_suspend_marker(char *annotation)
 {
 	struct timespec ts;
@@ -669,7 +694,6 @@ static void pm_suspend_marker(char *annotation)
 		annotation, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 		tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
 }
-#endif
 
 /**
  * pm_suspend - Externally visible function for suspending the system.
@@ -684,7 +708,6 @@ int pm_suspend(suspend_state_t state)
 
 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
 		return -EINVAL;
-
 #ifdef CONFIG_SEC_PM_DEBUG
 	pm_suspend_marker("entry");
 #else

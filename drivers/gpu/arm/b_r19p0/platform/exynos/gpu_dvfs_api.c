@@ -27,6 +27,9 @@
 #include "gpu_dvfs_handler.h"
 #include "gpu_dvfs_governor.h"
 
+#if (defined(CONFIG_EXYNOS_BTS) && defined(CONFIG_MALI_NEW_BTS_API_SUPPORT))
+#include <soc/samsung/bts.h>
+#endif
 
 extern struct kbase_device *pkbdev;
 
@@ -152,12 +155,25 @@ int gpu_set_target_clk_vol(int clk, bool pending_is_allowed)
 #define BS_G3D_PERFORMANCE BS_G3D_PEFORMANCE
 #endif
 
+#ifdef CONFIG_MALI_NEW_BTS_API_SUPPORT
+	/* MALI_SEC_INTEGRATION : for EXYNOS_BTS */
+	if (platform->gpu_bts_support) {
+		if (target_clk >= platform->mo_min_clock && !platform->is_set_bts) {
+			bts_add_scenario(platform->bts_scen_idx);
+			platform->is_set_bts = 1;
+		} else if (target_clk < platform->mo_min_clock && platform->is_set_bts) {
+			bts_del_scenario(platform->bts_scen_idx);
+			platform->is_set_bts = 0;
+		}
+	}
+#else
 	if (platform->gpu_bts_support) {
 		if (target_clk >= platform->mo_min_clock)
 			bts_update_scen(BS_G3D_PERFORMANCE, 1);	/* GPU IDQ : 0 (max token) */
 		else
 			bts_update_scen(BS_G3D_PERFORMANCE, 0);	/* GPU IDQ : 0x3 (default 12ea) */
 	}
+#endif
 
 	mutex_unlock(&platform->gpu_clock_lock);
 

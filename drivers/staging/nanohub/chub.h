@@ -124,16 +124,17 @@ struct chub_alive {
 
 enum chub_err_type {
 	CHUB_ERR_NONE,
-	CHUB_ERR_EVTQ_ADD, /* ap error */
-	CHUB_ERR_EVTQ_EMTPY,
-	CHUB_ERR_READ_FAIL,
-	CHUB_ERR_WRITE_FAIL,
-	CHUB_ERR_EVTQ_NO_HW_TRIGGER, /* 5 */
-	CHUB_ERR_CHUB_NO_RESPONSE,
 	CHUB_ERR_ITMON,
 	CHUB_ERR_FW_FAULT, /* chub error */
 	CHUB_ERR_FW_WDT,
-	CHUB_ERR_NEED_RESET, /* 10 */
+	CHUB_ERR_EVTQ_NO_HW_TRIGGER,
+	CHUB_ERR_CHUB_NO_RESPONSE, /* 5 */
+	CHUB_ERR_CRITICAL,
+	CHUB_ERR_EVTQ_ADD, /* ap error */
+	CHUB_ERR_EVTQ_EMTPY,
+	CHUB_ERR_READ_FAIL,
+	CHUB_ERR_WRITE_FAIL, /* 10 */
+	CHUB_ERR_NEED_RESET,
 	CHUB_ERR_FW_ERROR = CHUB_ERR_NEED_RESET,
 	CHUB_ERR_COMMS_NACK, /* ap comms error */
 	CHUB_ERR_COMMS_BUSY,
@@ -159,6 +160,10 @@ struct pmu_shub {
 	unsigned int reset_cmu_shub;
 	unsigned int reset_subcpu_shub;
 };
+
+#ifdef CONFIG_SENSORS_SSP
+struct ssp_data;
+#endif
 
 #define CHUB_IRQ_PIN_MAX (5)
 struct contexthub_ipc_info {
@@ -207,7 +212,12 @@ struct contexthub_ipc_info {
 #ifdef CONFIG_CONTEXTHUB_DEBUG
 	struct work_struct utc_work;
 #endif
+#ifdef CONFIG_SENSORS_SSP
+	int sensor_ldo_en;
+	struct ssp_data *ssp_data;
+#endif
 };
+
 /*	PMU SHUB REGISTERS	*/
 #if defined(CONFIG_SOC_EXYNOS9610)
 #define TOP_BUS_SHUB_STATUS		0x2c64
@@ -319,4 +329,9 @@ int contexthub_reset(struct contexthub_ipc_info *ipc, bool force_load, int dump_
 int contexthub_wakeup(struct contexthub_ipc_info *data, int evt);
 int contexthub_request(struct contexthub_ipc_info *ipc);
 void contexthub_release(struct contexthub_ipc_info *ipc);
+
+#ifdef CONFIG_SENSORS_SSP
+int contexthub_get_token(struct contexthub_ipc_info *ipc);
+void contexthub_put_token(struct contexthub_ipc_info *ipc);
+#endif
 #endif

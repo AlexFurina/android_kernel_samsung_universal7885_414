@@ -29,9 +29,8 @@
 #include <linux/rcupdate.h>
 #include "input-compat.h"
 
-/* [ System Performance - Input Booster */
+// Input Booster +
 #include <linux/input/input_booster.h>
-/* System Performance - Input Booster ] */
 
 MODULE_AUTHOR("Vojtech Pavlik <vojtech@suse.cz>");
 MODULE_DESCRIPTION("Input core");
@@ -412,7 +411,7 @@ static void input_handle_event(struct input_dev *dev,
 
 }
 
-/* [ System Performance - Input Booster */
+// Input Booster +
 // ********** Define Timeout Functions ********** //
 DECLARE_TIMEOUT_FUNC(touch);
 DECLARE_TIMEOUT_FUNC(multitouch);
@@ -456,7 +455,7 @@ DECLARE_STATE_FUNC(idle)
 	glGage = HEADGAGE;
 	if (input_booster_event == BOOSTER_ON) {
 		int i;
-		pr_booster("[Input Booster] %s      State0 : Idle  index : %d, hmp : %d, ucc_requested_val : %d, cpu1 : %d, time : %d, input_booster_event : %d\n", glGage, _this->index, _this->param[_this->index].hmp_boost, _this->param[_this->index].ucc_requested_val, _this->param[_this->index].cpu1_freq, _this->param[_this->index].time, input_booster_event);
+		pr_booster("[Input Booster] %s      State0 : Idle  index : %d, hmp : %d, dma_latency : %d, cpu : %d, time : %d, input_booster_event : %d\n", glGage, _this->index, _this->param[_this->index].hmp_boost, _this->param[_this->index].dma_latency, _this->param[_this->index].cpu_freq, _this->param[_this->index].time, input_booster_event);
 		_this->index = 0;
 		_this->level = -1;
 		for (i = 0; i < 2; i++) {
@@ -470,7 +469,7 @@ DECLARE_STATE_FUNC(idle)
 		_this->index++;
 		CHANGE_STATE_TO(press);
 	} else if (input_booster_event == BOOSTER_OFF) {
-		pr_booster("[Input Booster] %s      Skipped  index : %d, hmp : %d , ucc_requested_val : %d, cpu1 : %d, input_booster_event : %d\n", glGage, _this->index, _this->param[_this->index].hmp_boost, _this->param[_this->index].ucc_requested_val, _this->param[_this->index].cpu1_freq, input_booster_event);
+		pr_booster("[Input Booster] %s      Skipped  index : %d, hmp : %d , dma_latency : %d, cpu : %d, input_booster_event : %d\n", glGage, _this->index, _this->param[_this->index].hmp_boost, _this->param[_this->index].dma_latency, _this->param[_this->index].cpu_freq, input_booster_event);
 		pr_booster("\n");
 	}
 }
@@ -676,7 +675,7 @@ void input_booster(struct input_dev *dev)
 // ********** Init Booster ********** //
 void input_booster_init(void)
 {
-	// ********** Load Frequency data from DTSI **********
+	// ********** Load Frequncy data from DTSI **********
 	struct device_node *np;
 	int nlevels = 0, i;
 
@@ -742,12 +741,12 @@ void input_booster_init(void)
 				int err = 0;
 
 				err = of_property_read_u32_index(cnp, "input_booster,levels", i, &temp);  dt_infor->param_tables[i].ilevels = (u8)temp;
-				err |= of_property_read_u32_index(cnp, "input_booster,cpu1_freqs", i, &dt_infor->param_tables[i].cpu1_freq);
-				err |= of_property_read_u32_index(cnp, "input_booster,cpu0_freqs", i, &dt_infor->param_tables[i].cpu0_freq);
+				err |= of_property_read_u32_index(cnp, "input_booster,cpu_freqs", i, &dt_infor->param_tables[i].cpu_freq);
+				err |= of_property_read_u32_index(cnp, "input_booster,kfc_freqs", i, &dt_infor->param_tables[i].kfc_freq);
 				err |= of_property_read_u32_index(cnp, "input_booster,mif_freqs", i, &dt_infor->param_tables[i].mif_freq);
 				err |= of_property_read_u32_index(cnp, "input_booster,int_freqs", i, &dt_infor->param_tables[i].int_freq);
 				err |= of_property_read_u32_index(cnp, "input_booster,hmp_boost", i, &temp); dt_infor->param_tables[i].hmp_boost = (u8)temp;
-				err |= of_property_read_u32_index(cnp, "input_booster,ucc_requested_val", i, &temp); dt_infor->param_tables[i].ucc_requested_val = (u8)temp;
+				err |= of_property_read_u32_index(cnp, "input_booster,dma_latency", i, &dt_infor->param_tables[i].dma_latency);
 				err |= of_property_read_u32_index(cnp, "input_booster,head_times", i, &temp); dt_infor->param_tables[i].head_time = (u16)temp;
 				err |= of_property_read_u32_index(cnp, "input_booster,tail_times", i, &temp); dt_infor->param_tables[i].tail_time = (u16)temp;
 				err |= of_property_read_u32_index(cnp, "input_booster,phase_times", i, &temp); dt_infor->param_tables[i].phase_time = (u16)temp;
@@ -755,13 +754,13 @@ void input_booster_init(void)
 					printk("Failed to get [%d] param table property\n", i);
 				}
 
-				printk("[Input Booster] Level %d : frequency[%d,%d,%d,%d] hmp_boost[%d] ucc_requested_val[%d] times[%d,%d,%d]\n", i,
-					dt_infor->param_tables[i].cpu1_freq,
-					dt_infor->param_tables[i].cpu0_freq,
+				printk("[Input Booster] Level %d : frequency[%d,%d,%d,%d] hmp_boost[%d] dma_latency[%d] times[%d,%d,%d]\n", i,
+					dt_infor->param_tables[i].cpu_freq,
+					dt_infor->param_tables[i].kfc_freq,
 					dt_infor->param_tables[i].mif_freq,
 					dt_infor->param_tables[i].int_freq,
 					dt_infor->param_tables[i].hmp_boost,
-					dt_infor->param_tables[i].ucc_requested_val,
+					dt_infor->param_tables[i].dma_latency,
 					dt_infor->param_tables[i].head_time,
 					dt_infor->param_tables[i].tail_time,
 					dt_infor->param_tables[i].phase_time);
@@ -816,7 +815,6 @@ void input_booster_init(void)
 		INIT_SYSFS_DEVICE(key_two)
 	}
 }
-/* System Performance - Input Booster ] */
 
 /**
  * input_event() - report new input event
@@ -840,9 +838,8 @@ void input_event(struct input_dev *dev,
 {
 	unsigned long flags;
 
-	/* [ System Performance - Input Booster */
+	// Input Booster +
 	int idx = 0;
-	/* System Performance - Input Booster ] */
 
 	if (is_event_supported(type, dev->evbit, EV_MAX)) {
 
@@ -850,7 +847,7 @@ void input_event(struct input_dev *dev,
 		input_handle_event(dev, type, code, value);
 		spin_unlock_irqrestore(&dev->event_lock, flags);
 
-		/* [ System Performance - Input Booster */
+		/* Input Booster + */
 		if (device_tree_infor != NULL) {
 			if (type == EV_SYN && input_count > 0) {
 				pr_booster("[Input Booster1] ==============================================\n");
@@ -869,7 +866,7 @@ void input_event(struct input_dev *dev,
 				pr_booster("[Input Booster1] type = %x, code = %x, value =%x   Booster Event Exceeded\n", type, code, value);
 			}
 		}
-		/* System Performance - Input Booster ] */
+		/* Input Booster */
 	}
 }
 EXPORT_SYMBOL(input_event);
@@ -1042,10 +1039,13 @@ int input_open_device(struct input_handle *handle)
 
 	handle->open++;
 
-	if (!dev->users++ && dev->open)
+	dev->users_private++;
+	if (!dev->disabled && !dev->users++ && dev->open)
 		retval = dev->open(dev);
 
 	if (retval) {
+		dev->users_private--;
+		if (!dev->disabled)
 		dev->users--;
 		if (!--handle->open) {
 			/*
@@ -1094,7 +1094,8 @@ void input_close_device(struct input_handle *handle)
 
 	__input_release_device(handle);
 
-	if (!--dev->users && dev->close)
+	--dev->users_private;
+	if (!dev->disabled && !--dev->users && dev->close)
 		dev->close(dev);
 
 	if (!--handle->open) {
@@ -1109,6 +1110,50 @@ void input_close_device(struct input_handle *handle)
 	mutex_unlock(&dev->mutex);
 }
 EXPORT_SYMBOL(input_close_device);
+
+static int input_enable_device(struct input_dev *dev)
+{
+	int retval;
+
+	retval = mutex_lock_interruptible(&dev->mutex);
+	if (retval)
+		return retval;
+
+	if (!dev->disabled)
+		goto out;
+
+	if (dev->users_private && dev->open) {
+		retval = dev->open(dev);
+		if (retval)
+			goto out;
+	}
+	dev->users = dev->users_private;
+	dev->disabled = false;
+
+out:
+	mutex_unlock(&dev->mutex);
+
+	return retval;
+}
+
+static int input_disable_device(struct input_dev *dev)
+{
+	int retval;
+
+	retval = mutex_lock_interruptible(&dev->mutex);
+	if (retval)
+		return retval;
+
+	if (!dev->disabled) {
+		dev->disabled = true;
+		if (dev->users && dev->close)
+			dev->close(dev);
+		dev->users = 0;
+	}
+
+	mutex_unlock(&dev->mutex);
+	return 0;
+}
 
 /*
  * Simulate keyup events for all keys that are marked as pressed.
@@ -1293,16 +1338,18 @@ static int input_default_setkeycode(struct input_dev *dev,
 		}
 	}
 
-	__clear_bit(*old_keycode, dev->keybit);
-	__set_bit(ke->keycode, dev->keybit);
-
-	for (i = 0; i < dev->keycodemax; i++) {
-		if (input_fetch_keycode(dev, i) == *old_keycode) {
-			__set_bit(*old_keycode, dev->keybit);
-			break; /* Setting the bit twice is useless, so break */
+	if (*old_keycode <= KEY_MAX) {
+		__clear_bit(*old_keycode, dev->keybit);
+		for (i = 0; i < dev->keycodemax; i++) {
+			if (input_fetch_keycode(dev, i) == *old_keycode) {
+				__set_bit(*old_keycode, dev->keybit);
+				/* Setting the bit twice is useless, so break */
+				break;
+			}
 		}
 	}
 
+	__set_bit(ke->keycode, dev->keybit);
 	return 0;
 }
 
@@ -1358,9 +1405,13 @@ int input_set_keycode(struct input_dev *dev,
 	 * Simulate keyup event if keycode is not present
 	 * in the keymap anymore
 	 */
-	if (test_bit(EV_KEY, dev->evbit) &&
-	    !is_event_supported(old_keycode, dev->keybit, KEY_MAX) &&
-	    __test_and_clear_bit(old_keycode, dev->key)) {
+	if (old_keycode > KEY_MAX) {
+		dev_warn(dev->dev.parent ?: &dev->dev,
+			 "%s: got too big old keycode %#x\n",
+			 __func__, old_keycode);
+	} else if (test_bit(EV_KEY, dev->evbit) &&
+		   !is_event_supported(old_keycode, dev->keybit, KEY_MAX) &&
+		   __test_and_clear_bit(old_keycode, dev->key)) {
 		struct input_value vals[] =  {
 			{ EV_KEY, old_keycode, 0 },
 			input_value_sync
@@ -1826,16 +1877,50 @@ static ssize_t input_dev_show_properties(struct device *dev,
 }
 static DEVICE_ATTR(properties, S_IRUGO, input_dev_show_properties, NULL);
 
+static ssize_t input_dev_show_enabled(struct device *dev,
+					 struct device_attribute *attr,
+					 char *buf)
+{
+	struct input_dev *input_dev = to_input_dev(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", !input_dev->disabled);
+}
+
+static ssize_t input_dev_store_enabled(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t size)
+{
+	int ret;
+	bool enable;
+	struct input_dev *input_dev = to_input_dev(dev);
+
+	ret = strtobool(buf, &enable);
+	if (ret)
+		return ret;
+
+	if (enable)
+		ret = input_enable_device(input_dev);
+	else
+		ret = input_disable_device(input_dev);
+	if (ret)
+		return ret;
+
+	return size;
+}
+
+static DEVICE_ATTR(enabled, S_IRUGO | S_IWUSR,
+		   input_dev_show_enabled, input_dev_store_enabled);
 static struct attribute *input_dev_attrs[] = {
 	&dev_attr_name.attr,
 	&dev_attr_phys.attr,
 	&dev_attr_uniq.attr,
 	&dev_attr_modalias.attr,
 	&dev_attr_properties.attr,
+	&dev_attr_enabled.attr,
 	NULL
 };
 
-static const struct attribute_group input_dev_attr_group = {
+static struct attribute_group input_dev_attr_group = {
 	.attrs	= input_dev_attrs,
 };
 
@@ -1862,7 +1947,7 @@ static struct attribute *input_dev_id_attrs[] = {
 	NULL
 };
 
-static const struct attribute_group input_dev_id_attr_group = {
+static struct attribute_group input_dev_id_attr_group = {
 	.name	= "id",
 	.attrs	= input_dev_id_attrs,
 };
@@ -1932,7 +2017,7 @@ static struct attribute *input_dev_caps_attrs[] = {
 	NULL
 };
 
-static const struct attribute_group input_dev_caps_attr_group = {
+static struct attribute_group input_dev_caps_attr_group = {
 	.name	= "capabilities",
 	.attrs	= input_dev_caps_attrs,
 };
@@ -2122,7 +2207,7 @@ static int input_dev_suspend(struct device *dev)
 	 * Keys that are pressed now are unlikely to be
 	 * still pressed when we resume.
 	 */
-	input_dev_release_keys(input_dev);
+	/* input_dev_release_keys(input_dev); */
 
 	/* Turn off LEDs and sounds, if any are active. */
 	input_dev_toggle(input_dev, false);
@@ -2186,7 +2271,7 @@ static const struct dev_pm_ops input_dev_pm_ops = {
 };
 #endif /* CONFIG_PM */
 
-static const struct device_type input_dev_type = {
+static struct device_type input_dev_type = {
 	.groups		= input_dev_attr_groups,
 	.release	= input_dev_release,
 	.uevent		= input_dev_uevent,
@@ -2877,9 +2962,9 @@ static int __init input_init(void)
 		goto fail2;
 	}
 
-	/* [ System Performance - Input Booster */
+	/* Input Booster + */
 	input_booster_init();
-	/* System Performance - Input Booster ] */
+	/* Input Booster */
 
 	return 0;
 
@@ -2887,15 +2972,6 @@ static int __init input_init(void)
  fail1:	class_unregister(&input_class);
 	return err;
 }
-
-/* [ System Performance - Input Booster */
-static int __init input_emstune_init(void)
-{
-	INIT_INPUT_EMSTUNE()
-
-	return 0;
-}
-/* System Performance - Input Booster ] */
 
 static void __exit input_exit(void)
 {
@@ -2906,5 +2982,4 @@ static void __exit input_exit(void)
 }
 
 subsys_initcall(input_init);
-late_initcall(input_emstune_init);
 module_exit(input_exit);

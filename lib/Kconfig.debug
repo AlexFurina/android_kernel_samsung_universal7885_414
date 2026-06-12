@@ -1212,6 +1212,7 @@ config DEBUG_ATOMIC_SLEEP_PANIC
 	depends on SEC_DEBUG && !SAMSUNG_PRODUCT_SHIP
 	help
 	  Say Y here to enable the kernel to panic on "atomic sleep",
+
 	  Say N if you want warning messages only.
 
 config DEBUG_LOCKING_API_SELFTESTS

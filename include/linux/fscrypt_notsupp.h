@@ -104,14 +104,7 @@ static inline void fscrypt_put_encryption_info(struct inode *inode)
 	return;
 }
 
-// CONFIG_FSCRYPT_SDP [
 static inline int fscrypt_get_encryption_key(struct inode *inode,
-						struct fscrypt_key *key)
-{
-	return -EOPNOTSUPP;
-}
-
-static inline int fscrypt_get_encryption_key_classified(struct inode *inode,
 						struct fscrypt_key *key)
 {
 	return -EOPNOTSUPP;
@@ -123,7 +116,6 @@ static inline int fscrypt_get_encryption_kek(struct inode *inode,
 {
 	return -EOPNOTSUPP;
 }
-// ] CONFIG_FSCRYPT_SDP
  /* fname.c */
 static inline int fscrypt_setup_filename(struct inode *dir,
 					 const struct qstr *iname,
@@ -222,21 +214,6 @@ static inline int __fscrypt_prepare_lookup(struct inode *dir,
 					   struct dentry *dentry)
 {
 	return -EOPNOTSUPP;
-}
-
-static inline int fscrypt_disk_encrypted(const struct inode *inode)
-{
-	return 0;
-}
-
-static inline void fscrypt_set_bio(const struct inode *inode, struct bio *bio, u64 dun)
-{
-	return;
-}
-
-static inline void *fscrypt_get_diskcipher(const struct inode *inode)
-{
-	return NULL;
 }
 
 static inline int __fscrypt_prepare_symlink(struct inode *dir,

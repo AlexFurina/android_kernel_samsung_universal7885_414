@@ -10,25 +10,16 @@
 
 #include <linux/pm_qos.h>
 #include <soc/samsung/exynos-dm.h>
-
-#include <linux/timer.h>
-
-#define DEFAULT_EXPIRED_TIME 70
-
-struct exynos_slack_timer {
-	/* for slack timer */
-	unsigned long min;
-	int enabled;
-	int expired_time;
-	struct timer_list timer;
-};
-
-#define CPUFREQ_RESTART 0x1 << 0
-#define CPUFREQ_SUSPEND 0x1 << 1
+#include "exynos-ufc.h"
 
 struct exynos_cpufreq_dm {
 	struct list_head		list;
 	struct exynos_dm_constraint	c;
+};
+
+struct exynos_ufc {
+	struct list_head		list;
+	struct exynos_ufc_info		info;
 };
 
 typedef int (*target_fn)(struct cpufreq_policy *policy,
@@ -57,7 +48,7 @@ struct exynos_cpufreq_domain {
 	unsigned int			id;
 	struct cpumask			cpus;
 	unsigned int			cal_id;
-	enum exynos_dm_type		dm_type;
+	int				dm_type;
 
 	/* frequency scaling */
 	bool				enabled;
@@ -109,6 +100,9 @@ struct exynos_cpufreq_domain {
 extern struct exynos_cpufreq_domain
 		*find_domain_cpumask(const struct cpumask *mask);
 extern struct list_head *get_domain_list(void);
+extern struct exynos_cpufreq_domain *first_domain(void);
+extern struct exynos_cpufreq_domain *last_domain(void);
+extern int exynos_cpufreq_domain_count(void);
 
 /*
  * the time it takes on this CPU to switch between

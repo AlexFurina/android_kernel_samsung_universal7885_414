@@ -35,6 +35,34 @@
 #include <asm/unaligned.h>
 #include "ecryptfs_kernel.h"
 
+/* Do not directly use this function. Use ECRYPTFS_OVERRIDE_CRED() instead. */
+const struct cred * ecryptfs_override_fsids(uid_t fsuid, gid_t fsgid)
+{
+	struct cred * cred; 
+	const struct cred * old_cred; 
+
+	cred = prepare_creds(); 
+	if (!cred) 
+		return NULL; 
+
+	cred->fsuid = make_kuid(current_user_ns(), fsuid);
+	cred->fsgid = make_kgid(current_user_ns(), fsgid);
+
+	old_cred = override_creds(cred); 
+
+	return old_cred; 
+}
+
+/* Do not directly use this function, use REVERT_CRED() instead. */
+void ecryptfs_revert_fsids(const struct cred * old_cred)
+{
+	const struct cred * cur_cred; 
+
+	cur_cred = current->cred; 
+	revert_creds(old_cred); 
+	put_cred(cur_cred); 
+}
+
 static struct dentry *lock_parent(struct dentry *dentry)
 {
 	struct dentry *dir;
@@ -242,6 +270,7 @@ int ecryptfs_initialize_file(struct dentry *ecryptfs_dentry,
 			ecryptfs_dentry, rc);
 		goto out;
 	}
+    
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 	mutex_lock(&crypt_stat->cs_mutex);
 	if (crypt_stat->flags & ECRYPTFS_ENCRYPTED) {

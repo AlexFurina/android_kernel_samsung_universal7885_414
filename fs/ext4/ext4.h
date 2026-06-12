@@ -1439,7 +1439,6 @@ struct ext4_sb_info {
 	unsigned long s_ext_extents;
 #endif
 
-	/* @fs.sec -- 4D0BB70301E0C7B49CF3E227862E1846 -- */
 	/* Reserved inodes count */
 	s64 s_r_inodes_count;
 
@@ -2466,6 +2465,7 @@ extern int ext4_group_add_blocks(handle_t *handle, struct super_block *sb,
 				ext4_fsblk_t block, unsigned long count);
 extern int ext4_trim_fs(struct super_block *, struct fstrim_range *);
 extern void ext4_process_freed_data(struct super_block *sb, tid_t commit_tid);
+extern ssize_t ext4_mb_freefrag_show(struct ext4_sb_info *sbi, char *buf);
 
 /* inode.c */
 int ext4_inode_is_fast_symlink(struct inode *inode);

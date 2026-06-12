@@ -171,7 +171,6 @@ static const struct snmp_mib snmp4_tcp_list[] = {
 	SNMP_MIB_ITEM("InErrs", TCP_MIB_INERRS),
 	SNMP_MIB_ITEM("OutRsts", TCP_MIB_OUTRSTS),
 	SNMP_MIB_ITEM("InCsumErrors", TCP_MIB_CSUMERRORS),
-	SNMP_MIB_ITEM("RtoNullSKB", TCP_MIB_RTONULLSKB),
 	SNMP_MIB_SENTINEL
 };
 

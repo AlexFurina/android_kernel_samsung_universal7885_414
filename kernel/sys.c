@@ -76,7 +76,6 @@
 #ifdef CONFIG_SECURITY_DEFEX
 #include <linux/defex.h>
 #endif
-
 #ifndef SET_UNALIGN_CTL
 # define SET_UNALIGN_CTL(a, b)	(-EINVAL)
 #endif
@@ -773,14 +772,14 @@ SYSCALL_DEFINE1(setfsuid, uid_t, uid)
 	if (!uid_valid(kuid))
 		return old_fsuid;
 
-	new = prepare_creds();
-	if (!new)
-		return old_fsuid;
-
 #ifdef CONFIG_SECURITY_DEFEX
 	if (task_defex_enforce(current, NULL, -__NR_setfsuid))
 		return old_fsuid;
 #endif
+
+	new = prepare_creds();
+	if (!new)
+		return old_fsuid;
 
 	if (uid_eq(kuid, old->uid)  || uid_eq(kuid, old->euid)  ||
 	    uid_eq(kuid, old->suid) || uid_eq(kuid, old->fsuid) ||
@@ -817,14 +816,14 @@ SYSCALL_DEFINE1(setfsgid, gid_t, gid)
 	if (!gid_valid(kgid))
 		return old_fsgid;
 
-	new = prepare_creds();
-	if (!new)
-		return old_fsgid;
-
 #ifdef CONFIG_SECURITY_DEFEX
 	if (task_defex_enforce(current, NULL, -__NR_setfsgid))
 		return old_fsgid;
 #endif
+
+	new = prepare_creds();
+	if (!new)
+		return old_fsgid;
 
 	if (gid_eq(kgid, old->gid)  || gid_eq(kgid, old->egid)  ||
 	    gid_eq(kgid, old->sgid) || gid_eq(kgid, old->fsgid) ||

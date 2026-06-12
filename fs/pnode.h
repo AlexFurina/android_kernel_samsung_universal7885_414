@@ -19,11 +19,11 @@
 #define IS_MNT_SLAVE(m) ((m)->mnt_master)
 #define IS_MNT_NEW(m)  (!(m)->mnt_ns)
 #ifdef CONFIG_RKP_NS_PROT
-#define CLEAR_MNT_SHARED(m) rkp_reset_mnt_flags((m)->mnt, MNT_SHARED)
+#define CLEAR_MNT_SHARED(m) rkp_reset_mnt_flags((m)->mnt,MNT_SHARED)
 #define IS_MNT_UNBINDABLE(m) ((m)->mnt->mnt_flags & MNT_UNBINDABLE)
 #define IS_MNT_MARKED(m) ((m)->mnt->mnt_flags & MNT_MARKED)
-#define SET_MNT_MARK(m) rkp_set_mnt_flags((m)->mnt, MNT_MARKED)
-#define CLEAR_MNT_MARK(m) rkp_reset_mnt_flags((m)->mnt, MNT_MARKED)
+#define SET_MNT_MARK(m) rkp_set_mnt_flags((m)->mnt,MNT_MARKED)
+#define CLEAR_MNT_MARK(m) rkp_reset_mnt_flags((m)->mnt,MNT_MARKED)
 #define IS_MNT_LOCKED(m) ((m)->mnt->mnt_flags & MNT_LOCKED)
 #else
 #define CLEAR_MNT_SHARED(m) ((m)->mnt.mnt_flags &= ~MNT_SHARED)
@@ -49,12 +49,12 @@
 extern void rkp_assign_mnt_flags(struct vfsmount *,int);
 static inline void set_mnt_shared(struct mount *mnt)
 {
-	int mnt_flags = mnt->mnt->mnt_flags;
+	int mnt_flags = mnt->mnt->mnt_flags; 
 
 	mnt_flags &= ~MNT_SHARED_MASK;
 	mnt_flags |= MNT_SHARED;
-
-	rkp_assign_mnt_flags(mnt->mnt, mnt_flags);
+	
+	rkp_assign_mnt_flags(mnt->mnt,mnt_flags);
 }
 #else
 static inline void set_mnt_shared(struct mount *mnt)

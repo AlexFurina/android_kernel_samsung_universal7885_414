@@ -31,10 +31,6 @@
 #include "gc.h"
 #include "trace.h"
 
-/* @fs.sec -- 1f886d6941ebe5b547fded7e6bc457c5 -- */ 
-/* @fs.sec -- 31ec0bc200a96535a74acf850b47ae01 -- */ 
-/* @fs.sec -- 7e67fe3e14873ae7829b5f6a76ac1c02 -- */ 
-
 #define CREATE_TRACE_POINTS
 #include <trace/events/f2fs.h>
 
@@ -149,7 +145,6 @@ enum {
 	Opt_checkpoint_disable_cap,
 	Opt_checkpoint_disable_cap_perc,
 	Opt_checkpoint_enable,
-	Opt_checkpoint_ioprio,
 	Opt_err,
 };
 
@@ -213,7 +208,6 @@ static match_table_t f2fs_tokens = {
 	{Opt_checkpoint_disable_cap, "checkpoint=disable:%u"},
 	{Opt_checkpoint_disable_cap_perc, "checkpoint=disable:%u%%"},
 	{Opt_checkpoint_enable, "checkpoint=enable"},
-	{Opt_checkpoint_ioprio, "checkpoint_ioprio=%u"},
 	{Opt_err, NULL},
 };
 
@@ -238,16 +232,16 @@ void f2fs_set_sb_extra_flag(struct f2fs_sb_info *sbi, int flag)
 	struct f2fs_sb_extra_flag_blk *extra_blk;
 
 	if (extra_flag_blk_no < 2) {
-		// 0 -> SB 0, 1 -> SB 1,
+		// 0 -> SB 0, 1 -> SB 1, 
 		// 2 or more : RSVD
-		f2fs_msg(sbi->sb, KERN_WARNING,
+		f2fs_msg(sbi->sb, KERN_WARNING, 
 				"extra_flag: No free blks for extra flags");
 		return;
 	}
 
 	bh = sb_bread(sbi->sb, (sector_t)extra_flag_blk_no);
 	if(!bh) {
-		f2fs_msg(sbi->sb, KERN_WARNING,
+		f2fs_msg(sbi->sb, KERN_WARNING, 
 				"extra_flag: Fail to allocate buffer_head");
 		return;
 	}
@@ -257,18 +251,18 @@ void f2fs_set_sb_extra_flag(struct f2fs_sb_info *sbi, int flag)
 
 	switch(flag) {
 	case F2FS_SEC_EXTRA_FSCK_MAGIC:
-		if (extra_blk->need_fsck ==
+		if (extra_blk->need_fsck == 
 				cpu_to_le32(F2FS_SEC_EXTRA_FSCK_MAGIC))
 			goto out_unlock;
 
 		extra_blk->need_fsck = cpu_to_le32(F2FS_SEC_EXTRA_FSCK_MAGIC);
 		break;
 	default:
-		f2fs_msg(sbi->sb, KERN_WARNING,
+		f2fs_msg(sbi->sb, KERN_WARNING, 
 				"extra_flag: Undefined flag - %x", flag);
 		goto out_unlock;
 	}
-
+	
 	set_buffer_uptodate(bh);
 	set_buffer_dirty(bh);
 	unlock_buffer(bh);
@@ -296,14 +290,14 @@ void f2fs_get_fsck_stat(struct f2fs_sb_info *sbi)
 	struct f2fs_sb_extra_flag_blk *extra_blk;
 
 	if (extra_flag_blk_no < 2) {
-		f2fs_msg(sbi->sb, KERN_WARNING,
+		f2fs_msg(sbi->sb, KERN_WARNING, 
 				"extra_flag: No free blks for extra flags");
 		return;
 	}
 
 	bh = sb_bread(sbi->sb, (sector_t)extra_flag_blk_no);
 	if (!bh) {
-		f2fs_msg(sbi->sb, KERN_WARNING,
+		f2fs_msg(sbi->sb, KERN_WARNING, 
 				"extra_flag: Fail to allocate buffer_head");
 		return;
 	}
@@ -921,16 +915,6 @@ static int parse_options(struct super_block *sb, char *options)
 		case Opt_checkpoint_enable:
 			clear_opt(sbi, DISABLE_CHECKPOINT);
 			break;
-		case Opt_checkpoint_ioprio:
-			if (args->from && match_int(args, &arg))
-				return -EINVAL;
-			if (arg < 0 || arg > 7) {
-				f2fs_msg(sb, KERN_ERR, "Invalid checkpoint task"
-					       " IO priority (must be 0-7)");
-				return -EINVAL;
-			}
-			F2FS_OPTION(sbi).ckpt_ioprio = (unsigned int)arg;
-			break;
 		default:
 			f2fs_msg(sb, KERN_ERR,
 				"Unrecognized mount option \"%s\" or missing value",
@@ -1214,11 +1198,6 @@ static void f2fs_put_super(struct super_block *sb)
 	/* prevent remaining shrinker jobs */
 	mutex_lock(&sbi->umount_mutex);
 
-	/* flush all issued checkpoints and destroy ccc. after then,
-	 * all checkpoints should be done by each process context.
-	 */
-	f2fs_destroy_checkpoint_cmd_control(sbi, true);
-
 	/*
 	 * We don't need to do checkpoint when superblock is clean.
 	 * But, the previous checkpoint was not done by umount, it needs to do
@@ -1315,13 +1294,10 @@ int f2fs_sync_fs(struct super_block *sb, int sync)
 		struct cp_control cpc;
 
 		cpc.reason = __get_cp_reason(sbi);
-		if (cpc.reason == CP_SYNC) {
-			err = f2fs_issue_checkpoint(sbi);
-		} else {
-			mutex_lock(&sbi->gc_mutex);
-			err = f2fs_write_checkpoint(sbi, &cpc);
-			mutex_unlock(&sbi->gc_mutex);
-		}
+
+		mutex_lock(&sbi->gc_mutex);
+		err = f2fs_write_checkpoint(sbi, &cpc);
+		mutex_unlock(&sbi->gc_mutex);
 	}
 	f2fs_trace_ios(NULL, 1);
 
@@ -1612,9 +1588,7 @@ static int f2fs_show_options(struct seq_file *seq, struct dentry *root)
 	return 0;
 }
 
-#define DEFAULT_ISSUE_CHECKPOINT_IOPRIO (3)
-
-static void default_options(struct f2fs_sb_info *sbi, bool remount)
+static void default_options(struct f2fs_sb_info *sbi)
 {
 	/* init some FS parameters */
 	F2FS_OPTION(sbi).active_logs = NR_CURSEG_TYPE;
@@ -1627,9 +1601,6 @@ static void default_options(struct f2fs_sb_info *sbi, bool remount)
 	F2FS_OPTION(sbi).s_resgid = make_kgid(&init_user_ns, F2FS_DEF_RESGID);
 	F2FS_OPTION(sbi).flush_group = make_kgid(&init_user_ns, F2FS_DEF_FLUSHGROUP);
 
-	if (!remount)
-		F2FS_OPTION(sbi).ckpt_ioprio = DEFAULT_ISSUE_CHECKPOINT_IOPRIO;
-
 	set_opt(sbi, BG_GC);
 	set_opt(sbi, INLINE_XATTR);
 	set_opt(sbi, INLINE_DATA);
@@ -1638,6 +1609,7 @@ static void default_options(struct f2fs_sb_info *sbi, bool remount)
 	set_opt(sbi, NOHEAP);
 	sbi->sb->s_flags |= MS_LAZYTIME;
 	clear_opt(sbi, DISABLE_CHECKPOINT);
+	F2FS_OPTION(sbi).unusable_cap = 0;
 	/* P190412-00841 disable flush_merge by default */
 	//set_opt(sbi, FLUSH_MERGE);
 	set_opt(sbi, DISCARD);
@@ -1706,8 +1678,8 @@ static int f2fs_disable_checkpoint(struct f2fs_sb_info *sbi)
 	}
 
 	if (err == -EAGAIN) {
-		f2fs_msg(sbi->sb, KERN_INFO,
-				"%s: f2fs_gc = -EAGAIN (retry_cnt : %u)",
+		f2fs_msg(sbi->sb, KERN_INFO, 
+				"%s: f2fs_gc = -EAGAIN (retry_cnt : %u)", 
 				__func__, retry_cnt);
 		err = 0;
 	}
@@ -1727,12 +1699,6 @@ static int f2fs_disable_checkpoint(struct f2fs_sb_info *sbi)
 		goto restore_flag;
 	}
 #endif
-	ret = f2fs_destroy_checkpoint_cmd_control(sbi, false);
-	if (ret || err) {
-		err = ret ? ret: err;
-		goto restore_flag;
-	}
-
 	mutex_lock(&sbi->gc_mutex);
 	cpc.reason = CP_PAUSE;
 	set_sbi_flag(sbi, SBI_CP_DISABLED);
@@ -1759,11 +1725,6 @@ static void f2fs_enable_checkpoint(struct f2fs_sb_info *sbi)
 	clear_sbi_flag(sbi, SBI_CP_DISABLED);
 	set_sbi_flag(sbi, SBI_IS_DIRTY);
 	mutex_unlock(&sbi->gc_mutex);
-
-	if (f2fs_create_checkpoint_cmd_control(sbi)) {
-		f2fs_msg(sbi->sb, KERN_WARNING,
-			"Failed to initialize F2FS issue_checkpoint_thread");
-	}
 
 	f2fs_sync_fs(sbi->sb, 1);
 }
@@ -1818,7 +1779,7 @@ static int f2fs_remount(struct vfsmount *mnt, struct super_block *sb,
 			clear_sbi_flag(sbi, SBI_NEED_SB_WRITE);
 	}
 
-	default_options(sbi, true);
+	default_options(sbi);
 
 	/* parse mount options */
 	err = parse_options(sb, data);
@@ -1906,9 +1867,6 @@ static int f2fs_remount(struct vfsmount *mnt, struct super_block *sb,
 			f2fs_enable_checkpoint(sbi);
 		}
 	}
-
-	if (F2FS_OPTION(sbi).ckpt_ioprio != org_mount_opt.ckpt_ioprio)
-		f2fs_set_issue_ckpt_ioprio(sbi, F2FS_OPTION(sbi).ckpt_ioprio);
 
 	/*
 	 * We stop issue flush thread if FS is mounted as RO
@@ -2489,6 +2447,9 @@ static const struct fscrypt_operations f2fs_cryptops = {
 	.key_prefix	= "f2fs:",
 	.get_context	= f2fs_get_context,
 	.set_context	= f2fs_set_context,
+#ifdef CONFIG_FS_INLINE_ENCRYPTION
+	.get_dun	= __fscrypt_make_dun,
+#endif
 #if defined(CONFIG_DDAR) || defined(CONFIG_FSCRYPT_SDP)
 	.get_knox_context = f2fs_get_knox_context,
 	.set_knox_context = f2fs_set_knox_context,
@@ -3392,7 +3353,7 @@ try_onemore:
 		goto free_sb_buf;
 	}
 #endif
-	default_options(sbi, false);
+	default_options(sbi);
 	/* parse mount options */
 	options = kstrdup((const char *)data, GFP_KERNEL);
 	if (data && !options) {
@@ -3544,14 +3505,6 @@ try_onemore:
 	f2fs_init_ino_entry_info(sbi);
 
 	f2fs_init_fsync_node_info(sbi);
-
-	/* setup checkpoint_cmd_control */
-	err = f2fs_create_checkpoint_cmd_control(sbi);
-	if (err) {
-		f2fs_msg(sb, KERN_ERR,
-			"Failed to initialize F2FS checkpoint_cmd_control");
-		goto free_ccc;
-	}
 
 	/* setup f2fs internal modules */
 	err = f2fs_build_segment_manager(sbi);
@@ -3751,8 +3704,6 @@ free_nm:
 	f2fs_destroy_node_manager(sbi);
 free_sm:
 	f2fs_destroy_segment_manager(sbi);
-free_ccc:
-	f2fs_destroy_checkpoint_cmd_control(sbi, true);
 free_devices:
 	destroy_device_list(sbi);
 	kvfree(sbi->ckpt);

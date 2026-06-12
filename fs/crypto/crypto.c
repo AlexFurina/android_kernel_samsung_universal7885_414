@@ -29,6 +29,7 @@
 #include <crypto/aes.h>
 #include <crypto/skcipher.h>
 #include "fscrypt_private.h"
+
 #ifdef CONFIG_FSCRYPT_SDP
 #include "sdp/sdp_crypto.h"
 #endif
@@ -107,8 +108,7 @@ struct fscrypt_ctx *fscrypt_get_ctx(const struct inode *inode, gfp_t gfp_flags)
 	if (ci == NULL)
 		return ERR_PTR(-ENOKEY);
 
-	if (__fscrypt_disk_encrypted(inode))
-		return NULL;
+	BUG_ON(__fscrypt_inline_encrypted(inode));
 
 	/*
 	 * We first try getting the ctx from a free list because in
@@ -528,10 +528,11 @@ static int __init fscrypt_init(void)
 	if (!fscrypt_sdp_init_sdp_info_cachep())
 		goto fail_free_info;
 #endif
-	return 0;
 
+	return 0;
 fail_free_info:
 	kmem_cache_destroy(fscrypt_info_cachep);
+
 fail_free_ctx:
 	kmem_cache_destroy(fscrypt_ctx_cachep);
 fail_free_queue:

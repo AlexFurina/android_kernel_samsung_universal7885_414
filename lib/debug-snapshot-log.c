@@ -110,7 +110,7 @@ struct dbg_snapshot_log_idx {
 #ifdef CONFIG_DEBUG_SNAPSHOT_REGULATOR
 	atomic_t regulator_log_idx;
 #endif
-#ifdef CONFIG_DEBUG_SNAPSHOT_THERMAL
+#ifdef CONFIG_DEBUG_SNAPSHOT_REGULATOR
 	atomic_t thermal_log_idx;
 #endif
 #ifdef CONFIG_DEBUG_SNAPSHOT_I2C
@@ -241,22 +241,25 @@ unsigned long sec_debug_get_kevent_index_addr(int type)
 	switch (type) {
 	case DSS_KEVENT_TASK:
 		return virt_to_phys(&(dss_idx.task_log_idx[0]));
+
 	case DSS_KEVENT_WORK:
 		return virt_to_phys(&(dss_idx.work_log_idx[0]));
+
 	case DSS_KEVENT_IRQ:
 		return virt_to_phys(&(dss_idx.irq_log_idx[0]));
-#ifdef CONFIG_DEBUG_SNAPSHOT_FREQ
+
 	case DSS_KEVENT_FREQ:
 		return virt_to_phys(&(dss_idx.freq_log_idx));
-#endif
+
 	case DSS_KEVENT_IDLE:
 		return virt_to_phys(&(dss_idx.cpuidle_log_idx[0]));
+
 	case DSS_KEVENT_THRM:
 		return virt_to_phys(&(dss_idx.thermal_log_idx));
-#ifdef CONFIG_DEBUG_SNAPSHOT_ACPM
+
 	case DSS_KEVENT_ACPM:
 		return virt_to_phys(&(dss_idx.acpm_log_idx));
-#endif
+
 	default:
 		return 0;
 	}
@@ -407,7 +410,8 @@ bool dbg_snapshot_dumper_one(void *v_dumper, char *line, size_t size, size_t *le
 	case DSS_FLAG_SPINLOCK:
 	{
 		unsigned int jiffies_local;
-		int en;
+		char callstack[CONFIG_DEBUG_SNAPSHOT_CALLSTACK][KSYM_NAME_LEN];
+		int en, i;
 		u16 next, owner;
 
 		array_size = ARRAY_SIZE(dss_log->spinlock[0]) - 1;
@@ -421,13 +425,22 @@ bool dbg_snapshot_dumper_one(void *v_dumper, char *line, size_t size, size_t *le
 
 		jiffies_local = dss_log->spinlock[cpu][idx].jiffies;
 		en = dss_log->spinlock[cpu][idx].en;
+		for (i = 0; i < CONFIG_DEBUG_SNAPSHOT_CALLSTACK; i++)
+			lookup_symbol_name((unsigned long)dss_log->spinlock[cpu][idx].caller[i],
+						callstack[i]);
+
 		next = dss_log->spinlock[cpu][idx].next;
 		owner = dss_log->spinlock[cpu][idx].owner;
 
-		*len = snprintf(line, size, "[%8lu.%09lu][%04d:CPU%u] next:%8x,  owner:%8x  jiffies:%12u,  %3s\n",
+		*len = snprintf(line, size, "[%8lu.%09lu][%04d:CPU%u] next:%8x,  owner:%8x  jiffies:%12u,  %3s\n"
+					    "callstack: %s\n"
+					    "           %s\n"
+					    "           %s\n"
+					    "           %s\n",
 						(unsigned long)ts, rem_nsec / NSEC_PER_USEC, idx, cpu,
 						next, owner, jiffies_local,
-						en == DSS_FLAG_IN ? "IN" : "OUT");
+						en == DSS_FLAG_IN ? "IN" : "OUT",
+						callstack[0], callstack[1], callstack[2], callstack[3]);
 		break;
 	}
 #endif
@@ -495,7 +508,9 @@ bool dbg_snapshot_dumper_one(void *v_dumper, char *line, size_t size, size_t *le
 	case DSS_FLAG_PRINTK:
 	{
 		char *log;
+		char callstack[CONFIG_DEBUG_SNAPSHOT_CALLSTACK][KSYM_NAME_LEN];
 		unsigned int cpu;
+		int i;
 
 		array_size = ARRAY_SIZE(dss_log->printk) - 1;
 		if (!dumper->active) {
@@ -507,14 +522,21 @@ bool dbg_snapshot_dumper_one(void *v_dumper, char *line, size_t size, size_t *le
 		cpu = dss_log->printk[idx].cpu;
 		rem_nsec = do_div(ts, NSEC_PER_SEC);
 		log = dss_log->printk[idx].log;
-		*len = snprintf(line, size, "[%8lu.%09lu][%04d:CPU%u] log:%s\n",
-						(unsigned long)ts, rem_nsec / NSEC_PER_USEC, idx, cpu, log);
+		for (i = 0; i < CONFIG_DEBUG_SNAPSHOT_CALLSTACK; i++)
+			lookup_symbol_name((unsigned long)dss_log->printk[idx].caller[i],
+						callstack[i]);
+
+		*len = snprintf(line, size, "[%8lu.%09lu][%04d:CPU%u] log:%s, callstack:%s, %s, %s, %s\n",
+						(unsigned long)ts, rem_nsec / NSEC_PER_USEC, idx, cpu,
+						log, callstack[0], callstack[1], callstack[2], callstack[3]);
 		break;
 	}
 	case DSS_FLAG_PRINTKL:
 	{
+		char callstack[CONFIG_DEBUG_SNAPSHOT_CALLSTACK][KSYM_NAME_LEN];
 		size_t msg, val;
 		unsigned int cpu;
+		int i;
 
 		array_size = ARRAY_SIZE(dss_log->printkl) - 1;
 		if (!dumper->active) {
@@ -527,8 +549,13 @@ bool dbg_snapshot_dumper_one(void *v_dumper, char *line, size_t size, size_t *le
 		rem_nsec = do_div(ts, NSEC_PER_SEC);
 		msg = dss_log->printkl[idx].msg;
 		val = dss_log->printkl[idx].val;
-		*len = snprintf(line, size, "[%8lu.%09lu][%04d:CPU%u] msg:%zx, val:%zx\n",
-						(unsigned long)ts, rem_nsec / NSEC_PER_USEC, idx, cpu, msg, val);
+		for (i = 0; i < CONFIG_DEBUG_SNAPSHOT_CALLSTACK; i++)
+			lookup_symbol_name((unsigned long)dss_log->printkl[idx].caller[i],
+						callstack[i]);
+
+		*len = snprintf(line, size, "[%8lu.%09lu][%04d:CPU%u] msg:%zx, val:%zx, callstack: %s, %s, %s, %s\n",
+						(unsigned long)ts, rem_nsec / NSEC_PER_USEC, idx, cpu,
+						msg, val, callstack[0], callstack[1], callstack[2], callstack[3]);
 		break;
 	}
 #endif

@@ -67,7 +67,6 @@
 #else
 #define PROCA_CONF_OFFSET_IMAGE_LE64
 #endif
-
 /*
  * These will output as part of the Image header, which should be little-endian
  * regardless of the endianness of the kernel. While constant values could be

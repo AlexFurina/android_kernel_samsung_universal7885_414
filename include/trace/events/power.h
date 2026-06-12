@@ -39,7 +39,7 @@ DEFINE_EVENT(cpu, cpu_idle,
 	TP_ARGS(state, cpu_id)
 );
 
-TRACE_EVENT(exynos_slack_func,
+TRACE_EVENT(sugov_slack_func,
 
 	TP_PROTO(int cpu),
 
@@ -56,7 +56,7 @@ TRACE_EVENT(exynos_slack_func,
 	TP_printk("cpu=%d SLACK EXPIRED", __entry->cpu)
 );
 
-TRACE_EVENT(exynos_slack,
+TRACE_EVENT(sugov_slack,
 
 	TP_PROTO(int cpu, unsigned long util,
 		unsigned long min, unsigned long action, int ret),

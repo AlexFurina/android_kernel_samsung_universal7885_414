@@ -140,7 +140,6 @@ enum
 	TCP_MIB_INERRS,				/* InErrs */
 	TCP_MIB_OUTRSTS,			/* OutRsts */
 	TCP_MIB_CSUMERRORS,			/* InCsumErrors */
-	TCP_MIB_RTONULLSKB,			/* RtoNullSkb */
 	__TCP_MIB_MAX
 };
 

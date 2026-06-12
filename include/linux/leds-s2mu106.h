@@ -1,7 +1,7 @@
 /*
  * leds-s2mu106.h - Flash-led driver for Samsung S2MU106
  *
- * Copyright (C) 2018 Samsung Electronics
+ * Copyright (C) 2020 Samsung Electronics
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -107,10 +107,10 @@ enum operating_mode {
 };
 
 enum cam_flash_mode{
-	CAM_FLASH_MODE_NONE=0,		//CAM2_FLASH_MODE_NONE=0,
-	CAM_FLASH_MODE_OFF,		//CAM2_FLASH_MODE_OFF,
-	CAM_FLASH_MODE_SINGLE,		//CAM2_FLASH_MODE_SINGLE,
-	CAM_FLASH_MODE_TORCH,		//CAM2_FLASH_MODE_TORCH,
+	CAM_FLASH_MODE_NONE=0,
+	CAM_FLASH_MODE_OFF,
+	CAM_FLASH_MODE_SINGLE,
+	CAM_FLASH_MODE_TORCH,
 };
 
 enum s2mu106_fled_mode {
@@ -177,5 +177,5 @@ int s2mu106_fled_set_mode_ctrl(int chan, enum cam_flash_mode cam_mode);
 int s2mu106_fled_set_curr(int chan, enum cam_flash_mode cam_mode, int curr);
 int s2mu106_fled_get_curr(int chan, enum cam_flash_mode cam_mode);
 int s2mu106_led_mode_ctrl(int state);
-extern void s2mu106_fled_set_operation_mode(int val);
+void s2mu106_fled_set_operation_mode(int val);
 #endif

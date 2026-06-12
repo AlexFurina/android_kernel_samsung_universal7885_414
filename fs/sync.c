@@ -16,28 +16,19 @@
 #include <linux/pagemap.h>
 #include <linux/quotaops.h>
 #include <linux/backing-dev.h>
-#include <linux/version.h>
 #include "internal.h"
 
 #define VALID_FLAGS (SYNC_FILE_RANGE_WAIT_BEFORE|SYNC_FILE_RANGE_WRITE| \
 			SYNC_FILE_RANGE_WAIT_AFTER)
 
-static inline int sec_sys_sync() {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
-	ksys_sync();
-	return 0;
-#else
-	return sys_sync();
-#endif
-}
-
 /* Interruptible sync for Samsung Mobile Device */
-/* @fs.sec -- 30cbf83784121f91517b701d9706bccd -- */
 #ifdef CONFIG_INTERRUPTIBLE_SYNC
 
 #include <linux/workqueue.h>
 #include <linux/suspend.h>
 #include <linux/delay.h>
+
+//#define CONFIG_INTR_SYNC_DEBUG
 
 #ifdef CONFIG_INTR_SYNC_DEBUG
 #define dbg_print	printk
@@ -98,7 +89,7 @@ static void do_intr_sync(struct work_struct *work)
 
 	/* if no one waits, do not call sync() */
 	if (waiter) {
-		ret = sec_sys_sync();
+		ret = sys_sync();
 		dbg_print("\nintr_sync: %s: done sys_sync on work[%d]-%ld\n",
 			__func__, sync_work->id, sync_work->version);
 	} else {
@@ -265,7 +256,7 @@ find_idle:
 		goto enqueue_sync_wait;
 
 	printk("\nintr_sync: allocation failed, just call sync()\n");
-	ret = sec_sys_sync();
+	ret = sys_sync();
 	if (sync_ret)
 		*sync_ret = ret;
 	return 0;
@@ -273,7 +264,7 @@ find_idle:
 #else /* CONFIG_INTERRUPTIBLE_SYNC */
 int intr_sync(int *sync_ret)
 {
-	int ret = sec_sys_sync();
+	int ret = sys_sync();
 	if (sync_ret)
 		*sync_ret = ret;
 	return 0;

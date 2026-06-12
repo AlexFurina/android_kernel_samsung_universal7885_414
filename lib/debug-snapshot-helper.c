@@ -358,8 +358,10 @@ int dbg_snapshot_post_reboot(char *cmd)
 
 	dbg_snapshot_report_reason(DSS_SIGN_NORMAL_REBOOT);
 
-	 if (!cmd || strcmp((char *)cmd, "ramdump"))
-                dbg_snapshot_scratch_reg(DSS_SIGN_RESET);
+	if (!cmd)
+		dbg_snapshot_scratch_reg(DSS_SIGN_RESET);
+	else if (strcmp((char *)cmd, "bootloader") && strcmp((char *)cmd, "ramdump"))
+		dbg_snapshot_scratch_reg(DSS_SIGN_RESET);
 
 	pr_emerg("debug-snapshot: normal reboot done\n");
 
@@ -387,6 +389,7 @@ static int dbg_snapshot_reboot_handler(struct notifier_block *nb,
 #ifdef CONFIG_SEC_DEBUG
 	sec_debug_reboot_handler(p);
 #endif
+
 	return 0;
 }
 

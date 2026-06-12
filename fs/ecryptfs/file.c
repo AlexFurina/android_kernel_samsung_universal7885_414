@@ -31,9 +31,8 @@
 #include <linux/security.h>
 #include <linux/compat.h>
 #include <linux/fs_stack.h>
-#include <linux/xattr.h>
-
 #include "ecryptfs_kernel.h"
+
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 #include <linux/ctype.h>
 #define ECRYPTFS_IOCTL_GET_ATTRIBUTES	_IOR('l', 0x10, __u32)
@@ -156,7 +155,6 @@ static int read_or_initialize_metadata(struct dentry *dentry)
 	crypt_stat = &ecryptfs_inode_to_private(inode)->crypt_stat;
 	mount_crypt_stat = &ecryptfs_superblock_to_private(
 						inode->i_sb)->mount_crypt_stat;
-
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 	if (crypt_stat->flags & ECRYPTFS_STRUCT_INITIALIZED
 		&& crypt_stat->flags & ECRYPTFS_POLICY_APPLIED
@@ -196,7 +194,6 @@ static int read_or_initialize_metadata(struct dentry *dentry)
 	}
 	mutex_unlock(&crypt_stat->cs_mutex);
 #endif
-
 	mutex_lock(&crypt_stat->cs_mutex);
 
 	if (crypt_stat->flags & ECRYPTFS_POLICY_APPLIED &&
@@ -231,13 +228,13 @@ out:
 
 static int ecryptfs_mmap(struct file *file, struct vm_area_struct *vma)
 {
-	struct dentry *dentry = ecryptfs_dentry_to_lower(file->f_path.dentry);
+	struct file *lower_file = ecryptfs_file_to_lower(file);
 	/*
 	 * Don't allow mmap on top of file systems that don't support it
 	 * natively.  If FILESYSTEM_MAX_STACK_DEPTH > 2 or ecryptfs
 	 * allows recursive mounting, this will need to be extended.
 	 */
-	if (!dentry->d_inode->i_fop->mmap)
+	if (!lower_file->f_op->mmap)
 		return -ENODEV;
 	return generic_file_mmap(file, vma);
 }
@@ -449,7 +446,6 @@ ecryptfs_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 	}
 #endif
-
 	if (!lower_file->f_op->unlocked_ioctl)
 		return rc;
 
@@ -512,7 +508,6 @@ ecryptfs_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 	}
 #endif
-
 	if (!lower_file->f_op->compat_ioctl)
 		return rc;
 
@@ -530,7 +525,6 @@ ecryptfs_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	}
 }
 #endif
-
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 int is_file_name_match(struct ecryptfs_mount_crypt_stat *mcs,
 					struct dentry *fp_dentry)
@@ -611,7 +605,6 @@ int is_file_ext_match(struct ecryptfs_mount_crypt_stat *mcs, char *str)
 	return 0;
 }
 #endif
-
 const struct file_operations ecryptfs_dir_fops = {
 	.iterate_shared = ecryptfs_readdir,
 	.read = generic_read_dir,

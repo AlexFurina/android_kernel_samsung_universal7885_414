@@ -165,7 +165,7 @@ static int vmap_pte_range(pmd_t *pmd, unsigned long addr,
 	 */
 #ifdef CONFIG_UH_RKP
 	unsigned long paddr = addr;
-	if (pgprot_rkp_ro(prot))
+	if(pgprot_rkp_ro(prot))
 		paddr &= (~PTE_RKP_RO);
 	pte = pte_alloc_kernel(pmd, paddr);
 #else
@@ -2808,7 +2808,6 @@ static int __init proc_vmalloc_init(void)
 	proc_create("vmallocinfo", S_IRUSR, NULL, &proc_vmalloc_operations);
 	atomic_long_set(&nr_vmalloc_pages, 0);
 	show_mem_extra_notifier_register(&vmalloc_size_nb);
-
 	return 0;
 }
 module_init(proc_vmalloc_init);

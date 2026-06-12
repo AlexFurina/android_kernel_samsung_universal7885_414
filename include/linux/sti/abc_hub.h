@@ -38,12 +38,10 @@ struct sub_cond_pdata {
 	// custom
 	const char *name[DET_CONN_MAX_NUM_GPIOS];
 	int irq_gpio[DET_CONN_MAX_NUM_GPIOS];
-	int irq_num[DET_CONN_MAX_NUM_GPIOS];
+	int irq_number[DET_CONN_MAX_NUM_GPIOS];
 	unsigned int irq_type[DET_CONN_MAX_NUM_GPIOS];
-	int irq_enabled[DET_CONN_MAX_NUM_GPIOS];
 	int gpio_cnt;
-	int gpio_pm_cnt;
-	int gpio_total_cnt;
+	struct mutex cond_lock;
 };
 #endif
 
@@ -77,11 +75,10 @@ enum {
 	ABC_HUB_DISABLED,
 	ABC_HUB_ENABLED,
 };
-
 struct abc_hub_platform_data {
 	unsigned int nSub;
 #ifdef CONFIG_SEC_ABC_HUB_COND
-	struct sub_cond_pdata cond;
+	struct sub_cond_pdata cond_pdata;
 #endif
 #ifdef CONFIG_SEC_ABC_HUB_BOOTC
 	struct sub_bootc_pdata bootc_pdata;
@@ -101,8 +98,8 @@ struct abc_hub_info {
 /*********** sub module : cond ************/
 #ifdef CONFIG_SEC_ABC_HUB_COND
 int parse_cond_data(struct device *dev,
-		    struct abc_hub_platform_data *pdata,
-		    struct device_node *np);
+			  struct abc_hub_platform_data *pdata,
+			  struct device_node *np);
 int abc_hub_cond_init(struct device *dev);
 void abc_hub_cond_enable(struct device *dev, int enable);
 
@@ -113,8 +110,8 @@ int abc_hub_cond_resume(struct device *dev);
 /*********** sub module : bootc ************/
 #ifdef CONFIG_SEC_ABC_HUB_BOOTC
 int parse_bootc_data(struct device *dev,
-		     struct abc_hub_platform_data *pdata,
-		     struct device_node *np);
+			  struct abc_hub_platform_data *pdata,
+			  struct device_node *np);
 int abc_hub_bootc_init(struct device *dev);
 void abc_hub_bootc_enable(struct device *dev, int enable);
 #endif

@@ -19,6 +19,8 @@
 #include "blk.h"
 #include "blk-wbt.h"
 
+SIO_PATCH_VERSION(CFQ_async_starvation, 1, 0, "");
+
 /*
  * tunables
  */

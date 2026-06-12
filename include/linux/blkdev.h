@@ -27,6 +27,7 @@
 #include <linux/percpu-refcount.h>
 #include <linux/scatterlist.h>
 #include <linux/blkzoned.h>
+#include <linux/blk-crypt.h>
 
 #ifdef CONFIG_MMC_SRPMB
 #include <linux/mmc/ioctl.h>
@@ -162,9 +163,10 @@ struct request {
 	unsigned int __data_len;	/* total data len */
 	int tag;
 	sector_t __sector;		/* sector cursor */
-#ifdef CONFIG_CRYPTO_DISKCIPHER
+#ifdef CONFIG_BLK_DEV_CRYPT_DUN
 	u64 __dun;                      /* dun for UFS */
 #endif
+
 	struct bio *bio;
 	struct bio *biotail;
 
@@ -544,8 +546,8 @@ struct request_queue {
 
 	unsigned int		nr_sorted;
 	unsigned int		in_flight[2];
-	unsigned long long	in_flight_time;
-	ktime_t			in_flight_stamp;
+	unsigned long long  in_flight_time;
+	ktime_t         in_flight_stamp;
 
 	/*
 	 * Number of active block driver functions for which blk_drain_queue()
@@ -953,6 +955,8 @@ static inline void rq_flush_dcache_pages(struct request *rq)
 }
 #endif
 
+extern void __blk_drain_queue(struct request_queue *q, bool drain_all);
+
 #ifdef CONFIG_PRINTK
 #define vfs_msg(sb, level, fmt, ...)				\
 	__vfs_msg(sb, level, fmt, ##__VA_ARGS__)
@@ -1041,7 +1045,7 @@ static inline sector_t blk_rq_pos(const struct request *rq)
 	return rq->__sector;
 }
 
-#ifdef CONFIG_CRYPTO_DISKCIPHER
+#ifdef CONFIG_BLK_DEV_CRYPT_DUN
 static inline sector_t blk_rq_dun(const struct request *rq)
 {
 	return rq->__dun;
@@ -1414,6 +1418,7 @@ extern int blk_verify_command(unsigned char *cmd, fmode_t has_write_perm);
 enum blk_default_limits {
 	BLK_MAX_SEGMENTS	= 128,
 	BLK_SAFE_MAX_SECTORS	= 255,
+	BLK_OPT_MAX_SECTORS	= 1024,
 	BLK_DEF_MAX_SECTORS	= 1024,
 	BLK_MAX_SEGMENT_SIZE	= 65536,
 	BLK_SEG_BOUNDARY_MASK	= 0xFFFFFFFFUL,
@@ -1988,7 +1993,7 @@ struct block_device_operations {
 	const struct pr_ops *pr_ops;
 
 #ifdef CONFIG_MMC_SRPMB
-	int (*srpmb_access) (struct block_device *bdev, struct mmc_ioc_cmd *icmd);
+       int (*srpmb_access) (struct block_device *bdev, struct mmc_ioc_cmd *icmd);
 #endif
 };
 
@@ -2043,5 +2048,12 @@ static inline int blkdev_issue_flush(struct block_device *bdev, gfp_t gfp_mask,
 }
 
 #endif /* CONFIG_BLOCK */
+
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+#define SIO_PATCH_VERSION(name, major, minor, description)	\
+	static const char *sio_##name##_##major##_##minor __attribute__ ((used, section("sio_patches"))) = (#name " " #major "." #minor " " description)
+#else
+#define SIO_PATCH_VERSION(name, major, minor, description)
+#endif
 
 #endif

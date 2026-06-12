@@ -118,7 +118,7 @@ static int hpa_killer(void)
 		return -ESRCH;
 	}
 
-	pr_info("HPA: Killing '%s' (%d), adj %d to free %lukB\n",
+	pr_info("HPA: Killing '%s' (%d), adj %hd to free %lukB\n",
 		selected->comm, task_pid_nr(selected), selected_adj,
 		selected_tasksize * (PAGE_SIZE / SZ_1K));
 

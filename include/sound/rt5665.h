@@ -35,10 +35,6 @@ struct rt5665_platform_data {
 	bool in3_diff;
 	bool in4_diff;
 
-	const char *regulator_1v8;
-	const char *regulator_3v3;
-	const char *regulator_5v;
-
 	int ldo1_en; /* GPIO for LDO1_EN */
 
 	enum rt5665_dmic1_data_pin dmic1_data_pin;
@@ -46,10 +42,23 @@ struct rt5665_platform_data {
 	enum rt5665_jd_src jd_src;
 
 	unsigned int sar_hs_type;
+	unsigned int sar_hs_open_gender;
 	unsigned int sar_pb_vth0;
 	unsigned int sar_pb_vth1;
 	unsigned int sar_pb_vth2;
 	unsigned int sar_pb_vth3;
+
+	unsigned int delay_plug_in;
+	unsigned int delay_plug_out_pb;
+
+	unsigned int offset_comp[16];
+	unsigned int offset_comp_r[16];
+
+	int ext_ant_det_gpio;
+	int dtv_check_gpio;
+	bool mic_check_in_bg;
+	bool rek_first_playback;
+	bool use_external_adc;
 };
 
 #endif

@@ -83,7 +83,7 @@ config MALI_DEBUG_KERNEL_SYSFS
 config MALI_EXYNOS_SECURE_RENDERING
     bool "Enable EXYNOS Secure Rendering Support"
     depends on MALI_MIDGARD && ION_EXYNOS && EXYNOS_CONTENT_PATH_PROTECTION
-    default n
+    default y
     help
       Support Secure Rendering on Exynos SoC
 
@@ -96,7 +96,7 @@ config MALI_ASV_CALIBRATION_SUPPORT
 
 config MALI_SEC_VK_BOOST
 	bool "Enable GPU VK JOB PMQOS BOOST"
-	default y
+	default n
 	help
 	  Choose this option to enable VK JOB PMQOS BOOST in the Mali tTRx DDK.
 
@@ -113,3 +113,10 @@ config MALI_SUSTAINABLE_OPT
 	default n
 	help
 		Choose this option to enable sustainable optimization in the Mali tTRx DDK.
+
+config MALI_NEW_BTS_API_SUPPORT
+	bool "Enable new BTS api support"
+	depends on MALI_DVFS
+	default n
+	help
+		Choose this option if new bts api is supported such as bts_get_scenindex.

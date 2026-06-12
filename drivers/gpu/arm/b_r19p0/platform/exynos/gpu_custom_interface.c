@@ -32,7 +32,7 @@
 #endif /* CONFIG_CPU_THERMAL_IPA */
 #include "gpu_custom_interface.h"
 
-#ifdef CONFIG_EXYNOS_PD
+#ifdef CONFIG_MALI_RT_PM
 #include <soc/samsung/exynos-pd.h>
 #endif
 
@@ -1176,6 +1176,10 @@ static ssize_t show_trace_dump(struct device *dev, struct device_attribute *attr
 
 		kbasep_trace_format_msg(trace_msg, buffer, KBASE_TRACE_SIZE);
 		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%s\n", buffer);
+
+        if (ret >= PAGE_SIZE - 1)
+            break;
+
 		start = (start + 1) & KBASE_TRACE_MASK;
 	}
 

@@ -97,12 +97,12 @@ struct fscrypt_info {
 	u8 ci_data_mode;
 	u8 ci_filename_mode;
 	u8 ci_flags;
-#ifdef CONFIG_CRYPTO_DISKCIPHER
-	struct crypto_diskcipher *ci_dtfm;
-#endif
 	u8 ci_master_key_descriptor[FS_KEY_DESCRIPTOR_SIZE];
 	u8 ci_nonce[FS_KEY_DERIVATION_NONCE_SIZE];
 
+#ifdef CONFIG_FS_INLINE_ENCRYPTION
+	void *ci_private;	/* private data for inline encryption */
+#endif
 #ifdef CONFIG_FSCRYPT_SDP
 	struct sdp_info *ci_sdp_info;
 #endif
@@ -116,9 +116,24 @@ typedef enum {
 #define FS_CTX_REQUIRES_FREE_ENCRYPT_FL		0x00000001
 #define FS_CTX_HAS_BOUNCE_BUFFER_FL		0x00000002
 
+static inline bool fscrypt_valid_inline_enc_modes(u32 contents_mode,
+						  u32 filenames_mode)
+{
+#ifdef CONFIG_FS_INLINE_ENCRYPTION
+	if (contents_mode == FS_ENCRYPTION_MODE_PRIVATE &&
+	    filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS)
+		return true;
+#endif
+
+	return false;
+}
+
 static inline bool fscrypt_valid_enc_modes(u32 contents_mode,
 					   u32 filenames_mode)
 {
+	if (fscrypt_valid_inline_enc_modes(contents_mode, filenames_mode))
+		return true;
+
 	if (contents_mode == FS_ENCRYPTION_MODE_AES_128_CBC &&
 	    filenames_mode == FS_ENCRYPTION_MODE_AES_128_CTS)
 		return true;
@@ -131,9 +146,16 @@ static inline bool fscrypt_valid_enc_modes(u32 contents_mode,
 	    filenames_mode == FS_ENCRYPTION_MODE_ADIANTUM)
 		return true;
 
-	if (contents_mode == FS_ENCRYPTION_MODE_PRIVATE &&
-		filenames_mode == FS_ENCRYPTION_MODE_AES_256_CTS)
-		return true;
+	return false;
+}
+
+static inline bool __fscrypt_inline_encrypted(const struct inode *inode)
+{
+#ifdef CONFIG_FS_INLINE_ENCRYPTION
+	if (inode && S_ISREG(inode->i_mode) &&
+	    IS_ENCRYPTED(inode) && inode->i_crypt_info)
+		return inode->i_crypt_info->ci_private ? true : false;
+#endif
 	return false;
 }
 
@@ -184,30 +206,16 @@ extern bool fscrypt_fname_encrypted_size(const struct inode *inode,
 
 /* keyinfo.c */
 
-enum cipher_flags {
-	CRYPT_MODE_SKCIPHER,
-	CRYPT_MODE_ESSIV,
-	CRYPT_MODE_DISKCIPHER,
-};
 struct fscrypt_mode {
 	const char *friendly_name;
 	const char *cipher_str;
+	bool inline_enc;
 	int keysize;
 	int ivsize;
 	bool logged_impl_name;
-	enum cipher_flags flags;
+	bool needs_essiv;
 };
 
 extern void __exit fscrypt_essiv_cleanup(void);
 
-static inline int __fscrypt_disk_encrypted(const struct inode *inode)
-{
-#if IS_ENABLED(CONFIG_FS_ENCRYPTION)
-#if IS_ENABLED(CONFIG_CRYPTO_DISKCIPHER)
-	if (inode && inode->i_crypt_info)
-		return S_ISREG(inode->i_mode) && (inode->i_crypt_info->ci_dtfm != NULL);
-#endif
-#endif
-	return 0;
-}
 #endif /* _FSCRYPT_PRIVATE_H */

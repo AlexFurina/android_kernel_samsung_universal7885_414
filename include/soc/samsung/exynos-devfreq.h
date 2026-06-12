@@ -24,6 +24,8 @@
 #define DATA_INIT			5
 #define SET_CONST			1
 #define RELEASE				2
+
+#ifdef CONFIG_ARM_EXYNOS7885_BUS_DEVFREQ
 enum exynos_devfreq_type {
 	DEVFREQ_MIF = 0,
 	DEVFREQ_INT,
@@ -34,49 +36,10 @@ enum exynos_devfreq_type {
 	DEVFREQ_FSYS,
 	DEVFREQ_TYPE_END
 };
+#endif
 
-enum exynos_devfreq_gov_type {
-	SIMPLE_INTERACTIVE = 0,
-	GOV_TYPE_END
-};
-
-/* "Utlization Monitor" type */
-enum UM_TYPE {
-	UM_MIF = 0,
-	UM_INT,
-	NONE_UM
-};
-
-enum volt_order_type {
-	KEEP_SET_VOLT = 0,
-	PRE_SET_VOLT,
-	POST_SET_VOLT
-};
-
-enum exynos_devfreq_lv_index {
-	DEV_LV0 = 0,
-	DEV_LV1,
-	DEV_LV2,
-	DEV_LV3,
-	DEV_LV4,
-	DEV_LV5,
-	DEV_LV6,
-	DEV_LV7,
-	DEV_LV8,
-	DEV_LV9,
-	DEV_LV10,
-	DEV_LV11,
-	DEV_LV12,
-	DEV_LV13,
-	DEV_LV14,
-	DEV_LV15,
-	DEV_LV16,
-	DEV_LV17,
-	DEV_LV18,
-	DEV_LV19,
-	DEV_LV20,
-	DEV_LV_END,
-};
+/* DEVFREQ GOV TYPE */
+#define SIMPLE_INTERACTIVE 0
 
 struct exynos_devfreq_opp_table {
 	u32 idx;
@@ -84,7 +47,7 @@ struct exynos_devfreq_opp_table {
 	u32 volt;
 };
 
-struct exynos_devfreq_data;
+#ifdef CONFIG_ARM_EXYNOS7885_BUS_DEVFREQ
 struct um_exynos;
 
 struct exynos_devfreq_ops {
@@ -151,27 +114,26 @@ struct um_exynos {
 	u64 val_ccnt;
 	u64 val_pmcnt;
 };
+#endif
 
 struct exynos_devfreq_data {
 	struct device				*dev;
 	struct devfreq				*devfreq;
 	struct mutex				lock;
 	struct clk				*clk;
-	struct clk				*sw_clk;
 
 	bool					devfreq_disabled;
 
-	enum exynos_devfreq_type		devfreq_type;
+	u32		devfreq_type;
 
-	struct exynos_devfreq_opp_table		opp_list[DEV_LV_END];
+	struct exynos_devfreq_opp_table		*opp_list;
 
 	u32					default_qos;
 
-	bool					use_get_dev;
 	u32					max_state;
 	struct devfreq_dev_profile		devfreq_profile;
 
-	enum exynos_devfreq_gov_type		gov_type;
+	u32		gov_type;
 	const char				*governor_name;
 	u32					cal_qos_max;
 	void					*governor_data;
@@ -190,16 +152,6 @@ struct exynos_devfreq_data {
 
 	u32					old_volt;
 	u32					new_volt;
-	u32					volt_offset;
-	u32					cold_volt_offset;
-	u32					limit_cold_volt;
-	u32					min_cold_volt;
-	u32					reg_max_volt;
-	bool					use_regulator;
-	bool					use_pd_off;
-	const char				*regulator_name;
-	struct regulator			*vdd;
-	struct mutex				regulator_lock;
 
 	u32					pm_qos_class;
 	u32					pm_qos_class_max;
@@ -213,57 +165,33 @@ struct exynos_devfreq_data {
 	struct pm_qos_request			boot_pm_qos;
 	u32					boot_qos_timeout;
 
-	struct devfreq_notifier_block		*um_nb;
-	struct um_exynos			um_data;
-	u64					last_monitor_period;
-	u64					last_monitor_time;
-	u32					last_um_usage_rate;
-
-	bool					use_tmu;
-	struct notifier_block			tmu_notifier;
 	struct notifier_block			reboot_notifier;
-	struct notifier_block			pm_notifier;
 
 	u32					ess_flag;
 
-	bool					use_cl_dvfs;
-
 	s32					target_delay;
-	s32					setfreq_delay;
-
-	bool					use_switch_clk;
-	u32					switch_freq;
-	u32					switch_volt;
 
 #ifdef CONFIG_EXYNOS_DVFS_MANAGER
-	enum exynos_dm_type			dm_type;
-	struct exynos_dm_constraint		*constraint[MAX_NR_CONSTRAINT];
+	u32		dm_type;
+	u32		nr_constraint;
+	struct exynos_dm_constraint		**constraint;
 #endif
 	void					*private_data;
+#ifdef CONFIG_ARM_EXYNOS7885_BUS_DEVFREQ
 	struct exynos_devfreq_ops		ops;
+#endif
 	bool					use_acpm;
-	/*bool					bts_update;
+	bool					bts_update;
 	bool					update_fvp;
-	struct exynos_pm_domain *pm_domain;*/
+	struct exynos_pm_domain *pm_domain;
 };
 
-int register_exynos_devfreq_init_prepare(enum exynos_devfreq_type type,
-				int (*func)(struct exynos_devfreq_data *));
 s32 exynos_devfreq_get_opp_idx(struct exynos_devfreq_opp_table *table,
 				unsigned int size, u32 freq);
-#if defined(CONFIG_ARM_EXYNOS_DEVFREQ)
-int exynos_devfreq_sync_voltage(enum exynos_devfreq_type type, bool turn_on);
-#if defined(CONFIG_EXYNOS_DVFS_MANAGER)
-enum exynos_dm_type exynos_devfreq_get_dm_type(enum exynos_devfreq_type devfreq_type);
-enum exynos_devfreq_type exynos_devfreq_get_devfreq_type(enum exynos_dm_type dm_type);
-struct device *find_exynos_devfreq_device(enum exynos_dm_type dm_type);
-int find_exynos_devfreq_dm_type(struct device *dev, enum exynos_dm_type *dm_type);
-#endif
-#else
-static inline
-int exynos_devfreq_sync_voltage(enum exynos_devfreq_type type, bool turn_on)
-{
-	return 0;
-}
+#if defined(CONFIG_ARM_EXYNOS_DEVFREQ) && defined(CONFIG_EXYNOS_DVFS_MANAGER)
+u32 exynos_devfreq_get_dm_type(u32 devfreq_type);
+u32 exynos_devfreq_get_devfreq_type(int dm_type);
+struct devfreq *find_exynos_devfreq_device(void *devdata);
+int find_exynos_devfreq_dm_type(struct device *dev, int *dm_type);
 #endif
 #endif	/* __EXYNOS_DEVFREQ_H_ */

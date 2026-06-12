@@ -20,6 +20,7 @@
 extern int modem_force_crash_exit_ext(void);
 extern int ss310ap_send_panic_noti_ext(void);
 extern void send_uart_noti_to_modem(int val);
+extern int modem_send_panic_noti_ext(void);
 #else /* CONFIG_SEC_MODEM_IF */
 static inline int modem_force_crash_exit_ext(void) { return 0; }
 static inline int modem_send_panic_noti_ext(void) { return 0; }

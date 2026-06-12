@@ -15,12 +15,14 @@
 #include <linux/kthread.h>
 #include <uapi/linux/sched/types.h>
 #include <linux/slab.h>
+#include <linux/cpu_pm.h>
+
 #include <trace/events/power.h>
 
 #include "sched.h"
-#include "ems/ems.h"
+#include "tune.h"
 
-unsigned long boosted_cpu_util(int cpu, unsigned long other_util);
+unsigned long boosted_cpu_util(int cpu);
 
 #define SUGOV_KTHREAD_PRIORITY	50
 
@@ -55,8 +57,6 @@ struct sugov_policy {
 	bool need_freq_update;
 };
 
-static DEFINE_PER_CPU(struct sugov_policy *, sugov_policy);
-
 struct sugov_cpu {
 	struct update_util_data update_util;
 	struct sugov_policy *sg_policy;
@@ -79,6 +79,24 @@ struct sugov_cpu {
 };
 
 static DEFINE_PER_CPU(struct sugov_cpu, sugov_cpu);
+
+/******************* exynos specific function *******************/
+#define DEFAULT_EXPIRED_TIME	70
+struct sugov_exynos {
+	/* for slack timer */
+	unsigned long min;
+	int enabled;
+	bool started;
+	int expired_time;
+	struct timer_list timer;
+
+	/* pm_qos_class */
+	int qos_min_class;
+};
+static DEFINE_PER_CPU(struct sugov_exynos, sugov_exynos);
+static void sugov_stop_slack(int cpu);
+static void sugov_start_slack(int cpu);
+static void sugov_update_min(struct cpufreq_policy *policy);
 
 /************************ Governor internals ***********************/
 struct sugov_policy_list {
@@ -215,7 +233,6 @@ static bool sugov_up_down_rate_limit(struct sugov_policy *sg_policy, u64 time,
 
 static int sugov_select_scaling_cpu(void)
 {
-#if 0
 	int cpu, candidate = -1;
 	unsigned long rt, util, min = INT_MAX;
 	cpumask_t mask;
@@ -233,28 +250,6 @@ static int sugov_select_scaling_cpu(void)
 		}
 	}
 	return candidate;
-#else
-        int cpu;
-        cpumask_t mask;
-
-        cpumask_clear(&mask);
-        cpumask_and(&mask, cpu_coregroup_mask(0), cpu_online_mask);
-
-        /* Idle core of the boot cluster is selected to scaling cpu */
-        for_each_cpu(cpu, &mask)
-                if (idle_cpu(cpu))
-                        return cpu;
-
-        /* if panic_cpu is not Little core, mask will be empty */
-        if (unlikely(!cpumask_weight(&mask))) {
-                cpu = atomic_read(&panic_cpu);
-                if (cpu != PANIC_CPU_INVALID)
-                        return cpu;
-        }
-
-        return cpumask_any(&mask);
-
-#endif
 }
 
 static void sugov_update_commit(struct sugov_policy *sg_policy, u64 time,
@@ -290,6 +285,15 @@ static void sugov_update_commit(struct sugov_policy *sg_policy, u64 time,
 	}
 }
 
+#ifdef CONFIG_FREQVAR_TUNE
+unsigned int freqvar_tipping_point(int cpu, unsigned int freq);
+#else
+static inline unsigned int freqvar_tipping_point(int cpu, unsigned int freq)
+{
+	return  freq + (freq >> 2);
+}
+#endif
+
 /**
  * get_next_freq - Compute a new frequency for a given cpufreq policy.
  * @sg_policy: schedutil policy object to compute the new frequency for.
@@ -319,7 +323,7 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 	unsigned int freq = arch_scale_freq_invariant() ?
 				policy->max : policy->cur;
 
-	freq = (freq + (freq >> 2)) * util / max;
+	freq = freqvar_tipping_point(policy->cpu, freq) * util / max;
 
 	if (freq == sg_policy->cached_raw_freq && sg_policy->next_freq != UINT_MAX)
 		return sg_policy->next_freq;
@@ -332,24 +336,13 @@ static unsigned int get_next_freq(struct sugov_policy *sg_policy,
 
 static void sugov_get_util(unsigned long *util, unsigned long *max, int cpu)
 {
-	unsigned long max_cap, rt;
+	unsigned long max_cap;
 
 	max_cap = arch_scale_cpu_capacity(NULL, cpu);
 
-	rt = sched_get_rt_rq_util(cpu);
-
-#ifdef CONFIG_SCHED_EMS
-	*util = ml_boosted_cpu_util(cpu) + rt;
-#else
- 	*util = boosted_cpu_util(cpu, rt);
-#endif
-	*util = emstune_freq_boost(cpu, *util);
+	*util = boosted_cpu_util(cpu);
 	*util = min(*util, max_cap);
 	*max = max_cap;
-
-#ifdef CONFIG_SCHED_EMS
-	part_cpu_active_ratio(util, max, cpu);
-#endif
 }
 
 static void sugov_set_iowait_boost(struct sugov_cpu *sg_cpu, u64 time,
@@ -514,7 +507,56 @@ static void sugov_irq_work(struct irq_work *irq_work)
 	kthread_queue_work(&sg_policy->worker, &sg_policy->work);
 }
 
+/************************ Governor externals ***********************/
+static void update_min_rate_limit_ns(struct sugov_policy *sg_policy);
+void sugov_update_rate_limit_us(struct cpufreq_policy *policy,
+			int up_rate_limit_ms, int down_rate_limit_ms)
+{
+	struct sugov_policy *sg_policy;
+	struct sugov_tunables *tunables;
+
+	sg_policy = policy->governor_data;
+	if (!sg_policy)
+		return;
+
+	tunables = sg_policy->tunables;
+	if (!tunables)
+		return;
+
+	tunables->up_rate_limit_us = (unsigned int)(up_rate_limit_ms * USEC_PER_MSEC);
+	tunables->down_rate_limit_us = (unsigned int)(down_rate_limit_ms * USEC_PER_MSEC);
+
+	sg_policy->up_rate_delay_ns = up_rate_limit_ms * NSEC_PER_MSEC;
+	sg_policy->down_rate_delay_ns = down_rate_limit_ms * NSEC_PER_MSEC;
+
+	update_min_rate_limit_ns(sg_policy);
+}
+
+int sugov_sysfs_add_attr(struct cpufreq_policy *policy, const struct attribute *attr)
+{
+	struct sugov_policy *sg_policy;
+	struct sugov_tunables *tunables;
+
+	sg_policy = policy->governor_data;
+	if (!sg_policy)
+		return -ENODEV;
+
+	tunables = sg_policy->tunables;
+	if (!tunables)
+		return -ENODEV;
+
+	return sysfs_create_file(&tunables->attr_set.kobj, attr);
+}
+
+struct cpufreq_policy *sugov_get_attr_policy(struct gov_attr_set *attr_set)
+{
+	struct sugov_policy *sg_policy = list_first_entry(&attr_set->policy_list,
+						typeof(*sg_policy), tunables_hook);
+	return sg_policy->policy;
+}
+
 /************************** sysfs interface ************************/
+
 static struct sugov_tunables *global_tunables;
 static DEFINE_MUTEX(global_tunables_lock);
 
@@ -702,17 +744,12 @@ static int sugov_init(struct cpufreq_policy *policy)
 	struct sugov_policy *sg_policy;
 	struct sugov_tunables *tunables;
 	int ret = 0;
-	int cpu;
 
 	/* State should be equivalent to EXIT */
 	if (policy->governor_data)
 		return -EBUSY;
 
-	sg_policy = per_cpu(sugov_policy, policy->cpu);
-	if (sg_policy) {
-		policy->governor_data = sg_policy;
-		return 0;
-	}
+	cpufreq_enable_fast_switch(policy);
 
 	/* restore saved sg_policy */
 	sg_policy = sugov_restore_policy(policy);
@@ -756,9 +793,6 @@ tunables_init:
 	policy->governor_data = sg_policy;
 	sg_policy->tunables = tunables;
 
-	for_each_cpu(cpu, policy->related_cpus)
-		per_cpu(sugov_policy, cpu) = sg_policy;
-
 	ret = kobject_init_and_add(&tunables->attr_set.kobj, &sugov_tunables_ktype,
 				   get_governor_parent_kobj(policy), "%s",
 				   schedutil_gov.name);
@@ -792,11 +826,6 @@ static void sugov_exit(struct cpufreq_policy *policy)
 	struct sugov_policy *sg_policy = policy->governor_data;
 	struct sugov_tunables *tunables = sg_policy->tunables;
 	unsigned int count;
-
-	if (per_cpu(sugov_policy, policy->cpu)) {
-		policy->governor_data = NULL;
-		return;
-	}
 
 	mutex_lock(&global_tunables_lock);
 
@@ -839,7 +868,8 @@ static int sugov_start(struct cpufreq_policy *policy)
 		memset(sg_cpu, 0, sizeof(*sg_cpu));
 		sg_cpu->cpu = cpu;
 		sg_cpu->sg_policy = sg_policy;
-		sg_cpu->flags = SCHED_CPUFREQ_DL;
+		sg_cpu->flags = 0;
+		sugov_start_slack(cpu);
 		sg_cpu->iowait_boost_max = policy->cpuinfo.max_freq;
 	}
 
@@ -857,8 +887,10 @@ static void sugov_stop(struct cpufreq_policy *policy)
 	struct sugov_policy *sg_policy = policy->governor_data;
 	unsigned int cpu;
 
-	for_each_cpu(cpu, policy->cpus)
+	for_each_cpu(cpu, policy->cpus) {
+		sugov_stop_slack(cpu);
 		cpufreq_remove_update_util_hook(cpu);
+	}
 
 	synchronize_sched();
 
@@ -884,6 +916,8 @@ static void sugov_limits(struct cpufreq_policy *policy)
 		mutex_unlock(&sg_policy->work_lock);
 	}
 
+	sugov_update_min(policy);
+
 	sg_policy->need_freq_update = true;
 
 	mutex_unlock(&global_tunables_lock);
@@ -901,47 +935,243 @@ static struct cpufreq_governor schedutil_gov = {
 };
 
 #ifdef CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL
-unsigned long cpufreq_governor_get_util(unsigned int cpu)
-{
-	struct sugov_cpu *sg_cpu = &per_cpu(sugov_cpu, cpu);
-	unsigned long util, max;
-	if (!sg_cpu)
-		return 0;
-
-	sugov_get_util(&util, &max, sg_cpu->cpu);
-
-	return util;
-}
-
-/* This function is for getting the calculated next freq. */
-unsigned int cpufreq_governor_get_freq(int cpu)
-{
-	struct sugov_policy *sg_policy;
-	unsigned int freq;
-	unsigned long flags;
-
-	if (cpu < 0)
-		return 0;
-
-	sg_policy = per_cpu(sugov_policy, cpu);
-	if (!sg_policy)
-		return 0;
-
-	raw_spin_lock_irqsave(&sg_policy->update_lock, flags);
-	freq = sg_policy->next_freq;
-	raw_spin_unlock_irqrestore(&sg_policy->update_lock, flags);
-
-	return freq;
-}
-
 struct cpufreq_governor *cpufreq_default_governor(void)
 {
 	return &schedutil_gov;
 }
 #endif
+static void sugov_update_min(struct cpufreq_policy *policy)
+{
+	int cpu, max_cap;
+	struct sugov_exynos *sg_exynos;
+	int min_cap;
+
+	max_cap = arch_scale_cpu_capacity(NULL, policy->cpu);
+
+	/* min_cap is minimum value making higher frequency than policy->min */
+	min_cap = max_cap * policy->min / policy->max;
+	min_cap = (min_cap * 4 / 5) + 1;
+
+	for_each_cpu(cpu, policy->cpus) {
+		sg_exynos = &per_cpu(sugov_exynos, cpu);
+		sg_exynos->min = min_cap;
+	}
+}
+
+static void sugov_nop_timer(unsigned long data)
+{
+	/*
+	 * The purpose of slack-timer is to wake up the CPU from IDLE, in order
+	 * to decrease its frequency if it is not set to minimum already.
+	 *
+	 * This is important for platforms where CPU with higher frequencies
+	 * consume higher power even at IDLE.
+	 */
+	trace_sugov_slack_func(smp_processor_id());
+}
+
+static void sugov_start_slack(int cpu)
+{
+	struct sugov_exynos *sg_exynos = &per_cpu(sugov_exynos, cpu);
+
+	if (!sg_exynos->enabled)
+		return;
+
+	sg_exynos->min = ULONG_MAX;
+	sg_exynos->started = true;
+}
+
+static void sugov_stop_slack(int cpu)
+{
+	struct sugov_exynos *sg_exynos = &per_cpu(sugov_exynos, cpu);
+
+	sg_exynos->started = false;
+	if (timer_pending(&sg_exynos->timer))
+		del_timer_sync(&sg_exynos->timer);
+}
+
+static s64 get_next_event_time_ms(unsigned int cpu)
+{
+	return ktime_to_us(ktime_sub(*(get_next_event_cpu(cpu)), ktime_get()));
+}
+
+static int sugov_need_slack_timer(unsigned int cpu)
+{
+	struct sugov_cpu *sg_cpu = &per_cpu(sugov_cpu, cpu);
+	struct sugov_exynos *sg_exynos = &per_cpu(sugov_exynos, cpu);
+
+	if (schedtune_cpu_boost(cpu))
+		return 0;
+
+	if (sg_cpu->util > sg_exynos->min &&
+		get_next_event_time_ms(cpu) > sg_exynos->expired_time)
+		return 1;
+
+	return 0;
+}
+
+static int sugov_pm_notifier(struct notifier_block *self,
+						unsigned long action, void *v)
+{
+	unsigned int cpu = raw_smp_processor_id();
+	struct sugov_exynos *sg_exynos = &per_cpu(sugov_exynos, cpu);
+	struct sugov_cpu *sg_cpu = &per_cpu(sugov_cpu, cpu);
+	struct timer_list *timer = &sg_exynos->timer;
+
+	if (!sg_exynos->started)
+		return NOTIFY_OK;
+
+	switch (action) {
+	case CPU_PM_ENTER_PREPARE:
+		if (timer_pending(timer))
+			del_timer_sync(timer);
+
+		if (sugov_need_slack_timer(cpu)) {
+			timer->expires = jiffies + msecs_to_jiffies(sg_exynos->expired_time);
+			add_timer_on(timer, cpu);
+			trace_sugov_slack(cpu, sg_cpu->util, sg_exynos->min, action, 1);
+		}
+		break;
+
+	case CPU_PM_ENTER:
+		if (timer_pending(timer) && !sugov_need_slack_timer(cpu)) {
+			del_timer_sync(timer);
+			trace_sugov_slack(cpu, sg_cpu->util, sg_exynos->min, action, -1);
+		}
+		break;
+
+	case CPU_PM_EXIT_POST:
+		if (timer_pending(timer) && (time_after(timer->expires, jiffies))) {
+			del_timer_sync(timer);
+			trace_sugov_slack(cpu, sg_cpu->util, sg_exynos->min, action, -1);
+		}
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block sugov_pm_nb = {
+	.notifier_call = sugov_pm_notifier,
+};
+
+static int find_cpu_pm_qos_class(int pm_qos_class)
+{
+	int cpu;
+
+	for_each_possible_cpu(cpu) {
+		struct sugov_exynos *sg_exynos = &per_cpu(sugov_exynos, cpu);
+
+		if ((sg_exynos->qos_min_class == pm_qos_class) &&
+				cpumask_test_cpu(cpu, cpu_active_mask))
+			return cpu;
+	}
+
+	pr_err("cannot find cpu of PM QoS class\n");
+	return -EINVAL;
+}
+
+static int sugov_pm_qos_callback(struct notifier_block *nb,
+					unsigned long val, void *v)
+{
+	struct sugov_cpu *sg_cpu;
+	struct cpufreq_policy *policy;
+	int pm_qos_class = *((int *)v);
+	unsigned int next_freq;
+	int cpu;
+
+	cpu = find_cpu_pm_qos_class(pm_qos_class);
+	if (cpu < 0)
+		return NOTIFY_BAD;
+
+	sg_cpu = &per_cpu(sugov_cpu, cpu);
+	if (!sg_cpu || !sg_cpu->sg_policy || !sg_cpu->sg_policy->policy)
+		return NOTIFY_BAD;
+
+	next_freq = sg_cpu->sg_policy->next_freq;
+
+	policy = cpufreq_cpu_get(cpu);
+	if (!policy)
+		return NOTIFY_BAD;
+
+	if (val >= policy->cur) {
+		cpufreq_cpu_put(policy);
+		return NOTIFY_BAD;
+	}
+
+	cpufreq_driver_target(policy, next_freq, CPUFREQ_RELATION_L);
+
+	cpufreq_cpu_put(policy);
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block sugov_min_qos_notifier = {
+	.notifier_call = sugov_pm_qos_callback,
+	.priority = INT_MIN,
+};
+
+static int __init sugov_parse_dt(struct device_node *dn, int cpu)
+{
+	struct sugov_exynos *sg_exynos = &per_cpu(sugov_exynos, cpu);
+
+	/* parsing slack info */
+	if (of_property_read_u32(dn, "enabled", &sg_exynos->enabled))
+		return -EINVAL;
+	if (sg_exynos->enabled)
+		if (of_property_read_u32(dn, "expired_time", &sg_exynos->expired_time))
+			sg_exynos->expired_time = DEFAULT_EXPIRED_TIME;
+
+	/* parsing pm_qos_class info */
+	if (of_property_read_u32(dn, "qos_min_class", &sg_exynos->qos_min_class))
+		return -EINVAL;
+
+	return 0;
+}
+
+static void __init sugov_exynos_init(void)
+{
+	int cpu, ret;
+	struct device_node *dn = NULL;
+	const char *buf;
+
+	while ((dn = of_find_node_by_type(dn, "schedutil-domain"))) {
+		struct cpumask shared_mask;
+		/* Get shared cpus */
+		ret = of_property_read_string(dn, "shared-cpus", &buf);
+		if (ret)
+			goto exit;
+
+		cpulist_parse(buf, &shared_mask);
+		for_each_cpu(cpu, &shared_mask)
+			if (sugov_parse_dt(dn, cpu))
+				goto exit;
+	}
+
+	for_each_possible_cpu(cpu) {
+		struct sugov_exynos *sg_exynos = &per_cpu(sugov_exynos, cpu);
+
+		if (!sg_exynos->enabled)
+			continue;
+
+		/* Initialize slack-timer */
+		init_timer_pinned(&sg_exynos->timer);
+		sg_exynos->timer.function = sugov_nop_timer;
+	}
+
+	pm_qos_add_notifier(PM_QOS_CLUSTER0_FREQ_MIN, &sugov_min_qos_notifier);
+	pm_qos_add_notifier(PM_QOS_CLUSTER1_FREQ_MIN, &sugov_min_qos_notifier);
+	cpu_pm_register_notifier(&sugov_pm_nb);
+
+	return;
+exit:
+	pr_info("%s: failed to initialized slack_timer, pm_qos handler\n", __func__);
+}
 
 static int __init sugov_register(void)
 {
+	sugov_exynos_init();
+
 	return cpufreq_register_governor(&schedutil_gov);
 }
 fs_initcall(sugov_register);

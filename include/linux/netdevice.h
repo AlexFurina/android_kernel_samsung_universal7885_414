@@ -3873,6 +3873,9 @@ void netdev_stats_to_stats64(struct rtnl_link_stats64 *stats64,
 extern int		netdev_max_backlog;
 extern int		netdev_tstamp_prequeue;
 extern int		weight_p;
+#ifdef CONFIG_NET_SUPPORT_DROPDUMP
+extern int		netdev_support_dropdump;
+#endif
 extern int		dev_weight_rx_bias;
 extern int		dev_weight_tx_bias;
 extern int		dev_rx_weight;
@@ -4477,5 +4480,7 @@ do {								\
  */
 #define PTYPE_HASH_SIZE	(16)
 #define PTYPE_HASH_MASK	(PTYPE_HASH_SIZE - 1)
+
+#include <uapi/linux/net_dropdump.h>
 
 #endif	/* _LINUX_NETDEVICE_H */

@@ -140,10 +140,15 @@ config SEC_DEBUG_KASAN
 	help
 	  This option enables kasan debug feature.
 
+config SEC_BOOTSTAT
+	bool "Enable TN Bootstat logging"
+	depends on SEC_EXT
+	default n
+
 config SEC_DEBUG_SPINBUG_PANIC
 	bool "Panic on spin bug"
 	depends on DEBUG_SPINLOCK
-	default n
+	default y
 	help
 	  This option enables the kernel to panic on "spin bug"
 
@@ -154,3 +159,11 @@ config SEC_DEBUG_SOFTDOG_PWDT
 	select SOFT_WATCHDOG
 	help
 	  This option enables soft watchdog device and soft_panic.
+
+config SEC_DEBUG_SOFTDOG
+	bool "Enable enhanced softdog info"
+	depends on SEC_DEBUG && SOFT_WATCHDOG
+	default y
+	help
+	  This option enables enhanced softdog info.
+	  Select the option to show related task info.

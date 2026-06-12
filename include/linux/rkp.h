@@ -76,8 +76,6 @@ enum __RKP_CMD_ID{
 #define TSEC_JAR		"tsec_jar"
 #define VFSMNT_JAR		"vfsmnt_cache"
 
-#define RKP_CRED_SYS_ID 1000
-
 #define SPARSE_UNIT_BIT (30)
 #define SPARSE_UNIT_SIZE (1<<SPARSE_UNIT_BIT)
 
@@ -88,6 +86,7 @@ enum __RKP_CMD_ID{
 #define RKP_DYN_FIMC				0x02
 #define RKP_DYN_FIMC_COMBINED		0x03
 #define RKP_DYN_MODULE				0x04
+#define RKP_DYN_CDH					0x05
 
 struct rkp_init { //copy from uh (app/rkp/rkp.h)
 	u32 magic;
@@ -157,7 +156,7 @@ typedef struct kdp_init_struct {
 		u64 ss_initialized_va;
 	} selinux;
 } kdp_init_t;
-#endif
+#endif  /* CONFIG_RKP_KDP */
 
 #ifdef CONFIG_RKP_NS_PROT
 typedef struct ns_param {
@@ -187,7 +186,6 @@ extern sparse_bitmap_for_kernel_t* rkp_s_bitmap_buffer;
 #ifdef CONFIG_KNOX_KAP
 extern int boot_mode_security;
 #endif
-
 #ifdef CONFIG_RKP_KDP
 extern int rkp_cred_enable;
 #endif
@@ -196,9 +194,9 @@ typedef struct rkp_init rkp_init_t;
 extern u8 rkp_started;
 
 #ifdef CONFIG_RKP_DMAP_PROT
-static inline void dmap_prot(u64 addr, u64 order, u64 val)
+static inline void dmap_prot(u64 addr,u64 order,u64 val)
 {
-	if (rkp_cred_enable)
+	if(rkp_cred_enable)
 		uh_call(UH_APP_RKP, RKP_KDP_X4A, order, val, 0, 0);
 }
 #endif
@@ -216,53 +214,55 @@ static inline u64 uh_call_static(u64 app_id, u64 cmd_id, u64 arg1){
 	return ret;
 }
 
-static inline void *rkp_ro_alloc(void) {
+// void *rkp_ro_alloc(void);
+static inline void *rkp_ro_alloc(void){
 	u64 addr = (u64)uh_call_static(UH_APP_RKP, RKP_RKP_ROBUFFER_ALLOC, 0);
-	if (!addr)
+	if(!addr)
 		return 0;
 	return (void *)__phys_to_virt(addr);
 }
 
-static inline void rkp_ro_free(void *free_addr) {
+static inline void rkp_ro_free(void *free_addr){
 	uh_call_static(UH_APP_RKP, RKP_RKP_ROBUFFER_FREE, (u64)free_addr);
 }
 
-static inline void rkp_deferred_init(void) {
+
+static inline void rkp_deferred_init(void){
 	uh_call(UH_APP_RKP, RKP_DEFERRED_START, 0, 0, 0, 0);
 }
 
-static inline u8 rkp_check_bitmap(u64 pa, sparse_bitmap_for_kernel_t *kernel_bitmap) {
+static inline u8 rkp_check_bitmap(u64 pa, sparse_bitmap_for_kernel_t *kernel_bitmap){
 	u8 val;
 	u64 offset, map_loc, bit_offset;
 	char *map;
 
-	if (!kernel_bitmap || !kernel_bitmap->map)
+	if(!kernel_bitmap || !kernel_bitmap->map)
 		return 0;
 
 	offset = pa - kernel_bitmap->start_addr;
 	map_loc = ((offset % SPARSE_UNIT_SIZE) / PAGE_SIZE) >> 3;
 	bit_offset = ((offset % SPARSE_UNIT_SIZE) / PAGE_SIZE) % 8;
 
-	if (kernel_bitmap->maxn <= (offset >> SPARSE_UNIT_BIT)) 
+	if(kernel_bitmap->maxn <= (offset >> SPARSE_UNIT_BIT)) 
 		return 0;
 
 	map = kernel_bitmap->map[(offset >> SPARSE_UNIT_BIT)];
-	if (!map)
+	if(!map)
 		return 0;
 
 	val = (u8)((*(u64 *)(&map[map_loc])) >> bit_offset) & ((u64)1);
 	return val;
 }
 
-static inline unsigned int is_rkp_ro_page(u64 va) {
+static inline unsigned int is_rkp_ro_page(u64 va){
 	return rkp_check_bitmap(__pa(va), rkp_s_bitmap_buffer);
 }
 
-static inline u8 rkp_is_pg_protected(u64 va) {
+static inline u8 rkp_is_pg_protected(u64 va){
 	return rkp_check_bitmap(__pa(va), rkp_s_bitmap_ro);
 }
 
-static inline u8 rkp_is_pg_dbl_mapped(u64 pa) {
+static inline u8 rkp_is_pg_dbl_mapped(u64 pa){
 	return rkp_check_bitmap(pa, rkp_s_bitmap_dbl);
 }
 

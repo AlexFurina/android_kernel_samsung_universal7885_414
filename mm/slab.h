@@ -424,7 +424,7 @@ static inline struct kmem_cache *slab_pre_alloc_hook(struct kmem_cache *s,
 #ifdef CONFIG_RKP_KDP
 	if (s->name &&
 		(!strcmp(s->name, CRED_JAR_RO) ||
-		!strcmp(s->name, TSEC_JAR) ||
+		!strcmp(s->name, TSEC_JAR)||
 		!strcmp(s->name, VFSMNT_JAR)))
 		goto out;
 #endif
@@ -436,7 +436,6 @@ static inline struct kmem_cache *slab_pre_alloc_hook(struct kmem_cache *s,
 #ifdef CONFIG_RKP_KDP
 	out:
 #endif
-
 	return s;
 }
 

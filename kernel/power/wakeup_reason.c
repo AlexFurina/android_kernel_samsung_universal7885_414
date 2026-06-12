@@ -41,7 +41,7 @@ static DEFINE_SPINLOCK(resume_reason_lock);
 static const char* wakeup_src_list[MAX_WAKEUP_SRCS];
 static int wakeup_src_cnt;
 static bool wakeup_src_by_name;
-#endif /* CONFIG_SEC_PM_DEBUG */
+#endif
 
 static ktime_t last_monotime; /* monotonic time before last suspend */
 static ktime_t curr_monotime; /* monotonic time after last suspend */
@@ -77,7 +77,6 @@ static ssize_t last_resume_reason_show(struct kobject *kobj, struct kobj_attribu
 		}
 	}
 #endif /* CONFIG_SEC_PM_DEBUG */
-
 	spin_unlock(&resume_reason_lock);
 	return buf_offset;
 }
@@ -151,11 +150,9 @@ void log_wakeup_reason(int irq)
 #ifdef CONFIG_SEC_PM_DEBUG
 void log_wakeup_reason_name(const char *name)
 {
-	unsigned long flags;
-
 	printk(KERN_INFO "Resume caused by wakeup source: %s\n", name);
 
-	spin_lock_irqsave(&resume_reason_lock, flags);
+	spin_lock(&resume_reason_lock);
 	if (wakeup_src_cnt == MAX_WAKEUP_SRCS) {
 		spin_unlock(&resume_reason_lock);
 		printk(KERN_WARNING
@@ -166,7 +163,7 @@ void log_wakeup_reason_name(const char *name)
 
 	wakeup_src_list[wakeup_src_cnt++] = name;
 	wakeup_src_by_name = true;
-	spin_unlock_irqrestore(&resume_reason_lock, flags);
+	spin_unlock(&resume_reason_lock);
 }
 #endif /* CONFIG_SEC_PM_DEBUG */
 
@@ -216,7 +213,7 @@ static int wakeup_reason_pm_event(struct notifier_block *notifier,
 #ifdef CONFIG_SEC_PM_DEBUG
 		wakeup_src_cnt = 0;
 		wakeup_src_by_name = false;
-#endif /* CONFIG_SEC_PM_DEBUG */
+#endif
 		spin_unlock(&resume_reason_lock);
 		/* monotonic time since boot */
 		last_monotime = ktime_get();

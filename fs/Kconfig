@@ -9,7 +9,8 @@ config DCACHE_WORD_ACCESS
        bool
 
 config INTERRUPTIBLE_SYNC
-    bool "Support interruptible sync for Samsung Mobile Device"
+        bool "Support interruptible sync for Samsung Mobile Device"
+	default y
 
 if BLOCK
 

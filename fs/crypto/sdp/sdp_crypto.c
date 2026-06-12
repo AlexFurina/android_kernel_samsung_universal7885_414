@@ -129,7 +129,6 @@ out:
 }
 #endif
 
-
 int sdp_crypto_generate_key(void *raw_key, int nbytes)
 {
 #ifdef CONFIG_CRYPTO_FIPS

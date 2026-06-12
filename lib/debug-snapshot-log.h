@@ -44,7 +44,7 @@
 #define DSS_API_MAX_NUM			SZ_2K
 #define DSS_EX_MAX_NUM			SZ_8
 #define DSS_IN_MAX_NUM			SZ_8
-#define DSS_CALLSTACK_MAX_NUM		CONFIG_DEBUG_SNAPSHOT_CALLSTACK
+#define DSS_CALLSTACK_MAX_NUM		4
 #define DSS_ITERATION			5
 #define DSS_NR_CPUS			NR_CPUS
 #define DSS_ITEM_MAX_NUM		10
@@ -328,7 +328,7 @@ struct dbg_snapshot_log {
 		struct trace_binder_transaction_base base;
 		struct trace_binder_transaction transaction;
 		struct trace_binder_transaction_error error;
-	} binder[DSS_LOG_MAX_NUM];
+	} binder[DSS_API_MAX_NUM << 2];
 #endif
 
 #ifndef CONFIG_DEBUG_SNAPSHOT_MINIMIZED_MODE
@@ -338,14 +338,14 @@ struct dbg_snapshot_log {
 		size_t msg;
 		size_t val;
 		void *caller[DSS_CALLSTACK_MAX_NUM];
-	} printkl[DSS_LOG_MAX_NUM];
+	} printkl[DSS_API_MAX_NUM];
 
 	struct __printk_log {
 		unsigned long long time;
 		int cpu;
 		char log[DSS_LOG_STRING_LEN];
 		void *caller[DSS_CALLSTACK_MAX_NUM];
-	} printk[DSS_LOG_MAX_NUM];
+	} printk[DSS_API_MAX_NUM];
 #endif
 };
 

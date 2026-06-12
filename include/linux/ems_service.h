@@ -10,6 +10,16 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+
+enum stune_group {
+	STUNE_ROOT,
+	STUNE_FOREGROUND,
+	STUNE_BACKGROUND,
+	STUNE_TOPAPP,
+	STUNE_RT,
+	STUNE_GROUP_COUNT,
+};
+
 struct kpp {
 	struct plist_node node;
 	int grp_idx;

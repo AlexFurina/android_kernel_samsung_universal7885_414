@@ -35,14 +35,6 @@ enum {
 	RESERVED_BLOCKS,	/* struct f2fs_sb_info */
 };
 
-#ifdef CONFIG_F2FS_SEC_BLOCK_OPERATIONS_DEBUG
-const char *sec_blkops_dbg_type_names[NR_F2FS_SEC_DBG_ENTRY] = {
-	"DENTS",
-	"IMETA",
-	"NODES",
-};
-#endif
-
 const char *sec_fua_mode_names[NR_F2FS_SEC_FUA_MODE] = {
 	"NONE",
 	"ROOT",
@@ -197,51 +189,6 @@ static ssize_t current_reserved_blocks_show(struct f2fs_attr *a,
 	return snprintf(buf, PAGE_SIZE, "%u\n", sbi->current_reserved_blocks);
 }
 
-#ifdef CONFIG_F2FS_SEC_BLOCK_OPERATIONS_DEBUG
-static int f2fs_sec_blockops_dbg(struct f2fs_sb_info *sbi, char *buf, int src_len) {
-	int len = src_len;
-	int i, j;
-
-	len += snprintf(buf + len, PAGE_SIZE - len, "\nblock_operations() DBG : %u, max : %llu\n",
-			sbi->s_sec_blkops_total,
-			sbi->s_sec_blkops_max_elapsed);
-	for (i = 0; i < F2FS_SEC_BLKOPS_ENTRIES; i++) {
-		len += snprintf(buf + len, PAGE_SIZE - len, " - [%u - %s(%d)] S: %llu, E: %llu [%llu]",
-				sbi->s_sec_dbg_entries[i].entry_idx,
-				sec_blkops_dbg_type_names[sbi->s_sec_dbg_entries[i].step],
-				sbi->s_sec_dbg_entries[i].ret_val,
-				sbi->s_sec_dbg_entries[i].start_time,
-				sbi->s_sec_dbg_entries[i].end_time,
-				(sbi->s_sec_dbg_entries[i].end_time - sbi->s_sec_dbg_entries[i].start_time));
-
-		for(j = 0; j < NR_F2FS_SEC_DBG_ENTRY; j++) {
-			len += snprintf(buf + len, PAGE_SIZE - len, ", %s: [%u] [%llu]",
-					sec_blkops_dbg_type_names[j],
-					sbi->s_sec_dbg_entries[i].entry[j].nr_ops,
-					sbi->s_sec_dbg_entries[i].entry[j].cumulative_jiffies);
-		}
-	}
-
-	len += snprintf(buf + len, PAGE_SIZE - len, "\n - [MAX - %s(%d)] S: %llu, E: %llu [%llu]",
-				sec_blkops_dbg_type_names[sbi->s_sec_dbg_max_entry.step],
-				sbi->s_sec_dbg_max_entry.ret_val,
-				sbi->s_sec_dbg_max_entry.start_time,
-				sbi->s_sec_dbg_max_entry.end_time,
-				(sbi->s_sec_dbg_max_entry.end_time - sbi->s_sec_dbg_max_entry.start_time));
-	for(j = 0; j < NR_F2FS_SEC_DBG_ENTRY; j++) {
-		len += snprintf(buf + len, PAGE_SIZE - len, ", %s: [%u] [%llu]",
-				sec_blkops_dbg_type_names[j],
-				sbi->s_sec_dbg_max_entry.entry[j].nr_ops,
-				sbi->s_sec_dbg_max_entry.entry[j].cumulative_jiffies);
-	}
-
-	len += snprintf(buf + len, PAGE_SIZE - len, "\n");
-
-	return (len - src_len);
-}
-#endif
-
-/* @fs.sec -- b9f9a3e3a1883edc2ea06ae264291970 -- */
 /* Copy from debug.c stat_show */
 static ssize_t f2fs_sec_stats_show(struct f2fs_sb_info *sbi, char *buf)
 {
@@ -419,10 +366,6 @@ static ssize_t f2fs_sec_stats_show(struct f2fs_sb_info *sbi, char *buf)
 	len += snprintf(buf + len, PAGE_SIZE - len, "  - paged : %llu KB\n",
 			si->page_mem >> 10);
 
-#ifdef CONFIG_F2FS_SEC_BLOCK_OPERATIONS_DEBUG
-	/* block_operations debug node */
-	len += f2fs_sec_blockops_dbg(sbi, buf, len);
-#endif
 	return len;
 }
 
@@ -621,10 +564,10 @@ static ssize_t f2fs_sbi_show(struct f2fs_attr *a,
 
 		for (i = 0; i < NR_F2FS_SEC_FUA_MODE; i++) {
 			if (i == sbi->s_sec_cond_fua_mode)
-				len += snprintf(buf, PAGE_SIZE, "[%s] ",
+				len += snprintf(buf, PAGE_SIZE, "[%s] ", 
 						sec_fua_mode_names[i]);
 			else
-				len += snprintf(buf, PAGE_SIZE, "%s ",
+				len += snprintf(buf, PAGE_SIZE, "%s ", 
 						sec_fua_mode_names[i]);
 		}
 

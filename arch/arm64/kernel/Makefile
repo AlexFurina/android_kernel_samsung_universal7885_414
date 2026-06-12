@@ -65,7 +65,7 @@ ifeq ($(CONFIG_KVM),y)
 arm64-obj-$(CONFIG_HARDEN_BRANCH_PREDICTOR)	+= bpi.o
 endif
 
-arm64-obj-$(CONFIG_UH)		+= uh_entry.o
+arm64-obj-$(CONFIG_UH)			+= uh_entry.o
 
 obj-y					+= $(arm64-obj-y) vdso/ probes/
 obj-m					+= $(arm64-obj-m)

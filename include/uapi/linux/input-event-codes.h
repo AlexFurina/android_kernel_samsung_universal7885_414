@@ -337,7 +337,11 @@
 
 #define KEY_MICMUTE		248	/* Mute / unmute the microphone */
 
+#define KEY_HOT			252	/* Intelligence Key */
+#define KEY_WAKEUP_UNLOCK	253	/* Wake-up to recent view, ex: AOP */
 #define KEY_RECENT		254
+#define KEY_INT_CANCEL		0x2be	/* for touch event skip */
+
 /* Code 255 is reserved for special needs of AT keyboard driver */
 
 #define BTN_MISC		0x100
@@ -651,8 +655,10 @@
  */
 #define KEY_DATA			0x277
 #define KEY_ONSCREEN_KEYBOARD		0x278
-
+#define KEY_EMERGENCY			0x2a0
 #define KEY_DEX_ON			0x2bd
+#define KEY_INT_CANCEL		0x2be	/* for touch event skip */
+#define KEY_WINK			0x2bf	/* Intelligence Key */
 
 #define BTN_TRIGGER_HAPPY		0x2c0
 #define BTN_TRIGGER_HAPPY1		0x2c0
@@ -720,6 +726,7 @@
 #define REL_WHEEL		0x08
 #define REL_MISC		0x09
 #define REL_MAX			0x0f
+#define SW_PEN_INSERT		0x13  /* set = pen insert, remove */
 #define REL_CNT			(REL_MAX+1)
 
 /*
@@ -779,6 +786,9 @@
 #define ABS_MT_DISTANCE		0x3b	/* Contact hover distance */
 #define ABS_MT_TOOL_X		0x3c	/* Center X tool position */
 #define ABS_MT_TOOL_Y		0x3d	/* Center Y tool position */
+
+#define ABS_MT_CUSTOM		0x3e	/* custom event */
+#define ABS_MT_CUSTOM2		0x3f	/* custom event only for sensor */
 #define ABS_MT_PALM		0x3e	/* palm touch */
 #define ABS_MT_GRIP		0x3f	/* grip touch */
 
@@ -809,6 +819,7 @@
 #define SW_GLOVE		0x0f	/* set = glove mode */
 #define SW_FLIP                 0x15    /* set = flip cover */
 #define SW_CERTIFYHALL          0x1b    /* set = certify_hall... */
+#define SW_WACOM_HALL		0x1e  /* set = wacom hall ic attach/detach */
 #define SW_MAX			0x20
 #define SW_CNT			(SW_MAX+1)
 

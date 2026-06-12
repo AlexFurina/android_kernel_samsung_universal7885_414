@@ -569,6 +569,11 @@ add_dentry:
 
 	if (inode) {
 		f2fs_i_pino_write(inode, dir->i_ino);
+
+		/* synchronize inode page's data from inode cache */
+		if (is_inode_flag_set(inode, FI_NEW_INODE))
+			f2fs_update_inode(inode, page);
+
 		f2fs_put_page(page, 1);
 	}
 
@@ -924,7 +929,6 @@ static int f2fs_readdir(struct file *file, struct dir_context *ctx)
 					page_address(dentry_page), 0, F2FS_BLKSIZE);
 				f2fs_bug_on(sbi, 1);
 			}
-
 			f2fs_put_page(dentry_page, 0);
 			break;
 		}

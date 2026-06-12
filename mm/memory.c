@@ -3498,6 +3498,7 @@ int finish_fault(struct vm_fault *vmf)
 		pte_unmap_unlock(vmf->pte, vmf->ptl);
 	return ret;
 }
+
 #ifdef CONFIG_FAULT_AROUND_4KB
 static unsigned long fault_around_bytes __read_mostly =
 	rounddown_pow_of_two(4096);

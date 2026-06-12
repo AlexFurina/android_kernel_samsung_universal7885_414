@@ -180,11 +180,12 @@ enum { ecryptfs_opt_sig, ecryptfs_opt_ecryptfs_sig,
        ecryptfs_opt_unlink_sigs, ecryptfs_opt_mount_auth_tok_only,
        ecryptfs_opt_check_dev_ruid,
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
-	ecryptfs_opt_enable_filtering,
+       ecryptfs_opt_enable_filtering,
 #endif
-	ecryptfs_opt_enable_cc,
-
-	ecryptfs_opt_base, ecryptfs_opt_type, ecryptfs_opt_label,
+#ifdef CONFIG_CRYPTO_FIPS
+       ecryptfs_opt_enable_cc,
+#endif
+       ecryptfs_opt_base, ecryptfs_opt_type, ecryptfs_opt_label,
        ecryptfs_opt_err };
 
 static const match_table_t tokens = {
@@ -205,9 +206,9 @@ static const match_table_t tokens = {
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 	{ecryptfs_opt_enable_filtering, "ecryptfs_enable_filtering=%s"},
 #endif
-
+#ifdef CONFIG_CRYPTO_FIPS
 	{ecryptfs_opt_enable_cc, "ecryptfs_enable_cc"},
-
+#endif
 	{ecryptfs_opt_base, "base=%s"},
 	{ecryptfs_opt_type, "type=%s"},
 	{ecryptfs_opt_label, "label=%s"},
@@ -250,14 +251,6 @@ static void ecryptfs_init_mount_crypt_stat(
 	INIT_LIST_HEAD(&mount_crypt_stat->global_auth_tok_list);
 	mutex_init(&mount_crypt_stat->global_auth_tok_list_mutex);
 	mount_crypt_stat->flags |= ECRYPTFS_MOUNT_CRYPT_STAT_INITIALIZED;
-}
-
-static void ecryptfs_init_propagate_stat(
-	struct ecryptfs_propagate_stat *propagate_stat)
-{
-	memset((void *)propagate_stat, 0,
-			sizeof(struct ecryptfs_propagate_stat));
-	propagate_stat->propagate_type = TYPE_E_NONE;
 }
 
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
@@ -342,8 +335,8 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 	int cipher_key_bytes_set = 0;
 	int fn_cipher_key_bytes;
 	int fn_cipher_key_bytes_set = 0;
-	struct ecryptfs_mount_crypt_stat *mount_crypt_stat = &sbi->mount_crypt_stat;
-    struct ecryptfs_propagate_stat *propagate_stat = &sbi->propagate_stat;
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
+		&sbi->mount_crypt_stat;
 	substring_t args[MAX_OPT_ARGS];
 	int token;
 	char *sig_src;
@@ -355,15 +348,10 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 	char *fnek_src;
 	char *cipher_key_bytes_src;
 	char *fn_cipher_key_bytes_src;
-    char *base_path_src;
-    char *base_path_dst;
-    char *propagate_type;
-    char *label_src;
-    char *label_dst;
 	u8 cipher_code;
-
+#ifdef CONFIG_CRYPTO_FIPS
 	char cipher_mode[ECRYPTFS_MAX_CIPHER_MODE_SIZE+1] = ECRYPTFS_AES_ECB_MODE;
-
+#endif
 	*check_ruid = 0;
 
 	if (!options) {
@@ -371,7 +359,6 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 		goto out;
 	}
 	ecryptfs_init_mount_crypt_stat(mount_crypt_stat);
-	ecryptfs_init_propagate_stat(propagate_stat);
 	while ((p = strsep(&options, ",")) != NULL) {
 		if (!*p)
 			continue;
@@ -474,7 +461,6 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 		case ecryptfs_opt_check_dev_ruid:
 			*check_ruid = 1;
 			break;
-
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 		case ecryptfs_opt_enable_filtering:
 			rc = parse_enc_filter_parms(mount_crypt_stat,
@@ -488,44 +474,12 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 			mount_crypt_stat->flags |= ECRYPTFS_ENABLE_FILTERING;
 			break;
 #endif
+#ifdef CONFIG_CRYPTO_FIPS
 		case ecryptfs_opt_enable_cc:
 			mount_crypt_stat->flags |= ECRYPTFS_ENABLE_CC;
 			strncpy(cipher_mode, ECRYPTFS_AES_CBC_MODE, ECRYPTFS_MAX_CIPHER_MODE_SIZE+1);
 			break;
-		case ecryptfs_opt_base:
-			base_path_src = args[0].from;
-			base_path_dst = propagate_stat->base_path;
-			strncpy(base_path_dst, base_path_src, ECRYPTFS_BASE_PATH_SIZE);
-			break;
-		case ecryptfs_opt_type:
-			propagate_type = match_strdup(&args[0]);
-			if (!propagate_type)
-				return -ENOMEM;
-			if (!strncmp(propagate_type, "default", strlen("default")))
-				propagate_stat->propagate_type = TYPE_E_DEFAULT;
-			else if (!strncmp(propagate_type, "read", strlen("read")))
-				propagate_stat->propagate_type = TYPE_E_READ;
-			else if (!strncmp(propagate_type, "write", strlen("write")))
-				propagate_stat->propagate_type = TYPE_E_WRITE;
-			else {
-				printk(KERN_WARNING
-					  "%s: eCryptfs: unrecognized option [type=%s]\n",
-					  __func__, propagate_type);
-				propagate_stat->propagate_type = TYPE_E_NONE;
-			}
-			kfree(propagate_type);
-			break;
-		case ecryptfs_opt_label:
-			label_src = args[0].from;
-			label_dst = propagate_stat->label;
-
-			if (!label_dst) {
-				ecryptfs_printk(KERN_ERR, "label_dst is null\n");
-				return -ENOMEM;
-			}
-
-			strncpy(label_dst, label_src, ECRYPTFS_LABEL_SIZE);
-			break;
+#endif
 		case ecryptfs_opt_err:
 		default:
 			printk(KERN_WARNING
@@ -563,14 +517,14 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 		mount_crypt_stat->global_default_cipher_key_size);
 	if (!cipher_code) {
 		ecryptfs_printk(KERN_ERR,
-				"eCryptfs doesn't support cipher: %s",
+				"eCryptfs doesn't support cipher: %s\n",
 				mount_crypt_stat->global_default_cipher_name);
 		rc = -EINVAL;
 		goto out;
 	}
 
 	mutex_lock(&key_tfm_list_mutex);
-
+#ifdef CONFIG_CRYPTO_FIPS
 	if (!ecryptfs_tfm_exists(mount_crypt_stat->global_default_cipher_name, cipher_mode,
 			NULL)) {
 
@@ -601,6 +555,42 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 
 		if (rc) {
 			printk(KERN_ERR "Error attempting to initialize "
+				   "cipher with name = [%s] and key size = [%td]; "
+				   "rc = [%d]\n",
+				   mount_crypt_stat->global_default_fn_cipher_name,
+				   mount_crypt_stat->global_default_fn_cipher_key_bytes,
+				   rc);
+			rc = -EINVAL;
+			mutex_unlock(&key_tfm_list_mutex);
+			goto out;
+		}
+	}
+#else
+	if (!ecryptfs_tfm_exists(mount_crypt_stat->global_default_cipher_name,
+				 NULL)) {
+		rc = ecryptfs_add_new_key_tfm(
+			NULL, mount_crypt_stat->global_default_cipher_name,
+			mount_crypt_stat->global_default_cipher_key_size);
+		if (rc) {
+			printk(KERN_ERR "Error attempting to initialize "
+			       "cipher with name = [%s] and key size = [%td]; "
+			       "rc = [%d]\n",
+			       mount_crypt_stat->global_default_cipher_name,
+			       mount_crypt_stat->global_default_cipher_key_size,
+			       rc);
+			rc = -EINVAL;
+			mutex_unlock(&key_tfm_list_mutex);
+			goto out;
+		}
+	}
+	if ((mount_crypt_stat->flags & ECRYPTFS_GLOBAL_ENCRYPT_FILENAMES)
+	    && !ecryptfs_tfm_exists(
+		    mount_crypt_stat->global_default_fn_cipher_name, NULL)) {
+		rc = ecryptfs_add_new_key_tfm(
+			NULL, mount_crypt_stat->global_default_fn_cipher_name,
+			mount_crypt_stat->global_default_fn_cipher_key_bytes);
+		if (rc) {
+			printk(KERN_ERR "Error attempting to initialize "
 			       "cipher with name = [%s] and key size = [%td]; "
 			       "rc = [%d]\n",
 			       mount_crypt_stat->global_default_fn_cipher_name,
@@ -611,6 +601,7 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 			goto out;
 		}
 	}
+#endif
 	mutex_unlock(&key_tfm_list_mutex);
 	rc = ecryptfs_init_global_auth_toks(mount_crypt_stat);
 	if (rc)
@@ -667,11 +658,6 @@ static struct dentry *ecryptfs_mount(struct file_system_type *fs_type, int flags
 		goto out1;
 
 	ecryptfs_set_superblock_private(s, sbi);
-
-	if (sbi->propagate_stat.propagate_type != TYPE_E_NONE)
-		s->s_op = &ecryptfs_multimount_sops;
-	else
-		s->s_op = &ecryptfs_sops;
 
 	/* ->kill_sb() will take care of sbi after that point */
 	sbi = NULL;

@@ -37,18 +37,31 @@
 #define SZ_512K				0x00080000
 
 #define SZ_1M				0x00100000
+#define SZ_2M				0x00200000
+#define SZ_4M				0x00400000
+#define SZ_8M				0x00800000
+#define SZ_16M				0x01000000
+#define SZ_32M				0x02000000
+#define SZ_48M				0x03000000
+#define SZ_64M				0x04000000
+#define SZ_128M				0x08000000
+#define SZ_256M				0x10000000
+#define SZ_512M				0x20000000
 
-#define DSS_START_ADDR			0x92000000
+#define SZ_1G				0x40000000
+#define SZ_2G				0x80000000
+
+#define DSS_START_ADDR			0xF9000000
 #define DSS_HEADER_SIZE			SZ_64K
 #define DSS_LOG_KERNEL_SIZE		(2 * SZ_1M)
 #define DSS_LOG_PLATFORM_SIZE		(4 * SZ_1M)
-#define DSS_LOG_SFR_SIZE		(0 * SZ_1M)
+#define DSS_LOG_SFR_SIZE		(2 * SZ_1M)
 #define DSS_LOG_S2D_SIZE		(0)
-#define DSS_LOG_CACHEDUMP_SIZE		(0 * SZ_1M)
+#define DSS_LOG_CACHEDUMP_SIZE		(1 * SZ_1M)
 #define DSS_LOG_ETM_SIZE		(0)
-#define DSS_LOG_BCM_SIZE		(0 * SZ_1M)
-#define DSS_LOG_PSTORE_SIZE		SZ_32K
-#define DSS_LOG_KEVENTS_SIZE		(4 * SZ_1M)
+#define DSS_LOG_BCM_SIZE		(4 * SZ_1M)
+#define DSS_LOG_PSTORE_SIZE		(2 * SZ_1M)
+#define DSS_LOG_KEVENTS_SIZE		(8 * SZ_1M)
 
 #define DSS_HEADER_OFFSET		0
 #define DSS_LOG_KERNEL_OFFSET		(DSS_HEADER_OFFSET + DSS_HEADER_SIZE)

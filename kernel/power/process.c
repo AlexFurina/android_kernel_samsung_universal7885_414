@@ -57,6 +57,8 @@ static int try_to_freeze_tasks(bool user_only)
 
 	end_time = jiffies + msecs_to_jiffies(freeze_timeout_msecs);
 
+	s3c2410wdt_emergency_multistage_wdt_stop();
+
 	if (!user_only)
 		freeze_workqueues_begin();
 
@@ -139,11 +141,15 @@ static int try_to_freeze_tasks(bool user_only)
 		read_unlock(&tasklist_lock);
 
 		sec_debug_set_extra_info_unfz(sys_state[system_state]);
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 		panic("fail to freeze tasks");
+#endif
 	} else {
 		pr_cont("(elapsed %d.%03d seconds) ", elapsed_msecs / 1000,
 			elapsed_msecs % 1000);
 	}
+
+	s3c2410wdt_emergency_multistage_wdt_start();
 
 	sec_debug_set_unfrozen_task((uint64_t)NULL);
 	sec_debug_set_unfrozen_task_count((uint64_t)0);

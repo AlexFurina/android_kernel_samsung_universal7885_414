@@ -105,6 +105,7 @@ void kbase_timeline_pre_kbase_context_destroy(struct kbase_context *kctx);
  */
 void kbase_timeline_post_kbase_context_destroy(struct kbase_context *kctx);
 
+
 #if MALI_UNIT_TEST
 /**
  * kbase_timeline_test - start timeline stream data generator
@@ -141,5 +142,7 @@ void kbase_timeline_test(
  */
 void kbase_timeline_stats(struct kbase_timeline *timeline, u32 *bytes_collected, u32 *bytes_generated);
 #endif /* MALI_UNIT_TEST */
+
+bool timeline_is_permitted(void);
 
 #endif /* _KBASE_TIMELINE_H */

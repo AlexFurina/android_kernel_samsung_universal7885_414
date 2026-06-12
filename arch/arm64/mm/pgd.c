@@ -62,7 +62,7 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 		return (pgd_t *)__get_free_page(PGALLOC_GFP);
 	else
 		return kmem_cache_alloc(pgd_cache, PGALLOC_GFP);
-#endif	
+#endif
 }
 
 void pgd_free(struct mm_struct *mm, pgd_t *pgd)

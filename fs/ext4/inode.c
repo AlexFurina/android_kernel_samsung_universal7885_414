@@ -731,10 +731,13 @@ out_sem:
 		    !(map->m_flags & EXT4_MAP_UNWRITTEN) &&
 		    !(flags & EXT4_GET_BLOCKS_ZERO) &&
 		    !ext4_is_quota_file(inode) &&
-		    ext4_should_order_data(inode)) {
+		    ext4_should_order_data(inode) &&
+		    !(flags & EXT4_GET_BLOCKS_IO_SUBMIT)) {
+#if 0
 			if (flags & EXT4_GET_BLOCKS_IO_SUBMIT)
 				ret = ext4_jbd2_inode_add_wait(handle, inode);
 			else
+#endif
 				ret = ext4_jbd2_inode_add_write(handle, inode);
 			if (ret)
 				return ret;
@@ -1218,18 +1221,16 @@ static int ext4_block_write_begin(struct page *page, loff_t pos, unsigned len,
 		if (!buffer_uptodate(bh) && !buffer_delay(bh) &&
 		    !buffer_unwritten(bh) &&
 		    (block_start < from || block_end > to)) {
-		    int bi_opf = 0;
+			/* Call fscrypt_submit_bh() instead of ll_rw_block().
+			 * If you get any error, pull back to ll_rw_block().
+			 */
+			if (fscrypt_submit_bh(REQ_OP_READ, 0, bh, inode) < 0)
+				ll_rw_block(REQ_OP_READ, 0, 1, &bh);
 
-			if (S_ISREG(inode->i_mode) && ext4_encrypted_inode(inode)
-					&& fscrypt_has_encryption_key(inode)) {
-					bh->b_private = fscrypt_get_diskcipher(inode);
-					if (bh->b_private)
-						bi_opf = REQ_CRYPT;
-				}
-			ll_rw_block(REQ_OP_READ, bi_opf, 1, &bh);
 			*wait_bh++ = bh;
 			decrypt = ext4_encrypted_inode(inode) &&
-				S_ISREG(inode->i_mode) && !bh->b_private;
+				S_ISREG(inode->i_mode) &&
+				!fscrypt_inline_encrypted(inode);
 		}
 	}
 	/*
@@ -3827,11 +3828,9 @@ static ssize_t ext4_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	ssize_t ret;
 	int rw = iov_iter_rw(iter);
 
-#ifdef CONFIG_EXT4_FS_ENCRYPTION /* encrypt uses buffered-io for encryption, but, disk-encrypt can use direct-io */
 	if (ext4_encrypted_inode(inode) && S_ISREG(inode->i_mode)
-			&& !fscrypt_disk_encrypted(inode))
+			&& !fscrypt_inline_encrypted(inode))
 		return 0;
-#endif
 	/*
 	 * If we are doing data journalling we don't support O_DIRECT
 	 */
@@ -4031,12 +4030,10 @@ static int __ext4_block_zero_page_range(handle_t *handle,
 
 	if (!buffer_uptodate(bh)) {
 		err = -EIO;
-		if (S_ISREG(inode->i_mode) && ext4_encrypted_inode(inode)
-				&& fscrypt_has_encryption_key(inode))
-			bh->b_private = fscrypt_get_diskcipher(inode);
-		if (bh->b_private)
-			ll_rw_block(REQ_OP_READ, REQ_CRYPT, 1, &bh);
-		else
+		/* Call fscrypt_submit_bh() instead of ll_rw_block().
+		 * If you get any error, pull back to ll_rw_block().
+		 */
+		if (fscrypt_submit_bh(REQ_OP_READ, 0, bh, inode) < 0)
 			ll_rw_block(REQ_OP_READ, 0, 1, &bh);
 
 		wait_on_buffer(bh);
@@ -4044,13 +4041,12 @@ static int __ext4_block_zero_page_range(handle_t *handle,
 		if (!buffer_uptodate(bh))
 			goto unlock;
 		if (S_ISREG(inode->i_mode) &&
-		    ext4_encrypted_inode(inode)) {
+		    ext4_encrypted_inode(inode) &&
+		    !fscrypt_inline_encrypted(inode)) {
 			/* We expect the key to be set. */
 			BUG_ON(!fscrypt_has_encryption_key(inode));
 			BUG_ON(blocksize != PAGE_SIZE);
-
-			if (!bh->b_private)
-				WARN_ON_ONCE(fscrypt_decrypt_page(page->mapping->host,
+			WARN_ON_ONCE(fscrypt_decrypt_page(page->mapping->host,
 						page, PAGE_SIZE, 0, page->index));
 		}
 	}
@@ -4761,7 +4757,6 @@ struct inode *ext4_iget(struct super_block *sb, unsigned long ino)
 	raw_inode = ext4_raw_inode(&iloc);
 
 	if ((ino == EXT4_ROOT_INO) && (raw_inode->i_links_count == 0)) {
-		print_iloc_info(sb, iloc);
 		EXT4_ERROR_INODE(inode, "root inode unallocated");
 		ret = -EFSCORRUPTED;
 		goto bad_inode;
@@ -4907,10 +4902,8 @@ struct inode *ext4_iget(struct super_block *sb, unsigned long ino)
 					    EXT4_GOOD_OLD_INODE_SIZE;
 		} else {
 			ret = ext4_iget_extra_inode(inode, raw_inode, ei);
-			if (ret) {
-				print_iloc_info(sb, iloc);
+			if (ret)
 				goto bad_inode;
-			}
 		}
 	}
 

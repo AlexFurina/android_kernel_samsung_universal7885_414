@@ -78,7 +78,7 @@ static void ion_buffer_add(struct ion_device *dev,
 	get_task_comm(buffer->thread_comm, task);
 	buffer->pid = task_pid_nr(task->group_leader);
 	buffer->tid = task_pid_nr(task);
-
+	
 	rb_link_node(&buffer->node, parent, p);
 	rb_insert_color(&buffer->node, &dev->buffers);
 }
@@ -136,7 +136,6 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 	nr_alloc_peak = atomic_long_read(&heap->total_allocated_peak);
 	if (nr_alloc_cur > nr_alloc_peak)
 		atomic_long_set(&heap->total_allocated_peak, nr_alloc_cur);
-
 	return buffer;
 
 err1:
@@ -409,6 +408,7 @@ static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
 	struct ion_buffer *buffer = dmabuf->priv;
 	struct dma_buf_attachment *att;
 
+
 	mutex_lock(&dmabuf->lock);
 	list_for_each_entry(att, &dmabuf->attachments, node) {
 		struct sg_table *table = att->priv;
@@ -496,15 +496,19 @@ struct dma_buf *__ion_alloc(size_t len, unsigned int heap_id_mask,
 		return ERR_PTR(-EINVAL);
 	}
 
+	if (heap_id_mask == 0xFFFFFFFF) {
+		heap_id_mask = get_ion_system_heap_id();
+		if (IS_ERR(ERR_PTR(heap_id_mask)))
+			return ERR_PTR(heap_id_mask);
+		heap_id_mask = (1 << heap_id_mask);
+	}
+
 	down_read(&dev->lock);
 	plist_for_each_entry(heap, &dev->heaps, node) {
 		/* if the caller didn't specify this heap id */
 		if (!((1 << heap->id) & heap_id_mask))
 			continue;
-		tracing_mark_begin("%s(%s, %zu, 0x%x, 0x%x)", "ion_alloc",
-				   heap->name, len, heap_id_mask, flags);
 		buffer = ion_buffer_create(heap, dev, len, flags);
-		tracing_mark_end();
 		if (!IS_ERR(buffer))
 			break;
 	}

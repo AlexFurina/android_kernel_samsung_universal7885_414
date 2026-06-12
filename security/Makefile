@@ -27,9 +27,9 @@ obj-$(CONFIG_SECURITY_TOMOYO)		+= tomoyo/
 obj-$(CONFIG_SECURITY_APPARMOR)		+= apparmor/
 obj-$(CONFIG_SECURITY_YAMA)		+= yama/
 obj-$(CONFIG_SECURITY_LOADPIN)		+= loadpin/
-obj-$(CONFIG_SECURITY_DEFEX)		+= samsung/defex_lsm/built-in.o
 obj-$(CONFIG_CGROUP_DEVICE)		+= device_cgroup.o
 obj-$(CONFIG_SECURITY_DSMS)		+= samsung/dsms/
+obj-$(CONFIG_SECURITY_DEFEX)		+= samsung/defex_lsm/built-in.o
 
 # Object integrity file lists
 subdir-$(CONFIG_INTEGRITY)		+= integrity
@@ -39,16 +39,12 @@ obj-$(CONFIG_INTEGRITY)			+= integrity/
 subdir-$(CONFIG_FIVE)			+= samsung/five
 obj-$(CONFIG_FIVE)			+= samsung/five/
 
+# MST driver
+obj-$(CONFIG_MST_LDO)	  += mstdrv/
+
 # PROCA module
-subdir-$(CONFIG_PROCA)		+= proca
-obj-$(CONFIG_PROCA)		+= proca/
-
-# Kbuild should always enter proca/gaf because gaf should be always built
-subdir-y += proca/gaf
-obj-y    += proca/gaf/
-
-# HDM driver
-obj-$(CONFIG_HDM)			+= hdm/
+subdir-$(CONFIG_PROCA)			+= proca
+obj-$(CONFIG_PROCA)			+= proca/
 
 # GAF module for PROCA, Secure Storage 1
 subdir-$(CONFIG_GAF) += proca/gaf

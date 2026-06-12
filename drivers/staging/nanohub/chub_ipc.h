@@ -9,6 +9,7 @@
  * (at your option) any later version.
  */
 
+
 #ifndef _MAILBOX_CHUB_IPC_H
 #define _MAILBOX_CHUB_IPC_H
 
@@ -37,7 +38,8 @@
 #endif
 
 #ifndef PACKET_SIZE_MAX
-#define PACKET_SIZE_MAX (272)
+#define PACKET_SIZE_MAX (769) // txBuffer max size 769 : sensor data(512) + debug data(250 + 2) + msg header(5)
+//#define PACKET_SIZE_MAX (272) // txBuffer max size 769 : sensor data(512) + debug data(250 + 2) + msg header(5)
 #endif
 
 #ifdef LOWLEVEL_DEBUG
@@ -84,8 +86,10 @@
 #define KERNEL_LOG_ON		(0x1)
 #define KERNEL_LOG_OFF		(0x0)
 
-#define MAILBOX_REQUEST_KLOG_ON (0x1)
-#define MAILBOX_REQUEST_KLOG_OFF (0x2)
+#define MAILBOX_REQUEST_KLOG_ON     (0x1)
+#define MAILBOX_REQUEST_KLOG_OFF    (0x2)
+#define MAILBOX_REQUEST_AP_PREPARE  (0x4)
+#define MAILBOX_REQUEST_AP_COMPLETE (0x8)
 
 struct chub_bootargs {
 	char magic[16];

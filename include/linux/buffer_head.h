@@ -41,6 +41,7 @@ enum bh_state_bits {
 	BH_Prio,	/* Buffer should be submitted with REQ_PRIO */
 	BH_Sync_Flush,	/* Buffer should be submttted with REQ_SYNC_FLUSH */
 	BH_Defer_Completion, /* Defer AIO completion to workqueue */
+	BH_Bypass,	/* Do not encrypt this buffer */
 
 	BH_PrivateStart,/* not a state bit, but the first bit available
 			 * for private allocation by other entities
@@ -135,6 +136,8 @@ BUFFER_FNS(Meta, meta)
 BUFFER_FNS(Prio, prio)
 BUFFER_FNS(Sync_Flush, sync_flush)
 BUFFER_FNS(Defer_Completion, defer_completion)
+BUFFER_FNS(Bypass, bypass)
+TAS_BUFFER_FNS(Bypass, bypass)
 
 #define bh_offset(bh)		((unsigned long)(bh)->b_data & ~PAGE_MASK)
 
@@ -155,8 +158,8 @@ void buffer_check_dirty_writeback(struct page *page,
 
 void mark_buffer_dirty(struct buffer_head *bh);
 void mark_buffer_dirty_sync(struct buffer_head *bh);
-void init_buffer(struct buffer_head *, bh_end_io_t *, void *);
 void mark_buffer_write_io_error(struct buffer_head *bh);
+void init_buffer(struct buffer_head *, bh_end_io_t *, void *);
 void touch_buffer(struct buffer_head *bh);
 void set_bh_page(struct buffer_head *bh,
 		struct page *page, unsigned long offset);
@@ -209,6 +212,7 @@ void write_boundary_block(struct block_device *bdev,
 			sector_t bblock, unsigned blocksize);
 int bh_uptodate_or_lock(struct buffer_head *bh);
 int bh_submit_read(struct buffer_head *bh);
+int bh_submit_read_fbe(struct inode *inode, struct buffer_head *bh);
 loff_t page_cache_seek_hole_data(struct inode *inode, loff_t offset,
 				 loff_t length, int whence);
 

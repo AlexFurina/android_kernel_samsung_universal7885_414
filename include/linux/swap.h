@@ -355,6 +355,19 @@ extern unsigned long mem_cgroup_shrink_node(struct mem_cgroup *mem,
 						pg_data_t *pgdat,
 						unsigned long *nr_scanned);
 extern unsigned long shrink_all_memory(unsigned long nr_pages);
+struct shrink_result {
+	int priority;
+	unsigned long nr_scanned;
+	unsigned long nr_reclaimed;
+};
+extern unsigned long shrink_anon_memory(unsigned long nr_to_reclaim,
+					struct shrink_result *sr);
+#ifdef CONFIG_KANOND
+extern void wakeup_kanond(void);
+extern const char *get_kanond_balanced_reason(void);
+extern unsigned long get_kanond_wmark_high(void);
+extern int set_kanond_wmark_high(unsigned long wmark);
+#endif
 extern int vm_swappiness;
 extern int remove_mapping(struct address_space *mapping, struct page *page);
 extern unsigned long vm_total_pages;

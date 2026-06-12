@@ -58,7 +58,13 @@ struct page *selinux_kernel_status_page(void)
 
 			status->version = SELINUX_KERNEL_STATUS_VERSION;
 			status->sequence = 0;
-			status->enforcing = 0;
+// [ SEC_SELINUX_PORTING_COMMON
+#ifdef CONFIG_ALWAYS_ENFORCE
+			status->enforcing = 1;
+#else
+			status->enforcing = selinux_enforcing;
+#endif
+// ] SEC_SELINUX_PORTING_COMMON
 			/*
 			 * NOTE: the next policyload event shall set
 			 * a positive value on the status->policyload,
@@ -91,7 +97,7 @@ void selinux_status_update_setenforce(int enforcing)
 		status->sequence++;
 		smp_wmb();
 
-		status->enforcing = 0;
+		status->enforcing = enforcing;
 
 		smp_wmb();
 		status->sequence++;

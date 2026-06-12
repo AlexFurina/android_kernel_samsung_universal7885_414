@@ -48,6 +48,7 @@ extern int dbg_snapshot_get_debug_level_reg(void);
 extern unsigned int dbg_snapshot_get_item_size(char *);
 extern unsigned int dbg_snapshot_get_item_paddr(char *);
 extern unsigned long dbg_snapshot_get_item_vaddr(char *);
+extern unsigned long dbg_snapshot_get_item_curr_ptr(char *);
 extern bool dbg_snapshot_dumper_one(void *, char *, size_t, size_t *);
 extern void dbg_snapshot_panic_handler_safe(void);
 extern unsigned long dbg_snapshot_get_spare_vaddr(unsigned int offset);
@@ -162,9 +163,9 @@ void dbg_snapshot_check_crash_key(unsigned int code, int value);
 #endif
 
 #ifdef CONFIG_S3C2410_WATCHDOG
-extern int s3c2410wdt_set_emergency_stop(void);
-extern int s3c2410wdt_set_emergency_reset(unsigned int timeout);
-extern int s3c2410wdt_keepalive_emergency(bool reset);
+extern int s3c2410wdt_set_emergency_stop(int index);
+extern int s3c2410wdt_set_emergency_reset(unsigned int timeout, int index);
+extern int s3c2410wdt_keepalive_emergency(bool reset, int index);
 #else
 #define s3c2410wdt_set_emergency_stop(a) 	(-1)
 #define s3c2410wdt_set_emergency_reset(a, b)	do { } while(0)
@@ -251,6 +252,10 @@ static inline unsigned long dbg_snapshot_get_item_vaddr(char *name)
 {
 	return 0;
 }
+static inline unsigned long dbg_snapshot_get_item_curr_ptr(char *name)
+{
+	return 0;
+}
 static inline bool dbg_snapshot_dumper_one(void *v_dumper,
 				char *line, size_t size, size_t *len)
 {
@@ -303,7 +308,7 @@ enum dsslog_freq_flag {
 	DSS_FLAG_AUD,
 	DSS_FLAG_IVA,
 	DSS_FLAG_SCORE,
-	DSS_FLAG_FSYS,
+	DSS_FLAG_FSYS0,
 	DSS_FLAG_END
 };
 

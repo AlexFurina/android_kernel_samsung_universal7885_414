@@ -146,7 +146,7 @@ void kbase_timeline_term(struct kbase_timeline *timeline)
 
 	if (!timeline)
 		return;
-
+	
 	WARN_ON(!list_empty(&timeline->tl_kctx_list));
 
 	for (i = (enum tl_stream_type)0; i < TL_STREAM_TYPE_COUNT; i++)
@@ -186,6 +186,8 @@ int kbase_timeline_io_acquire(struct kbase_device *kbdev, u32 flags)
 
 	if (!atomic_cmpxchg(timeline->timeline_flags, 0, timeline_flags)) {
 		int rcode;
+	if (!timeline_is_permitted())
+		return -EPERM;
 
 		ret = anon_inode_getfd(
 				"[mali_tlstream]",

@@ -20,6 +20,7 @@
 
 extern unsigned int lpcharge;
 extern int charging_night_mode;
+extern int temp_control_test;
 extern int fg_reset;
 extern int factory_mode;
 

@@ -313,11 +313,9 @@ config PM_GENERIC_DOMAINS_OF
 config CPU_PM
 	bool
 
-config FOTA_LIMIT
-	bool "Fota limit information node"
+config SEC_PERF_BIG_AFFINITY_RESUME
+        bool "resume process set affinity to big CPUs"
 	default n
 	help
-	  Add sysfs to notify limit information to recovery module
-	  /sys/power/fota_limit
-
-
+	  need to decrease resume time
+	  set big affinity to resume process

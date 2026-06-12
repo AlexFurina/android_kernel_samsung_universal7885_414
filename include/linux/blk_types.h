@@ -61,6 +61,7 @@ struct bio {
 						 */
 	unsigned short		bi_flags;	/* status, etc and bvec pool number */
 	unsigned short		bi_ioprio;
+	unsigned short          bi_sec_flags;   /* SEC only */
 	unsigned short		bi_write_hint;
 	blk_status_t		bi_status;
 	u8			bi_partno;
@@ -83,7 +84,9 @@ struct bio {
 	bio_end_io_t		*bi_end_io;
 
 	void			*bi_private;
-	void			*bi_aux_private;
+#ifdef CONFIG_BLK_DEV_CRYPT
+	void			*bi_cryptd;
+#endif
 
 #ifdef CONFIG_BLK_CGROUP
 	/*
@@ -126,6 +129,9 @@ struct bio {
 };
 
 #define BIO_RESET_BYTES		offsetof(struct bio, bi_max_vecs)
+
+#define __SEC_BYPASS   (0)
+#define SEC_BYPASS     (1ULL << __SEC_BYPASS)
 
 /*
  * bio flags

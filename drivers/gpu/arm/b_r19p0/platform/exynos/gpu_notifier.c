@@ -38,6 +38,10 @@
 
 #include <linux/oom.h>
 
+#if defined(MALI_SEC_SECURE_RENDERING) && defined(CONFIG_SOC_EXYNOS9630)
+#include <linux/smc.h>
+#endif
+
 extern struct kbase_device *pkbdev;
 
 #if defined (CONFIG_EXYNOS_THERMAL) && defined(CONFIG_GPU_THERMAL)
@@ -108,15 +112,13 @@ static int gpu_power_on(struct kbase_device *kbdev)
 	GPU_LOG(DVFS_DEBUG, DUMMY, 0u, 0u, "power on\n");
 
 #ifdef CONFIG_MALI_RT_PM
-#ifdef CONFIG_REGULATOR
 	if (!platform->inter_frame_pm_status)
 		gpu_control_disable_customization(kbdev);
-#endif
+
 	ret = pm_runtime_get_sync(kbdev->dev);
-#ifdef CONFIG_REGULATOR
+
 	if (platform->inter_frame_pm_status)
 		gpu_control_disable_customization(kbdev);
-#endif
 #else
 	ret = 0;
 #endif
@@ -152,9 +154,8 @@ static void gpu_power_off(struct kbase_device *kbdev)
 
 	GPU_LOG(DVFS_DEBUG, DUMMY, 0u, 0u, "power off\n");
 #ifdef CONFIG_MALI_RT_PM
-#ifdef CONFIG_REGULATOR
 	gpu_control_enable_customization(kbdev);
-#endif
+
 	pm_runtime_mark_last_busy(kbdev->dev);
 	ret = pm_runtime_put_autosuspend(kbdev->dev);
 
@@ -176,10 +177,8 @@ static void gpu_power_suspend(struct kbase_device *kbdev)
 		return;
 
 	GPU_LOG(DVFS_INFO, DUMMY, 0u, 0u, "power suspend\n");
-#ifdef CONFIG_REGULATOR
 	if (platform->dvs_status)
 		gpu_control_enable_customization(kbdev);
-#endif
 
 	ret = pm_runtime_suspend(kbdev->dev);
 
@@ -299,6 +298,11 @@ static int pm_callback_runtime_on(struct kbase_device *kbdev)
 #endif
 	gpu_dvfs_start_env_data_gathering(kbdev);
 	platform->power_status = true;
+
+#if defined(MALI_SEC_SECURE_RENDERING) && defined(CONFIG_SOC_EXYNOS9630)
+		exynos_smc(SMC_DRM_G3D_PPCFW_RESTORE, 0, 0, 0);
+#endif
+
 #if 0
 #ifdef CONFIG_MALI_DVFS
 #ifdef CONFIG_MALI_SEC_CL_BOOST
@@ -323,11 +327,8 @@ static void pm_callback_runtime_off(struct kbase_device *kbdev)
 	GPU_LOG(DVFS_DEBUG, LSI_GPU_OFF, 0u, 0u, "runtime off callback\n");
 
 	platform->power_status = false;
-#ifdef CONFIG_MALI_RT_PM
-#ifdef CONFIG_REGULATOR
+
 	gpu_control_disable_customization(kbdev);
-#endif
-#endif
 
 	gpu_dvfs_stop_env_data_gathering(kbdev);
 #ifdef CONFIG_MALI_DVFS
@@ -337,6 +338,10 @@ static void pm_callback_runtime_off(struct kbase_device *kbdev)
 	if (!platform->early_clk_gating_status)
 		gpu_control_disable_clock(kbdev);
 #endif /* CONFIG_MALI_DVFS */
+
+#if defined(MALI_SEC_SECURE_RENDERING) && defined(CONFIG_SOC_EXYNOS9630)
+			exynos_smc(SMC_DRM_G3D_POWER_OFF, 0, 0, 0);
+#endif
 
 #if defined(CONFIG_SOC_EXYNOS7420) || defined(CONFIG_SOC_EXYNOS7890)
 	preload_balance_setup(kbdev);

@@ -332,6 +332,13 @@ err_create_pool:
 
 static struct ion_system_heap *system_heap;
 
+unsigned int get_ion_system_heap_id(void)
+{
+	if (system_heap)
+		return system_heap->heap.id;
+	return -ENODEV;
+}
+
 void show_ion_system_heap_pool_size(struct seq_file *s)
 {
 	unsigned long uncached = 0;
@@ -423,7 +430,7 @@ static struct ion_heap *__ion_system_heap_create(void)
 		goto destroy_uncached_pools;
 
 	heap->heap.debug_show = ion_system_heap_debug_show;
-
+	
 	if (!system_heap) {
 		system_heap = heap;
 		show_mem_extra_notifier_register(&ion_system_heap_nb);
@@ -431,7 +438,6 @@ static struct ion_heap *__ion_system_heap_create(void)
 	}
 	else
 		pr_err("system_heap had been already created\n");
-
 	return &heap->heap;
 
 destroy_uncached_pools:

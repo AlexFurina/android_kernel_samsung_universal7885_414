@@ -39,7 +39,7 @@ struct sdp_mm_sensitive_proc_req {
  * @sensitive_proc_list - sensitive process list
  */
 struct sdp_mm_sensitive_proc_list_resp {
-	unsigned int sensitive_proc_list_len;
+	unsigned int sensitive_proc_list_len; 
 	unsigned int sensitive_proc_list[MAX_SENSITIVE_PROC];
 };
 

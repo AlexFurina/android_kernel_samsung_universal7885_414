@@ -30,6 +30,4 @@
 
 #define SDP_CACHE_CLEANUP_DEBUG   0
 
-void dek_add_to_log(int engine_id, char *buffer);
-
 #endif

@@ -44,6 +44,9 @@ static gpu_dvfs_info gpu_dvfs_table_default[DVFS_TABLE_ROW_MAX];
 
 #include <linux/of_platform.h>
 
+#if (defined(CONFIG_EXYNOS_BTS) && defined(CONFIG_MALI_NEW_BTS_API_SUPPORT))
+#include <soc/samsung/bts.h>
+#endif
 
 struct kbase_device *pkbdev;
 static int gpu_debug_level;
@@ -324,7 +327,12 @@ static int gpu_dvfs_update_config_data_from_dt(struct kbase_device *kbdev)
 #endif
 	gpu_update_config_data_int(np, "gpu_runtime_pm_delay_time", &platform->runtime_pm_delay_time);
 
+#if (defined(CONFIG_EXYNOS_BTS) && defined(CONFIG_MALI_NEW_BTS_API_SUPPORT))
 	gpu_update_config_data_int(np, "gpu_mo_min_clock", &platform->mo_min_clock);
+	platform->bts_scen_idx = bts_get_scenindex("g3d_performance");
+#else
+	gpu_update_config_data_int(np, "gpu_mo_min_clock", &platform->mo_min_clock);
+#endif
 
 	gpu_update_config_data_int(np, "gpu_boost_gpu_min_lock", &platform->boost_gpu_min_lock);
 	gpu_update_config_data_int(np, "gpu_boost_egl_min_lock", &platform->boost_egl_min_lock);

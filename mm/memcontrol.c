@@ -3278,6 +3278,7 @@ static u64 mem_cgroup_vmpressure_read(struct cgroup_subsys_state *css,
 
 	return vmpressure;
 }
+
 static u64 mem_cgroup_swappiness_read(struct cgroup_subsys_state *css,
 				      struct cftype *cft)
 {

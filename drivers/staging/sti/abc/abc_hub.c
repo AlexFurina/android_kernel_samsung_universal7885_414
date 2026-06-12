@@ -28,9 +28,6 @@ static int abc_hub_parse_dt(struct device *dev)
 {
 	struct abc_hub_platform_data *pdata = dev->platform_data;
 	struct device_node *np;
-#ifdef CONFIG_SEC_ABC_HUB_COND
-	struct device_node *cond_np;
-#endif
 
 	np = dev->of_node;
 	pdata->nSub = of_get_child_count(np);
@@ -40,13 +37,10 @@ static int abc_hub_parse_dt(struct device *dev)
 	}
 
 #ifdef CONFIG_SEC_ABC_HUB_COND
-	cond_np = of_find_node_by_name(np, "cond");
-	if (cond_np) {
-		if (parse_cond_data(dev, pdata, cond_np) < 0)
-			dev_info(dev, "sub module(cond) is not supported\n");
-		else
-			pdata->cond.init = 1;
-	}
+	if (parse_cond_data(dev, pdata, np) < 0)
+		dev_info(dev, "sub module(cond) is not supported\n");
+	else
+		pdata->cond_pdata.init = 1;
 #endif
 #ifdef CONFIG_SEC_ABC_HUB_BOOTC
 	if (parse_bootc_data(dev, pdata, np) < 0)
@@ -71,7 +65,7 @@ static int abc_hub_suspend(struct device *dev)
 #ifdef CONFIG_SEC_ABC_HUB_COND
 	struct abc_hub_info *pinfo = dev_get_drvdata(dev);
 
-	if (pinfo->pdata->cond.init)
+	if (pinfo->pdata->cond_pdata.init)
 		ret = abc_hub_cond_suspend(dev);
 #endif
 	return ret;
@@ -83,7 +77,7 @@ static int abc_hub_resume(struct device *dev)
 #ifdef CONFIG_SEC_ABC_HUB_COND
 	struct abc_hub_info *pinfo = dev_get_drvdata(dev);
 
-	if (pinfo->pdata->cond.init)
+	if (pinfo->pdata->cond_pdata.init)
 		ret = abc_hub_cond_resume(dev);
 #endif
 	return ret;
@@ -91,6 +85,11 @@ static int abc_hub_resume(struct device *dev)
 
 static int abc_hub_remove(struct platform_device *pdev)
 {
+#ifdef CONFIG_SEC_ABC_HUB_COND
+	struct abc_hub_info *pinfo = platform_get_drvdata(pdev);
+	
+    mutex_destroy(&pinfo->pdata->cond_pdata.cond_lock);
+#endif
 	return 0;
 }
 
@@ -114,7 +113,7 @@ static ssize_t store_abc_hub_enable(struct device *dev,
 
 		pinfo->enabled = ABC_HUB_ENABLED;
 #ifdef CONFIG_SEC_ABC_HUB_COND
-		if (pinfo->pdata->cond.init)
+		if (pinfo->pdata->cond_pdata.init)
 			abc_hub_cond_enable(dev, pinfo->enabled);
 #endif
 #ifdef CONFIG_SEC_ABC_HUB_BOOTC
@@ -125,7 +124,7 @@ static ssize_t store_abc_hub_enable(struct device *dev,
 		dev_info(dev, "abc_hub driver disabled.\n");
 		pinfo->enabled = ABC_HUB_DISABLED;
 #ifdef CONFIG_SEC_ABC_HUB_COND
-		if (pinfo->pdata->cond.init)
+		if (pinfo->pdata->cond_pdata.init)
 			abc_hub_cond_enable(dev, pinfo->enabled);
 #endif
 #ifdef CONFIG_SEC_ABC_HUB_BOOTC
@@ -263,15 +262,14 @@ static int abc_hub_probe(struct platform_device *pdev)
 
 		if (!pdata) {
 			dev_err(&pdev->dev, "Failed to allocate platform data\n");
-			ret = -ENOMEM;
-			goto out;
+			return -ENOMEM;
 		}
 
 		pdev->dev.platform_data = pdata;
 		ret = abc_hub_parse_dt(&pdev->dev);
 		if (ret) {
 			dev_err(&pdev->dev, "Failed to parse dt data\n");
-			goto err_parse_dt;
+			return ret;
 		}
 
 		pr_info("%s: parse dt done\n", __func__);
@@ -281,27 +279,20 @@ static int abc_hub_probe(struct platform_device *pdev)
 
 	if (!pdata) {
 		dev_err(&pdev->dev, "There are no platform data\n");
-		ret = -EINVAL;
-		goto out;
+		return -EINVAL;
 	}
 
 	pinfo = kzalloc(sizeof(*pinfo), GFP_KERNEL);
 
-	if (!pinfo) {
-		ret = -ENOMEM;
-		goto err_alloc_pinfo;
-	}
-#ifdef CONFIG_DRV_SAMSUNG
+	if (!pinfo)
+		return -ENOMEM;
+
 	pinfo->dev = sec_device_create(pinfo, "sec_abc_hub");
-#else
-	pinfo->dev = device_create(sec_class, NULL, 0, NULL, "sec_abc_hub");
-#endif
 	if (IS_ERR(pinfo->dev)) {
 		pr_err("%s Failed to create device(sec_abc_hub)!\n", __func__);
 		ret = -ENODEV;
-		goto err_create_device;
+		goto out;
 	}
-	abc_hub_dev = pinfo->dev;
 
 	ret = device_create_file(pinfo->dev, &dev_attr_enable);
 	if (ret) {
@@ -318,14 +309,17 @@ static int abc_hub_probe(struct platform_device *pdev)
 		goto err_create_abc_hub_bootc_offset_sysfs;
 	}
 #endif
+
+	abc_hub_dev = pinfo->dev;
 	pinfo->pdata = pdata;
+
 	platform_set_drvdata(pdev, pinfo);
 
 #ifdef CONFIG_SEC_ABC_HUB_COND
-	if (pdata->cond.init) {
+	if (pdata->cond_pdata.init) {
 		if (abc_hub_cond_init(abc_hub_dev) < 0) {
 			dev_err(&pdev->dev, "abc_hub_cond_init fail\n");
-			pdata->cond.init = 0;
+			pdata->cond_pdata.init = 0;
 		}
 	}
 #endif
@@ -341,6 +335,7 @@ static int abc_hub_probe(struct platform_device *pdev)
 
 	abc_hub_probed = true;
 	dev_info(&pdev->dev, "%s success!\n", __func__);
+
 	return ret;
 
 #ifdef CONFIG_SEC_ABC_HUB_BOOTC
@@ -348,18 +343,11 @@ err_create_abc_hub_bootc_offset_sysfs:
 	device_remove_file(pinfo->dev, &dev_attr_enable);
 #endif
 err_create_abc_hub_enable_sysfs:
-#ifdef CONFIG_DRV_SAMSUNG
 	sec_device_destroy(abc_hub_dev->devt);
-#else
-	device_destroy(sec_class, abc_hub_dev->devt);
-#endif
-err_create_device:
-	kfree(pinfo);
-err_alloc_pinfo:
-err_parse_dt:
-	devm_kfree(&pdev->dev, pdata);
-	pdev->dev.platform_data =  NULL;
 out:
+	kfree(pinfo);
+	devm_kfree(&pdev->dev, pdata);
+
 	return ret;
 }
 

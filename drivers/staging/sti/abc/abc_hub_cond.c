@@ -1,6 +1,6 @@
 /* abc_hub_cond.c
  *
- * Abnormal Behavior Catcher Hub Driver Sub Module Cond(Detecting Connection)
+ * Abnormal Behavior Catcher Hub Driver Sub Module(Conncet Detect)
  *
  * Copyright (C) 2017 Samsung Electronics
  *
@@ -16,304 +16,197 @@
  *
  */
 
-#include <linux/kernel.h>
-#include <linux/module.h>
-#include <linux/device.h>
-#include <linux/platform_device.h>
-#include <linux/of.h>
-#include <linux/of_device.h>
-#include <linux/err.h>
-#include <linux/kthread.h>
-#include <linux/delay.h>
-#include <linux/io.h>
+#define DEBUG_FOR_SECDETECT
+#include <linux/sti/abc_hub.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
-#include <linux/slab.h>
-#include <linux/suspend.h>
 #include <linux/of_gpio.h>
 #include <linux/sec_class.h>
-#include <linux/sti/abc_hub.h>
+#include <asm/io.h>
 
-#define SEC_CONN_PRINT(format, ...) \
-	pr_info("[ABC_COND] " format, ##__VA_ARGS__)
-#define ABCEVENT_CONN_MAX_DEV_STRING 120
+#define SEC_CONN_PRINT(format, ...) pr_info("[ABC_COND] " format, ##__VA_ARGS__)
+#define NWEINT_GPM23_CON		0x15c3075C
+#define WEINT_GPA3_CON		0x1585070C
+#define NWEINT_GPG0_CON		0x10430710
+#define WEINT_GPM18_CON		0x15c30748
 
-/* This value is used for checking gpio irq is enabled or not. */
-static int detect_conn_enabled;
 
-/**
- * Parse the device tree and get gpio number, irq type.
- * And then request gpios.
- */
-int parse_cond_data(struct device *dev,
-		    struct abc_hub_platform_data *pdata,
-		    struct device_node *np)
+static void detect_con_weint_dump(void)
 {
+#if !defined(CONFIG_SEC_ABC_HUB_COND_DAVINCI)
+    void __iomem *ub_int_reg;
+#endif
+	void __iomem *sub_int_reg;
+	void __iomem *cam_int_reg;
+
+#if !defined(CONFIG_SEC_ABC_HUB_COND_DAVINCI)
+	u32 ub_tmp_reg;
+#endif
+	u32 sub_tmp_reg;
+	u32 cam_tmp_reg;
+
+#if defined(CONFIG_SEC_ABC_HUB_COND_DAVINCI)
+	sub_int_reg = ioremap(NWEINT_GPG0_CON, 0x10);
+	cam_int_reg = ioremap(WEINT_GPM18_CON, 0x10);
+#else
+	ub_int_reg = ioremap(NWEINT_GPM23_CON, 0x10);
+	sub_int_reg = ioremap(WEINT_GPA3_CON, 0x10);
+	cam_int_reg = ioremap(WEINT_GPM18_CON, 0x10);
+#endif
+
+#if !defined(CONFIG_SEC_ABC_HUB_COND_DAVINCI)
+	ub_tmp_reg = readl(ub_int_reg);
+#endif
+	sub_tmp_reg = readl(sub_int_reg);
+	cam_tmp_reg = readl(cam_int_reg);
+	
+
+#if !defined(CONFIG_SEC_ABC_HUB_COND_DAVINCI)
+	SEC_CONN_PRINT("GPM23[0] 0x15c3075C: %#x\n", ub_tmp_reg);
+#endif
+#if defined(CONFIG_SEC_ABC_HUB_COND_DAVINCI)
+	SEC_CONN_PRINT("GPG0[1] :0x10430710: %#x\n", sub_tmp_reg);
+	SEC_CONN_PRINT("GPM18[0] 0x15c30748: %#x\n", cam_tmp_reg);
+#else	
+	SEC_CONN_PRINT("GPA3[3] :0x1585070C: %#x\n", sub_tmp_reg);
+	SEC_CONN_PRINT("GPM18[0] 0x15c30748: %#x\n", cam_tmp_reg);
+#endif
+	
+
+#if !defined(CONFIG_SEC_ABC_HUB_COND_DAVINCI)
+	iounmap(ub_int_reg);
+#endif
+	iounmap(sub_int_reg);
+	iounmap(cam_int_reg);
+}
+
+
+
+static irqreturn_t abc_hub_cond_interrupt_handler(int irq, void *handle)
+{
+	int type;
+	struct abc_hub_info *pinfo = handle;
 	int i;
-	int gpio_num = 0;
-#if defined(CONFIG_ARCH_QCOM)
-	struct pinctrl *conn_pinctrl;
-	struct pinctrl *pm_conn_pinctrl;
+
+	type = irq_get_trigger_type(irq);
+
+	SEC_CONN_PRINT("%s\n", __func__);
+	detect_con_weint_dump();
+	/*Send Uevent Data*/
+	for (i = 0; i < pinfo->pdata->cond_pdata.gpio_cnt; i++) {
+		if (irq == pinfo->pdata->cond_pdata.irq_number[i]) {
+			/* if Rising or falling edge occurs, check level one more.
+			 * and if it still level high send uevent.
+			 */
+			if (gpio_get_value(pinfo->pdata->cond_pdata.irq_gpio[i])) {
+#if !defined(CONFIG_SEC_ABC_HUB_COND_DAVINCI)
+				if (i == 0)
+					abc_hub_send_event("MODULE=cond@ERROR=ub");
+				else if (i == 1)
+					abc_hub_send_event("MODULE=cond@ERROR=sub");
+				else
+					abc_hub_send_event("MODULE=cond@ERROR=cam");
+			}
+#else
+				if (i == 0)
+					abc_hub_send_event("MODULE=cond@ERROR=sub");
+				else if (i == 1)
+					abc_hub_send_event("MODULE=cond@ERROR=cam");
+				else
+					abc_hub_send_event("MODULE=cond@ERROR=tof");
+			}
 #endif
-
-	SEC_CONN_PRINT("ABC_HUB_COND DT Parsing start.");
-
-	pdata->cond.gpio_cnt = of_gpio_named_count(np, "sec,det_conn_gpios");
-	SEC_CONN_PRINT("gpio cnt = : %d\n", pdata->cond.gpio_cnt);
-
-	/* if support gpio cnt less than 1 set value to 0 */
-	if (pdata->cond.gpio_cnt <= 0) {
-		SEC_CONN_PRINT("of_gpio_named_count = 0.\n");
-		pdata->cond.gpio_cnt = 0;
-	}
-
-	pdata->cond.gpio_total_cnt = pdata->cond.gpio_cnt;
-
-#if defined(CONFIG_ARCH_QCOM)
-	/* Setting pinctrl state to NO PULL */
-	conn_pinctrl = devm_pinctrl_get_select(dev, "det_ap_connect");
-	if (IS_ERR_OR_NULL(conn_pinctrl))
-		SEC_CONN_PRINT("setting no pull failed.\n");
-#endif
-	for (i = 0; i < pdata->cond.gpio_cnt; i++) {
-		/*Get connector name*/
-		of_property_read_string_index(np, "sec,det_conn_name", i,
-					      &pdata->cond.name[i]);
-
-		/*Get connector gpio number*/
-		gpio_num = of_get_named_gpio(np, "sec,det_conn_gpios", i);
-		pdata->cond.irq_gpio[i] = gpio_num;
-		SEC_CONN_PRINT("index[%d] : gpio number / name: %d / %s\n",
-			       i, gpio_num, pdata->cond.name[i]);
-
-		if (!gpio_is_valid(gpio_num)) {
-			dev_err(dev, "%s: Failed to get irq gpio\n", __func__);
-			return -EINVAL;
 		}
-		/*Filling the irq_num from this gpio.*/
-		pdata->cond.irq_num[i] = gpio_to_irq(gpio_num);
-		pdata->cond.irq_type[i] = IRQ_TYPE_EDGE_BOTH;
-		SEC_CONN_PRINT("i = [%d], gpio level [%d] = %d\n",
-			       i, gpio_num, gpio_get_value(gpio_num));
-		SEC_CONN_PRINT("gpio irq gpio = [%d], irq = [%d]\n",
-			       gpio_num, pdata->cond.irq_type[i]);
 	}
+	return IRQ_HANDLED;
+}
 
-#if defined(CONFIG_ARCH_QCOM)
-	/* Get pm_gpio */
-	pdata->cond.gpio_pm_cnt = of_gpio_named_count(np,
-						      "sec,det_pm_conn_gpios");
-	SEC_CONN_PRINT("pm gpio cnt = : %d\n", pdata->cond.gpio_pm_cnt);
+int abc_hub_cond_irq_enable(struct device *dev, int enable)
+{
+	/* detect_conn_init_irq thread create*/
+	struct abc_hub_info *pinfo = dev_get_drvdata(dev);
+	int i;
+	int retval;
 
-	if (pdata->cond.gpio_pm_cnt <= 0) {
-		SEC_CONN_PRINT("pm of_gpio_named_count = 0.\n");
-		return 0;
-	}
-
-	/* Setting pinctrl state to NO PULL */
-	pm_conn_pinctrl = devm_pinctrl_get_select(dev, "det_pm_connect");
-	if (IS_ERR_OR_NULL(pm_conn_pinctrl)) {
-		SEC_CONN_PRINT("pm setting no pull failed.\n");
-		return -ENODEV;
-	}
-
-	pdata->cond.gpio_total_cnt = pdata->cond.gpio_total_cnt +
-				     pdata->cond.gpio_pm_cnt;
-	SEC_CONN_PRINT("gpio_total_count = %d", pdata->cond.gpio_total_cnt);
-
-	for (i = pdata->cond.gpio_cnt; i < pdata->cond.gpio_total_cnt; i++) {
-		/*Get connector name*/
-		of_property_read_string_index(np, "sec,det_pm_conn_name",
-					      i - pdata->cond.gpio_cnt,
-					      &pdata->cond.name[i]);
-
-		/* Get connector gpio number */
-		gpio_num = of_get_named_gpio(np, "sec,det_pm_conn_gpios",
-					     i - pdata->cond.gpio_cnt);
-		pdata->cond.irq_gpio[i] = gpio_num;
-		SEC_CONN_PRINT("index[%d] : pm gpio number / name: %d / %s\n",
-			       i, gpio_num, pdata->cond.name[i]);
-		if (!gpio_is_valid(gpio_num)) {
-			SEC_CONN_PRINT("pm gpio[%d] invalid\n",
-				       i - pdata->cond.gpio_cnt);
-			return -EINVAL;
-		}
-		/*Filling the irq_num from this gpio.*/
-		pdata->cond.irq_num[i] = gpio_to_irq(gpio_num);
-		pdata->cond.irq_type[i] = IRQ_TYPE_EDGE_BOTH;
-		SEC_CONN_PRINT("i = [%d], gpio level [%d] = %d\n",
-			       i, gpio_num, gpio_get_value(gpio_num));
-		SEC_CONN_PRINT("gpio irq gpio = [%d], irq = [%d]\n",
-			       gpio_num, pdata->cond.irq_type[i]);
-	}
+	for (i = 0; i < pinfo->pdata->cond_pdata.gpio_cnt; i++) {
+		retval = request_threaded_irq(pinfo->pdata->cond_pdata.irq_number[i], NULL,
+				abc_hub_cond_interrupt_handler,
+				pinfo->pdata->cond_pdata.irq_type[i] | IRQF_ONESHOT,
+				pinfo->pdata->cond_pdata.name[i], pinfo);
+			if (retval) {
+				SEC_CONN_PRINT("%s: Failed to request threaded irq %d.\n",
+								__func__, retval);
+				return retval;
+			}
+#if defined(DEBUG_FOR_SECDETECT)
+			SEC_CONN_PRINT("%s: Succeeded to request threaded irq %d: irq_num[%d], type[%x],name[%s].\n",
+							__func__, retval, pinfo->pdata->cond_pdata.irq_number[i],
+							pinfo->pdata->cond_pdata.irq_type[i], pinfo->pdata->cond_pdata.name[i]);
 #endif
-	SEC_CONN_PRINT("ABC_HUB_COND DT Parsing done.");
+	msleep(1);
+	}
 
 	return 0;
 }
 
-/**
- * Send an ABC_event about given gpio pin number.
- */
-void send_ABC_event_by_num(int num, struct abc_hub_info *pinfo, int level)
+int parse_cond_data(struct device *dev,
+		    struct abc_hub_platform_data *pdata,
+		    struct device_node *np)
 {
-	char ABC_event_dev_str[ABCEVENT_CONN_MAX_DEV_STRING];
+	/* implement parse dt for sub module */
+	/* the following code is just example. replace it to your code */
 
-	/*Send ABC Event Data*/
-	if (level == 1) {
-		snprintf(ABC_event_dev_str, ABCEVENT_CONN_MAX_DEV_STRING,
-			 "MODULE=cond@ERROR=%s", pinfo->pdata->cond.name[num]);
-		abc_hub_send_event(ABC_event_dev_str);
+	struct device_node *cond_np;
 
-		SEC_CONN_PRINT("send ABC pin[%d]:CONNECTOR_NAME=%s,TYPE=%d\n",
-			       num, pinfo->pdata->cond.name[num], level);
-	} else if (level == 0)
-		SEC_CONN_PRINT("send ABC pin[%d]:CONNECTOR_NAME=%s,TYPE=%d\n",
-			       num, pinfo->pdata->cond.name[num], level);
-}
-
-/**
- * Check and send ABC_event from irq handler.
- */
-void check_and_send_ABC_event_irq(int irq, struct abc_hub_info *pinfo,
-				  int type)
-{
 	int i;
 
-	/*Send ABCEvent Data*/
-	for (i = 0; i < pinfo->pdata->cond.gpio_total_cnt; i++) {
-		if (irq != pinfo->pdata->cond.irq_num[i])
-			continue;
-		/* if edge interrupt occurs, check level one more.*/
-		/* and if it still level high send ABC_event.*/
-		usleep_range(1 * 1000, 1 * 1000);
-		if (gpio_get_value(pinfo->pdata->cond.irq_gpio[i]))
-			send_ABC_event_by_num(i, pinfo, 1);
+	cond_np = of_find_node_by_name(np, "cond");
 
-		SEC_CONN_PRINT("%s status changed.\n",
-			       pinfo->pdata->cond.name[i]);
-	}
-}
+	SEC_CONN_PRINT("%s\n", __func__);
 
-/**
- * This is IRQ handler function which is
- * called when the connector pin state change.
- */
-static irqreturn_t detect_conn_interrupt_handler(int irq, void *handle)
-{
-	int type;
-	struct abc_hub_info *pinfo = handle;
+	pdata->cond_pdata.gpio_cnt = of_gpio_named_count(cond_np, "cond,det_conn_gpios");
 
-	if (detect_conn_enabled != 0) {
-		SEC_CONN_PRINT("%s\n", __func__);
+	for (i = 0; i < pdata->cond_pdata.gpio_cnt; i++) {
+		/*Get connector name*/
+		of_property_read_string_index(cond_np, "cond,name", i, &(pdata->cond_pdata.name[i]));
 
-		type = irq_get_trigger_type(irq);
-		check_and_send_ABC_event_irq(irq, pinfo, type);
-	}
+		/*Get connector gpio number*/
+		pdata->cond_pdata.irq_gpio[i] = of_get_named_gpio(cond_np, "cond,det_conn_gpios", i);
 
-	return IRQ_HANDLED;
-}
+		if (gpio_is_valid(pdata->cond_pdata.irq_gpio[i])) {
+#if defined(DEBUG_FOR_SECDETECT)
+			SEC_CONN_PRINT("i = [%d] gpio level [%d] = %d\n", i, pdata->cond_pdata.irq_gpio[i],
+				gpio_get_value(pdata->cond_pdata.irq_gpio[i]));
+			SEC_CONN_PRINT("gpio irq gpio = [%d], irq = [%d]\n", pdata->cond_pdata.irq_gpio[i],
+			gpio_to_irq(pdata->cond_pdata.irq_gpio[i]));
+#endif
+			/*Filling the irq_number from this gpio.*/
+			pdata->cond_pdata.irq_number[i] = gpio_to_irq(pdata->cond_pdata.irq_gpio[i]);
 
-/**
- * Enable all gpio pin IRQs which is from Device Tree.
- */
-int abc_detect_conn_irq_enable(struct abc_hub_info *pinfo, bool enable,
-			       int pin)
-{
-	int ret = 0;
-	int i;
-
-	if (!enable) {
-		for (i = 0; i < pinfo->pdata->cond.gpio_total_cnt; i++) {
-			if (pinfo->pdata->cond.irq_enabled[i]) {
-				disable_irq(pinfo->pdata->cond.irq_num[i]);
-				free_irq(pinfo->pdata->cond.irq_num[i], pinfo);
-			}
-		}
-		detect_conn_enabled = 0;
-		return ret;
-	}
-
-	if (pin >= pinfo->pdata->cond.gpio_total_cnt)
-		return ret;
-
-	ret = request_threaded_irq(pinfo->pdata->cond.irq_num[pin], NULL,
-				   detect_conn_interrupt_handler,
-				   pinfo->pdata->cond.irq_type[pin] |
-				   IRQF_ONESHOT,
-				   pinfo->pdata->cond.name[pin], pinfo);
-
-	if (ret) {
-		SEC_CONN_PRINT("%s: Failed to request threaded irq %d.\n",
-			       __func__, ret);
-
-		return ret;
-	}
-
-	SEC_CONN_PRINT("%s: Succeeded to request threaded irq %d:\n",
-		       __func__, ret);
-	SEC_CONN_PRINT("irq_num[%d], type[%x],name[%s].\n",
-		       pinfo->pdata->cond.irq_num[pin],
-		       pinfo->pdata->cond.irq_type[pin],
-		       pinfo->pdata->cond.name[pin]);
-
-	pinfo->pdata->cond.irq_enabled[pin] = true;
-	return ret;
-}
-
-/**
- * Enable abc hub cond driver.
- * Firstly, check gpio level for all pins and send abc event if value is true.
- * Secondly, enable edge irq so that it can send abc event while drivers is on.
- */
-void abc_hub_cond_enable(struct device *dev, int enable)
-{
-	/* common sequence */
-	struct abc_hub_info *pinfo = dev_get_drvdata(dev);
-	struct abc_hub_platform_data *pdata = pinfo->pdata;
-	int ret;
-	int i;
-
-	pdata->cond.enabled = enable;
-
-	/* implement enable sequence */
-	if (enable != ABC_HUB_ENABLED) {
-		SEC_CONN_PRINT("ABC_HUB_COND_DISANABLED.");
-		/*Disable interrupt.*/
-		ret = abc_detect_conn_irq_enable(pinfo, false, 0);
-		return;
-	}
-	SEC_CONN_PRINT("ABC_HUB_COND_ENABLED.");
-	for (i = 0; i < pdata->cond.gpio_total_cnt; i++) {
-		if ((detect_conn_enabled & (1 << i)))
-			continue;
-		detect_conn_enabled |= (1 << i);
-
-		SEC_CONN_PRINT("gpio level [%d] = %d\n",
-			       pdata->cond.irq_gpio[i],
-			       gpio_get_value(pdata->cond.irq_gpio[i]));
-		/*get level value of the gpio pin.*/
-		/*if there's gpio low pin, send ABC_event*/
-		if (gpio_get_value(pdata->cond.irq_gpio[i]))
-			send_ABC_event_by_num(i, pinfo, 1);
-		else
-			send_ABC_event_by_num(i, pinfo, 0);
-
-		/*Enable interrupt.*/
-		ret = abc_detect_conn_irq_enable(pinfo, true, i);
-
-		if (ret < 0) {
-			SEC_CONN_PRINT("gpio[%d] Interrupt not enabled.\n",
-				       pdata->cond.irq_gpio[i]);
-			return;
+		} else {
+			dev_err(dev, "%s: Failed to get irq gpio.\n", __func__);
+			return -EINVAL;
 		}
 	}
+
+	/*Get type of gpio irq*/
+	if (of_property_read_u32_array(cond_np, "cond,det_conn_irq_type", pdata->cond_pdata.irq_type, pdata->cond_pdata.gpio_cnt)) {
+		dev_err(dev, "%s, Failed to get irq_type property.\n", __func__);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < pdata->cond_pdata.gpio_cnt; i++)
+		SEC_CONN_PRINT("pin gpio[%d] irq number[%d] CONNECTOR_NAME=%s,\n", pdata->cond_pdata.irq_gpio[i], pdata->cond_pdata.irq_number[i], pdata->cond_pdata.name[i]);
+
+	return 0;
 }
 
 int abc_hub_cond_init(struct device *dev)
 {
 	/* implement init sequence : return 0 if success, return -1 if fail */
-	// struct abc_hub_info *pinfo = dev_get_drvdata(dev);
+	struct abc_hub_info *pinfo = dev_get_drvdata(dev);
+	
+	mutex_init(&pinfo->pdata->cond_pdata.cond_lock);
 
 	return 0;
 }
@@ -321,6 +214,13 @@ int abc_hub_cond_init(struct device *dev)
 int abc_hub_cond_suspend(struct device *dev)
 {
 	/* implement suspend sequence */
+	struct abc_hub_info *pinfo = dev_get_drvdata(dev);
+	int i;
+
+	if (pinfo->pdata->cond_pdata.enabled == ABC_HUB_ENABLED) {
+		for (i = 0; i < pinfo->pdata->cond_pdata.gpio_cnt; i++)
+			disable_irq(pinfo->pdata->cond_pdata.irq_number[i]);
+	}
 
 	return 0;
 }
@@ -328,8 +228,52 @@ int abc_hub_cond_suspend(struct device *dev)
 int abc_hub_cond_resume(struct device *dev)
 {
 	/* implement resume sequence */
+	struct abc_hub_info *pinfo = dev_get_drvdata(dev);
+	int i;
+
+	if (pinfo->pdata->cond_pdata.enabled == ABC_HUB_ENABLED) {
+		for (i = 0; i < pinfo->pdata->cond_pdata.gpio_cnt; i++)
+			enable_irq(pinfo->pdata->cond_pdata.irq_number[i]);
+	}
 
 	return 0;
+}
+
+void abc_hub_cond_enable(struct device *dev, int enable)
+{
+	/* common sequence */
+	struct abc_hub_info *pinfo = dev_get_drvdata(dev);
+	int i;
+	int ret;
+
+	mutex_lock(&pinfo->pdata->cond_pdata.cond_lock);
+
+	if (enable == ABC_HUB_ENABLED) {
+		SEC_CONN_PRINT("driver enabled.\n");
+		for (i = 0; i < pinfo->pdata->cond_pdata.gpio_cnt; i++) {
+			/*get level value of the gpio pin.*/
+			SEC_CONN_PRINT("gpio level [%d] = %d\n", pinfo->pdata->cond_pdata.irq_gpio[i], gpio_get_value(pinfo->pdata->cond_pdata.irq_gpio[i]));
+		}
+		/*Enable interrupt.*/
+		ret = abc_hub_cond_irq_enable(dev, enable);
+		if (ret < 0)
+			SEC_CONN_PRINT("Interrupt not enabled.\n");
+		pinfo->pdata->cond_pdata.enabled = enable;
+	} else {
+		if (pinfo->pdata->cond_pdata.enabled == ABC_HUB_ENABLED) {
+			for (i = 0; i < pinfo->pdata->cond_pdata.gpio_cnt; i++) {
+				if (pinfo->pdata->cond_pdata.irq_number[i]) {
+					disable_irq(pinfo->pdata->cond_pdata.irq_number[i]);
+					free_irq(pinfo->pdata->cond_pdata.irq_number[i], pinfo);
+				}
+			}
+		}
+		pinfo->pdata->cond_pdata.enabled = enable;
+	}
+	
+	mutex_unlock(&pinfo->pdata->cond_pdata.cond_lock);
+
+
 }
 
 MODULE_DESCRIPTION("Samsung ABC Hub Sub Module1(cond) Driver");

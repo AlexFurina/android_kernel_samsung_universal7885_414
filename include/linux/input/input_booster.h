@@ -4,7 +4,7 @@
 
 #include <linux/pm_qos.h>
 #include <linux/of.h>
-#include <linux/exynos-ucc.h>
+#include <linux/ems_service.h>
 
 #ifdef CONFIG_SCHED_HMP
 #define USE_HMP_BOOST
@@ -41,6 +41,21 @@
 	} \
 }
 
+#define set_qos_dma_latency(req, pm_qos_class, value) { \
+    if(!value){ \
+		if (pm_qos_request_active(req)) {\
+			pr_booster("[Input Booster2] %s      pm_qos_dma_latency_update_request : %d\n", glGage, value); \
+			pm_qos_update_request(req, value); \
+		} else { \
+			pr_booster("[Input Booster2] %s      pm_qos_dma_latency_add_request : %d\n", glGage, value); \
+			pm_qos_add_request(req, pm_qos_class, value); \
+		} \
+	} else { \
+		pr_booster("[Input Booster2] %s      remove_qos_dma_latency\n", glGage); \
+		remove_qos(req); \
+	} \
+}
+
 #define remove_qos(req) { \
 	if (pm_qos_request_active(req)) \
 		pm_qos_remove_request(req); \
@@ -57,38 +72,13 @@
 	} \
 }
 #elif defined USE_EHMP_BOOST
-
 #include <linux/ems.h>
-
-#define DEFAULT_LEVEL 0
-#define INPUT_LEVEL 1
 
 static DEFINE_MUTEX(input_lock);
 int hmp_boost_value = INIT_ZERO;
 
-static struct emstune_mode_request emstune_req_input;
-
-static struct ucc_req ucc_req =
-{
-	.name = "input",
-};
-int ucc_boost_value = INIT_ZERO;
-
-#define set_ucc(enable) { \
-	mutex_lock(&input_lock); \
-	if (enable != current_ucc_boost) { \
-		pr_booster("[Input Booster2] ******      set_ucc : %d ( %s )\n", enable, __FUNCTION__); \
-		if (enable) { \
-			ucc_boost_value++; \
-			ucc_add_request(&ucc_req, INPUT_LEVEL); \
-		} else { \
-			ucc_boost_value--; \
-			ucc_remove_request(&ucc_req);\
-		} \
-		current_ucc_boost = enable; \
-	} \
-	mutex_unlock(&input_lock); \
-}
+static struct kpp kpp_ta;
+static struct kpp kpp_fg;
 
 #define set_hmp(enable) { \
 	mutex_lock(&input_lock); \
@@ -101,17 +91,18 @@ int ucc_boost_value = INIT_ZERO;
 			pr_booster("[Input Booster2] ******      set_ehmp : %d ( %s )\n", enable, __FUNCTION__); \
 			if (enable) { \
 				hmp_boost_value++; \
-				emstune_update_request(&emstune_req_input, INPUT_LEVEL); \
+				kpp_request(STUNE_TOPAPP, &kpp_ta, 1); \
+				kpp_request(STUNE_FOREGROUND, &kpp_fg, 1); \
 			} else { \
 				hmp_boost_value--; \
-				emstune_update_request(&emstune_req_input, DEFAULT_LEVEL); \
+				kpp_request(STUNE_TOPAPP, &kpp_ta, 0); \
+				kpp_request(STUNE_FOREGROUND, &kpp_fg, 0); \
 			} \
 			current_hmp_boost = enable; \
 		} \
 	} \
 	mutex_unlock(&input_lock); \
 }
-
 #else
 #define set_hmp(enable)
 #endif
@@ -119,50 +110,40 @@ int ucc_boost_value = INIT_ZERO;
 #if defined(CONFIG_ARCH_EXYNOS) //______________________________________________________________________________
 #define SET_BOOSTER  { \
 	int value = INPUT_BOOSTER_NULL; \
-	int uccvalue = INPUT_BOOSTER_NULL; \
 	_this->level++; \
 	MAX_T_INPUT_BOOSTER(value, hmp_boost); \
-	MAX_T_INPUT_BOOSTER(uccvalue, ucc_requested_val); \
 	if (value == INPUT_BOOSTER_NULL) { \
 		value = 0; \
 	} \
-	if (uccvalue == INPUT_BOOSTER_NULL) { \
-		uccvalue = 0; \
-	} \
 	set_hmp(value); \
-	set_ucc(uccvalue); \
-	set_qos(&_this->cpu1_qos, PM_QOS_CLUSTER1_FREQ_MIN/*PM_QOS_CPU1_FREQ_MIN*/, _this->param[_this->index].cpu1_freq);  \
-	set_qos(&_this->cpu0_qos, PM_QOS_CLUSTER0_FREQ_MIN/*PM_QOS_CPU0_FREQ_MIN*/, _this->param[_this->index].cpu0_freq);  \
+	set_qos(&_this->cpu_qos, PM_QOS_CLUSTER1_FREQ_MIN/*PM_QOS_CPU_FREQ_MIN*/, _this->param[_this->index].cpu_freq);  \
+	set_qos(&_this->kfc_qos, PM_QOS_CLUSTER0_FREQ_MIN/*PM_QOS_KFC_FREQ_MIN*/, _this->param[_this->index].kfc_freq);  \
 	set_qos(&_this->mif_qos, PM_QOS_BUS_THROUGHPUT, _this->param[_this->index].mif_freq);  \
 	set_qos(&_this->int_qos, PM_QOS_DEVICE_THROUGHPUT, _this->param[_this->index].int_freq);  \
+	set_qos_dma_latency(&_this->dms_latency_qos, PM_QOS_CPU_DMA_LATENCY, _this->param[_this->index].dma_latency);  \
 }
 #define REMOVE_BOOSTER  { \
 	int value = INPUT_BOOSTER_NULL; \
-	int uccvalue = INPUT_BOOSTER_NULL; \
 	_this->level = -1; \
 	MAX_T_INPUT_BOOSTER(value, hmp_boost); \
-	MAX_T_INPUT_BOOSTER(uccvalue, ucc_requested_val); \
 	if (value == INPUT_BOOSTER_NULL) { \
 		value = 0; \
 	} \
-	if (uccvalue == INPUT_BOOSTER_NULL) { \
-		uccvalue = 0; \
-	} \
 	set_hmp(value); \
-	set_ucc(uccvalue); \
-	remove_qos(&_this->cpu1_qos);  \
-	remove_qos(&_this->cpu0_qos);  \
+	remove_qos(&_this->cpu_qos);  \
+	remove_qos(&_this->kfc_qos);  \
 	remove_qos(&_this->mif_qos);  \
 	remove_qos(&_this->int_qos);  \
+	remove_qos(&_this->dms_latency_qos);  \
 }
 #define PROPERTY_BOOSTER(_device_param_, _dt_param_, _time_)  { \
-	_device_param_.cpu1_freq = _dt_param_.cpu1_freq; \
-	_device_param_.cpu0_freq = _dt_param_.cpu0_freq; \
+	_device_param_.cpu_freq = _dt_param_.cpu_freq; \
+	_device_param_.kfc_freq = _dt_param_.kfc_freq; \
 	_device_param_.mif_freq = _dt_param_.mif_freq; \
 	_device_param_.int_freq = _dt_param_.int_freq; \
 	_device_param_.time = _dt_param_._time_; \
 	_device_param_.hmp_boost = _dt_param_.hmp_boost; \
-	_device_param_.ucc_requested_val = _dt_param_.ucc_requested_val; \
+	_device_param_.dma_latency = _dt_param_.dma_latency; \
 }
 #endif //______________________________________________________________________________
 #define GET_BOOSTER_PARAM(_GENDER_, _HEAD_PARAM_, _TAIL_PARAM_) { \
@@ -204,10 +185,6 @@ int ucc_boost_value = INIT_ZERO;
 	if (tail_param != NULL) { \
 		PROPERTY_BOOSTER(dt_gender->pBooster->param[1], (*tail_param), tail_time) \
 	} \
-}
-
-#define INIT_INPUT_EMSTUNE() { \
-	emstune_add_request(&emstune_req_input); \
 }
 
 #define INIT_BOOSTER(_DEVICE_) { \
@@ -256,7 +233,7 @@ static void input_booster_##_DEVICE_##_timeout_work_func(struct work_struct *wor
 	pr_booster("[Input Booster] %s           Timeout : changed  index : %d (%s)\n", HEADGAGE, _this->index, __FUNCTION__); \
 	if (_this->index < param_max) { \
 		pr_booster("[Input Booster] %s           Timeout : changed  index : %d, time : %d (%s)\n", HEADGAGE, _this->index, _this->param[_this->index].time, __FUNCTION__); \
-		pr_booster("[Input Booster] %s           hmp : %d  ucc_requested_val : %d cpu1 : %d (%s)\n", TAILGAGE, _this->param[_this->index].hmp_boost, _this->param[_this->index].ucc_requested_val, _this->param[_this->index].cpu1_freq, __FUNCTION__); \
+		pr_booster("[Input Booster] %s           hmp : %d  dma_latency : %d cpu : %d (%s)\n", TAILGAGE, _this->param[_this->index].hmp_boost, _this->param[_this->index].dma_latency, _this->param[_this->index].cpu_freq, __FUNCTION__); \
 		if (_this->param[(_this->index) ? _this->index-1 : 0].time > 0) { \
 			SET_BOOSTER; \
 			if (_this->change_on_release) { \
@@ -327,28 +304,28 @@ static void input_booster_##_DEVICE_##_reset_booster_work_func(struct work_struc
 	{ \
 		struct t_input_booster_device_tree_gender *dt_gender = &touch_booster_dt; \
 		ssize_t ret; int level; \
-		unsigned int debug_level = 0, cpu1_freq = 0, cpu0_freq = 0, mif_freq = 0, int_freq = 0, hmp_boost = 0, ucc_requested_val = 0, head_time = 0, tail_time = 0; \
+		unsigned int debug_level = 0, cpu_freq = 0, kfc_freq = 0, mif_freq = 0, int_freq = 0, hmp_boost = 0, dma_latency = 0, head_time = 0, tail_time = 0; \
 		struct t_input_booster_device_tree_param *head_param = NULL, *tail_param = NULL; \
 		GET_BOOSTER_PARAM(dt_gender, head_param, tail_param) \
 		debug_level = debug_flag; \
 		level = dt_gender->level; \
 		if (strcmp(#_ATTR_, "head") == 0 && head_param != NULL) { \
-			cpu1_freq = head_param->cpu1_freq; \
-			cpu0_freq = head_param->cpu0_freq; \
+			cpu_freq = head_param->cpu_freq; \
+			kfc_freq = head_param->kfc_freq; \
 			mif_freq = head_param->mif_freq; \
 			int_freq = head_param->int_freq; \
 			hmp_boost = head_param->hmp_boost; \
-			ucc_requested_val = head_param->ucc_requested_val; \
+			dma_latency = head_param->dma_latency; \
 			head_time = head_param->head_time; \
 			tail_time = head_param->tail_time; \
 		} \
 		if (strcmp(#_ATTR_, "tail") == 0 && tail_param != NULL) { \
-			cpu1_freq = tail_param->cpu1_freq; \
-			cpu0_freq = tail_param->cpu0_freq; \
+			cpu_freq = tail_param->cpu_freq; \
+			kfc_freq = tail_param->kfc_freq; \
 			mif_freq = tail_param->mif_freq; \
 			int_freq = tail_param->int_freq; \
 			hmp_boost = tail_param->hmp_boost; \
-			ucc_requested_val = tail_param->ucc_requested_val; \
+			dma_latency = tail_param->dma_latency; \
 			head_time = tail_param->head_time; \
 			tail_time = tail_param->tail_time; \
 		} \
@@ -360,7 +337,7 @@ static void input_booster_##_DEVICE_##_reset_booster_work_func(struct work_struc
 	{ \
 		struct t_input_booster_device_tree_gender *dt_gender = &touch_booster_dt; \
 		int level[1] = {-1}, len; \
-		unsigned int debug_level[1] = {-1}, cpu1_freq[1] = {-1}, cpu0_freq[1] = {-1}, mif_freq[1] = {-1}, int_freq[1] = {-1}, hmp_boost[1] = {-1}, ucc_requested_val[1] = {-1}, head_time[1] = {-1}, tail_time[1] = {-1}; \
+		unsigned int debug_level[1] = {-1}, cpu_freq[1] = {-1}, kfc_freq[1] = {-1}, mif_freq[1] = {-1}, int_freq[1] = {-1}, hmp_boost[1] = {-1}, dma_latency[1] = {-1}, head_time[1] = {-1}, tail_time[1] = {-1}; \
 		struct t_input_booster_device_tree_param *head_param = NULL, *tail_param = NULL; \
 		GET_BOOSTER_PARAM(dt_gender, head_param, tail_param) \
 		len = sscanf _ARGU_; \
@@ -371,22 +348,22 @@ static void input_booster_##_DEVICE_##_reset_booster_work_func(struct work_struc
 		debug_flag = (*debug_level == (unsigned int)(-1)) ? debug_flag : *debug_level; \
 		dt_gender->level = (*level == (unsigned int)(-1)) ? dt_gender->level : *level; \
 		if (*head_time != (unsigned int)(-1) && head_param != NULL) { \
-			head_param->cpu1_freq = (*cpu1_freq == (unsigned int)(-1)) ? head_param->cpu1_freq : *cpu1_freq; \
-			head_param->cpu0_freq = (*cpu0_freq == (unsigned int)(-1)) ? head_param->cpu0_freq : *cpu0_freq; \
+			head_param->cpu_freq = (*cpu_freq == (unsigned int)(-1)) ? head_param->cpu_freq : *cpu_freq; \
+			head_param->kfc_freq = (*kfc_freq == (unsigned int)(-1)) ? head_param->kfc_freq : *kfc_freq; \
 			head_param->mif_freq = (*mif_freq == (unsigned int)(-1)) ? head_param->mif_freq : *mif_freq; \
 			head_param->int_freq = (*int_freq == (unsigned int)(-1)) ? head_param->int_freq : *int_freq; \
 			head_param->hmp_boost = (*hmp_boost == (unsigned int)(-1)) ? head_param->hmp_boost : *hmp_boost; \
-			head_param->ucc_requested_val = (*ucc_requested_val == (unsigned int)(-1)) ? head_param->ucc_requested_val : *ucc_requested_val; \
+			head_param->dma_latency = (*dma_latency == (unsigned int)(-1)) ? head_param->dma_latency : *dma_latency; \
 			head_param->head_time = (*head_time == (unsigned int)(-1)) ? head_param->head_time : *head_time; \
 			head_param->tail_time = (*tail_time == (unsigned int)(-1)) ? head_param->tail_time : *tail_time; \
 		} \
 		if (*tail_time != (unsigned int)(-1) && tail_param != NULL) { \
-			tail_param->cpu1_freq = (*cpu1_freq == (unsigned int)(-1)) ? tail_param->cpu1_freq : *cpu1_freq; \
-			tail_param->cpu0_freq = (*cpu0_freq == (unsigned int)(-1)) ? tail_param->cpu0_freq : *cpu0_freq; \
+			tail_param->cpu_freq = (*cpu_freq == (unsigned int)(-1)) ? tail_param->cpu_freq : *cpu_freq; \
+			tail_param->kfc_freq = (*kfc_freq == (unsigned int)(-1)) ? tail_param->kfc_freq : *kfc_freq; \
 			tail_param->mif_freq = (*mif_freq == (unsigned int)(-1)) ? tail_param->mif_freq : *mif_freq; \
 			tail_param->int_freq = (*int_freq == (unsigned int)(-1)) ? tail_param->int_freq : *int_freq; \
 			tail_param->hmp_boost = (*hmp_boost == (unsigned int)(-1)) ? tail_param->hmp_boost : *hmp_boost; \
-			tail_param->ucc_requested_val = (*ucc_requested_val == (unsigned int)(-1)) ? tail_param->ucc_requested_val : *ucc_requested_val; \
+			tail_param->dma_latency = (*dma_latency == (unsigned int)(-1)) ? tail_param->dma_latency : *dma_latency; \
 			tail_param->head_time = (*head_time == (unsigned int)(-1)) ? tail_param->head_time : *head_time; \
 			tail_param->tail_time = (*tail_time == (unsigned int)(-1)) ? tail_param->tail_time : *tail_time; \
 		} \
@@ -400,7 +377,7 @@ static void input_booster_##_DEVICE_##_reset_booster_work_func(struct work_struc
 		struct t_input_booster_device_tree_gender *dt_gender = dev_get_drvdata(dev); \
 		ssize_t ret = 0; \
 		int level, Arg_count = _COUNT_; \
-		unsigned int cpu1_freq, cpu0_freq, mif_freq, int_freq, hmp_boost, ucc_requested_val, head_time, tail_time, phase_time; \
+		unsigned int cpu_freq, kfc_freq, mif_freq, int_freq, hmp_boost, dma_latency, head_time, tail_time, phase_time; \
 		struct t_input_booster_device_tree_param *head_param = NULL, *tail_param = NULL; \
 		if (dt_gender == NULL) { \
 			return  ret; \
@@ -413,12 +390,12 @@ static void input_booster_##_DEVICE_##_reset_booster_work_func(struct work_struc
 		} else { \
 			if (head_param != NULL) { \
 				level = head_param->ilevels; \
-				cpu1_freq = head_param->cpu1_freq; \
-				cpu0_freq = head_param->cpu0_freq; \
+				cpu_freq = head_param->cpu_freq; \
+				kfc_freq = head_param->kfc_freq; \
 				mif_freq = head_param->mif_freq; \
 				int_freq = head_param->int_freq; \
 				hmp_boost = head_param->hmp_boost; \
-				ucc_requested_val = head_param->ucc_requested_val; \
+				dma_latency = head_param->dma_latency; \
 				head_time = head_param->head_time; \
 				tail_time = head_param->tail_time; \
 				phase_time = head_param->phase_time; \
@@ -430,12 +407,12 @@ static void input_booster_##_DEVICE_##_reset_booster_work_func(struct work_struc
 			if (tail_param != NULL) { \
 				buf = buf + 1; \
 				level = tail_param->ilevels; \
-				cpu1_freq = tail_param->cpu1_freq; \
-				cpu0_freq = tail_param->cpu0_freq; \
+				cpu_freq = tail_param->cpu_freq; \
+				kfc_freq = tail_param->kfc_freq; \
 				mif_freq = tail_param->mif_freq; \
 				int_freq = tail_param->int_freq; \
 				hmp_boost = tail_param->hmp_boost; \
-				ucc_requested_val = tail_param->ucc_requested_val; \
+				dma_latency = tail_param->dma_latency; \
 				head_time = tail_param->head_time; \
 				tail_time = tail_param->tail_time; \
 				phase_time = tail_param->phase_time; \
@@ -450,14 +427,14 @@ static void input_booster_##_DEVICE_##_reset_booster_work_func(struct work_struc
 		struct t_input_booster_device_tree_gender *dt_gender = dev_get_drvdata(dev); \
 		struct t_input_booster_device_tree_infor *dt_infor = (dt_gender) ? dt_gender->pDT : NULL; \
 		int level[1] = {-1}, len; \
-		unsigned int cpu1_freq[1] = {-1}, cpu0_freq[1] = {-1}, mif_freq[1] = {-1}, int_freq[1] = {-1}, hmp_boost[1] = {-1}, ucc_requested_val[1] = {-1}, head_time[1] = {-1}, tail_time[1] = {-1}, phase_time[1] = {-1}; \
+		unsigned int cpu_freq[1] = {-1}, kfc_freq[1] = {-1}, mif_freq[1] = {-1}, int_freq[1] = {-1}, hmp_boost[1] = {-1}, dma_latency[1] = {-1}, head_time[1] = {-1}, tail_time[1] = {-1}, phase_time[1] = {-1}; \
 		len = sscanf _ARGU_; \
 		pr_booster("[Input Booster8] %s buf : %s\n", __FUNCTION__, buf); \
 		if (dt_infor == NULL) { \
 			return  count; \
 		} \
 		if (len != _COUNT_) { \
-			pr_booster("### Keep this format : [level cpu1_freq cpu0_freq mif_freq int_freq hmp_boost ucc_requested_val] (Ex: 1 1600000 950000 0 1500000 667000 333000 1###\n"); \
+			pr_booster("### Keep this format : [level cpu_freq kfc_freq mif_freq int_freq hmp_boost dma_latency] (Ex: 1 1600000 0 1500000 667000 333000 1###\n"); \
 			pr_booster("### Keep this format : [level head_time tail_time phase_time] (Ex: 1 130 500 50 ###\n"); \
 			pr_booster("### Keep this format : [type value] (Ex: 2 1 ###\n"); \
 			return count; \
@@ -470,12 +447,12 @@ static void input_booster_##_DEVICE_##_reset_booster_work_func(struct work_struc
 				int k; \
 				for (k = 0; k < dt_infor->nlevels; k++) { \
 					if (level[0] == dt_infor->param_tables[k].ilevels) { \
-						dt_infor->param_tables[k].cpu1_freq = (*cpu1_freq == (unsigned int)(-1)) ? dt_infor->param_tables[k].cpu1_freq : *cpu1_freq; \
-						dt_infor->param_tables[k].cpu0_freq = (*cpu0_freq == (unsigned int)(-1)) ? dt_infor->param_tables[k].cpu0_freq : *cpu0_freq; \
+						dt_infor->param_tables[k].cpu_freq = (*cpu_freq == (unsigned int)(-1)) ? dt_infor->param_tables[k].cpu_freq : *cpu_freq; \
+						dt_infor->param_tables[k].kfc_freq = (*kfc_freq == (unsigned int)(-1)) ? dt_infor->param_tables[k].kfc_freq : *kfc_freq; \
 						dt_infor->param_tables[k].mif_freq = (*mif_freq == (unsigned int)(-1)) ? dt_infor->param_tables[k].mif_freq : *mif_freq; \
 						dt_infor->param_tables[k].int_freq = (*int_freq == (unsigned int)(-1)) ? dt_infor->param_tables[k].int_freq : *int_freq; \
 						dt_infor->param_tables[k].hmp_boost = (*hmp_boost == (unsigned int)(-1)) ? dt_infor->param_tables[k].hmp_boost : *hmp_boost; \
-						dt_infor->param_tables[k].ucc_requested_val = (*ucc_requested_val == (unsigned int)(-1)) ? dt_infor->param_tables[k].ucc_requested_val : *ucc_requested_val; \
+						dt_infor->param_tables[k].dma_latency = (*dma_latency == (unsigned int)(-1)) ? dt_infor->param_tables[k].dma_latency : *dma_latency; \
 						dt_infor->param_tables[k].head_time = (*head_time == (unsigned int)(-1)) ? dt_infor->param_tables[k].head_time : *head_time; \
 						dt_infor->param_tables[k].tail_time = (*tail_time == (unsigned int)(-1)) ? dt_infor->param_tables[k].tail_time : *tail_time; \
 						dt_infor->param_tables[k].phase_time = (*phase_time == (unsigned int)(-1)) ? dt_infor->param_tables[k].phase_time : *phase_time; \
@@ -521,15 +498,15 @@ enum booster_mode_on_off {
 struct input_value input_events[MAX_EVENTS+1];
 
 struct t_input_booster_param {
-	u32 cpu1_freq;
-	u32 cpu0_freq;
+	u32 cpu_freq;
+	u32 kfc_freq;
 	u32 mif_freq;
 	u32 int_freq;
 
 	u16 time;
 
 	u8 hmp_boost;
-	u32 ucc_requested_val;
+	u32 dma_latency;
 	u8 dummy;
 };
 
@@ -537,10 +514,11 @@ struct t_input_booster {
 	struct mutex lock;
 	struct t_input_booster_param param[2];
 
-	struct pm_qos_request	cpu1_qos;
-	struct pm_qos_request	cpu0_qos;
+	struct pm_qos_request	cpu_qos;
+	struct pm_qos_request	kfc_qos;
 	struct pm_qos_request	mif_qos;
 	struct pm_qos_request	int_qos;
+	struct pm_qos_request	dms_latency_qos;
 
 	struct delayed_work     input_booster_timeout_work[2];
 	struct work_struct      input_booster_set_booster_work;
@@ -560,14 +538,14 @@ struct t_input_booster_device_tree_param {
 	u8      ilevels;
 
 	u8      hmp_boost;
-	u32     ucc_requested_val;
+	u32      dma_latency;
 
 	u16     head_time;
 	u16     tail_time;
 	u16     phase_time;
 
-	u32     cpu1_freq;
-	u32     cpu0_freq;
+	u32     cpu_freq;
+	u32     kfc_freq;
 	u32     mif_freq;
 	u32     int_freq;
 };
@@ -590,16 +568,16 @@ struct t_input_booster_device_tree_gender {
 //______________________________________________________________________________	<<< in DTSI file >>>
 //______________________________________________________________________________	input_booster,type = <4>;	/* BOOSTER_DEVICE_KEYBOARD */
 //______________________________________________________________________________
-struct t_input_booster_device_tree_gender	key_booster_dt = {0, 1,};           // type : 0,  level : 1
-struct t_input_booster_device_tree_gender	touchkey_booster_dt = {1, 1,};      // type : 1,  level : 1
-struct t_input_booster_device_tree_gender	touch_booster_dt = {2, 2,};         // type : 2,  level : 2
-struct t_input_booster_device_tree_gender	multitouch_booster_dt = {3, 1,};    // type : 3,  level : 1
-struct t_input_booster_device_tree_gender	keyboard_booster_dt = {4, 1,};      // type : 4,  level : 1
-struct t_input_booster_device_tree_gender	mouse_booster_dt = {5, 1,};         // type : 5,  level : 1
-struct t_input_booster_device_tree_gender	mouse_wheel_booster_dt = {6, 1,};   // type : 6,  level : 1
-struct t_input_booster_device_tree_gender	hover_booster_dt = {7, 1,};         // type : 7,  level : 1
-struct t_input_booster_device_tree_gender	pen_booster_dt = {8, 1,};           // type : 8,  level : 1
-struct t_input_booster_device_tree_gender	key_two_booster_dt = {9, 1,};       // type : 9,  level : 1
+struct t_input_booster_device_tree_gender	key_booster_dt = {0, 1,};			// type : 0,  level : 1
+struct t_input_booster_device_tree_gender	touchkey_booster_dt = {1, 1,};		// type : 1,  level : 1
+struct t_input_booster_device_tree_gender	touch_booster_dt = {2, 2,};			// type : 2,  level : 2
+struct t_input_booster_device_tree_gender	multitouch_booster_dt = {3, 1,};		// type : 3,  level : 1
+struct t_input_booster_device_tree_gender	keyboard_booster_dt = {4, 1,};		// type : 4,  level : 1
+struct t_input_booster_device_tree_gender	mouse_booster_dt = {5, 1,};			// type : 5,  level : 1
+struct t_input_booster_device_tree_gender	mouse_wheel_booster_dt = {6, 1,};	// type : 6,  level : 1
+struct t_input_booster_device_tree_gender	hover_booster_dt = {7, 1,};			// type : 7,  level : 1
+struct t_input_booster_device_tree_gender	pen_booster_dt = {8, 1,};			// type : 8,  level : 1
+struct t_input_booster_device_tree_gender	key_two_booster_dt = {9, 1,};			// type : 9,  level : 1
 struct t_input_booster_device_tree_infor	*device_tree_infor;
 
 int ndevice_in_dt;
@@ -609,11 +587,11 @@ int ndevice_in_dt;
 unsigned int debug_flag = INIT_ZERO;
 
 SYSFS_CLASS(debug_level, (buf, "%u\n", debug_level), 1)
-SYSFS_CLASS(head, (buf, "%d %u %u %u %u %u %u\n", head_time, cpu1_freq, cpu0_freq, mif_freq, int_freq, hmp_boost, ucc_requested_val), 7)
-SYSFS_CLASS(tail, (buf, "%d %u %u %u %u %u %u\n", tail_time, cpu1_freq, cpu0_freq, mif_freq, int_freq, hmp_boost, ucc_requested_val), 7)
+SYSFS_CLASS(head, (buf, "%d %u %u %u %u %u %u\n", head_time, cpu_freq, kfc_freq, mif_freq, int_freq, hmp_boost, dma_latency), 7)
+SYSFS_CLASS(tail, (buf, "%d %u %u %u %u %u %u\n", tail_time, cpu_freq, kfc_freq, mif_freq, int_freq, hmp_boost, dma_latency), 7)
 SYSFS_CLASS(level, (buf, "%d\n", level), 1)
 SYSFS_DEVICE(level, (buf, "%d\n", level), 1)
-SYSFS_DEVICE(freq, (buf, "%d %u %u %u %u %u %u\n", level, cpu1_freq, cpu0_freq, mif_freq, int_freq, hmp_boost, ucc_requested_val), 7)
+SYSFS_DEVICE(freq, (buf, "%d %u %u %u %u %u %u\n", level, cpu_freq, kfc_freq, mif_freq, int_freq, hmp_boost, dma_latency), 7)
 SYSFS_DEVICE(time, (buf, "%d %u %u %u\n", level, head_time, tail_time, phase_time), 4)
 static ssize_t input_booster_sysfs_device_store_control(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -653,7 +631,6 @@ static struct attribute_group dvfs_attr_group = {
 int TouchIDs[MAX_MULTI_TOUCH_EVENTS];
 char *glGage = HEADGAGE;
 bool current_hmp_boost = INIT_ZERO;
-bool current_ucc_boost = INIT_ZERO;
 
 struct t_input_booster	touch_booster;
 struct t_input_booster	multitouch_booster;

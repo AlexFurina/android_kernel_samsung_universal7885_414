@@ -23,7 +23,7 @@
 #include <linux/time.h>
 #ifdef CONFIG_SEC_PM_DEBUG
 #include <linux/sec_pm_debug.h>
-#endif /* CONFIG_SEC_PM_DEBUG */
+#endif
 
 #include "timekeeping_internal.h"
 
@@ -84,6 +84,6 @@ void tk_debug_account_sleep_time(struct timespec64 *t)
 #ifdef CONFIG_SEC_PM_DEBUG
 	sleep_time_sec += t->tv_sec;
 	sleep_count++;
-#endif /* CONFIG_SEC_PM_DEBUG */
+#endif
 }
 

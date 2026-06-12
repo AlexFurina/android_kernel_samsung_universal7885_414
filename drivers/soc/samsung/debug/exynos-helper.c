@@ -41,10 +41,6 @@
 #include <soc/samsung/acpm_ipc_ctrl.h>
 #endif
 
-#ifdef CONFIG_SEC_DEBUG
-#include <linux/sec_debug.h>
-#endif
-
 extern void (*arm_pm_restart)(char str, const char *cmd);
 
 static struct err_variant arm64_err_type_1[] = {
@@ -238,8 +234,10 @@ static void exynos_cpu_err_parse(u32 reg_idx, u64 reg)
 
 static void exynos_early_panic(void *val)
 {
-	/* FIXME:cramfs hack Chek [HACK] Fix compile error in exynos-helper.c */
-	//exynos_bcm_dbg_stop(PANIC_HANDLE);
+#ifdef CONFIG_SOC_EXYNOS9610
+	exynos_bcm_dbg_stop(PANIC_HANDLE);
+#endif
+// better to guard this (disabled on 7885 kernel)
 }
 
 static void exynos_prepare_panic_entry(void *val)
@@ -250,7 +248,7 @@ static void exynos_prepare_panic_entry(void *val)
 static void exynos_prepare_panic_exit(void *val)
 {
 #if defined(CONFIG_SEC_SIPC_MODEM_IF)
-	ss310ap_send_panic_noti_ext();
+         ss310ap_send_panic_noti_ext();
 #endif
 #if defined(CONFIG_ACPM_DVFS)
 	acpm_stop_log();
@@ -262,7 +260,7 @@ static void exynos_post_panic_entry(void *val)
 	flush_cache_all();
 
 #ifdef CONFIG_EXYNOS_SDM
-	if (dbg_snapshot_is_scratch() && sec_debug_enter_upload())
+	if (dbg_snapshot_is_scratch())
 		exynos_sdm_dump_secure_region();
 #endif
 }
@@ -523,7 +521,7 @@ static void exynos_save_context_exit(void *val)
 static void exynos_start_watchdog(void *val)
 {
 #ifdef CONFIG_S3C2410_WATCHDOG
-	s3c2410wdt_keepalive_emergency(true);
+	s3c2410wdt_keepalive_emergency(true, 0);
 #endif
 }
 
@@ -531,9 +529,9 @@ static void exynos_expire_watchdog(void *val)
 {
 #ifdef CONFIG_S3C2410_WATCHDOG
 #ifdef CONFIG_SEC_DEBUG
-	__s3c2410wdt_set_emergency_reset(100, (unsigned long)val);
+	__s3c2410wdt_set_emergency_reset(100, 0, (unsigned long)val);
 #else
-	s3c2410wdt_set_emergency_reset(100);
+	s3c2410wdt_set_emergency_reset(100, 0);
 #endif
 #endif
 }
@@ -546,7 +544,7 @@ static void exynos_stop_watchdog(void *val)
 static void exynos_kick_watchdog(void *val)
 {
 #ifdef CONFIG_S3C2410_WATCHDOG
-	s3c2410wdt_keepalive_emergency(false);
+	s3c2410wdt_keepalive_emergency(false, 0);
 #endif
 }
 

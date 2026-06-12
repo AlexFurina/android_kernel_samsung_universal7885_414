@@ -79,6 +79,7 @@ static int crypto_diskcipher_check(struct bio *bio)
 	struct crypto_diskcipher *ci = NULL;
 	struct inode *inode = NULL;
 	struct page *page = NULL;
+	struct address_space *mapping;
 
 	if (!bio) {
 		pr_err("%s: doesn't exist bio\n", __func__);
@@ -86,20 +87,30 @@ static int crypto_diskcipher_check(struct bio *bio)
 	}
 
 	/* enc without fscrypt */
-	ci = bio->bi_aux_private;
+	ci = bio->bi_cryptd;
 	if (!ci->inode)
 		return 0;
 	if (ci->algo == 0)
 		return 0;
 
 	page = bio->bi_io_vec[0].bv_page;
-	if (!page || PageAnon(page) || !page->mapping || !page->mapping->host || atomic_read(&ci->inode->i_dio_count))
+	if (!page || PageAnon(page))
 		return 0;
 
-	if (!page->mapping->host->i_crypt_info)
+        if (unlikely(PageSwapCache(page)))
+               return 0;
+
+	mapping = page_mapping(page);
+	if(!mapping)
+		return 0;
+
+	if (!mapping->host || atomic_read(&ci->inode->i_dio_count))
+		return 0;
+
+	if (!mapping->host->i_crypt_info)
                 return 0;
 
-	inode = page->mapping->host;
+	inode = mapping->host;
 	if (ci->inode != inode) {
 		pr_err("%s: fails to invalid inode\n", __func__);
 		return -EINVAL;
@@ -110,12 +121,12 @@ static int crypto_diskcipher_check(struct bio *bio)
 		return -EINVAL;
 	}
 
-	ci = fscrypt_get_diskcipher(inode);
+	ci = fscrypt_get_bio_cryptd(inode);
 	if (!ci) {
 		pr_err("%s: fails to invalid crypto info\n", __func__);
 		return -EINVAL;
 
-	} else if ((bio->bi_aux_private != ci) &&
+	} else if ((bio->bi_cryptd != ci) &&
 			!(bio->bi_flags & REQ_OP_DISCARD)) {
 		pr_err("%s: fails to async crypto info\n", __func__);
 		return -EINVAL;
@@ -132,9 +143,9 @@ struct crypto_diskcipher *crypto_diskcipher_get(struct bio *bio)
 		return NULL;
 	}
 	if (bio->bi_opf & REQ_CRYPT) {
-		if (bio->bi_aux_private) {
+		if (bio->bi_cryptd) {
 			if (!crypto_diskcipher_check(bio)) {
-				diskc = bio->bi_aux_private;
+				diskc = bio->bi_cryptd;
 			} else {
 				pr_err("%s: fail to check diskcipher bio:%pK\n",
 						__func__, bio);
@@ -149,14 +160,22 @@ struct crypto_diskcipher *crypto_diskcipher_get(struct bio *bio)
 	return diskc;
 }
 
+static inline void *bio_has_crypt(struct bio *bio)
+{
+	if (bio && (bio->bi_opf & REQ_CRYPT))
+		return bio->bi_cryptd;
+
+	return NULL;
+}
+
 bool crypto_diskcipher_blk_mergeble(struct bio *bio1, struct bio *bio2)
 {
 	if (!bio_has_crypt(bio1) && !bio_has_crypt(bio2))
 		return true;
 
 	if (bio_has_crypt(bio1) == bio_has_crypt(bio2)) {
-		struct crypto_diskcipher *tfm1 = bio1->bi_aux_private;
-		struct crypto_diskcipher *tfm2 = bio2->bi_aux_private;
+		struct crypto_diskcipher *tfm1 = bio1->bi_cryptd;
+		struct crypto_diskcipher *tfm2 = bio2->bi_cryptd;
 #ifdef CONFIG_CRYPTO_DISKCIPHER_DEBUG
 		struct inode *inode1 = tfm1->inode;
 		struct inode *inode2 = tfm2->inode;
@@ -197,7 +216,7 @@ void crypto_diskcipher_set(struct bio *bio, struct crypto_diskcipher *tfm, u64 d
 {
 	if (bio && tfm) {
 		bio->bi_opf |= REQ_CRYPT;
-		bio->bi_aux_private = tfm;
+		bio->bi_cryptd = tfm;
 		if (dun)
 			bio->bi_iter.bi_dun = dun;
 	}
