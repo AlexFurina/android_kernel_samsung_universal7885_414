@@ -26,5 +26,6 @@
 #define TEM1002X			0x0
 #define TEM1455X			0x2
 #define TEM1456X			0x6
+#define TEM1051X			0x8
 
 #endif /* _EXYNOS_THERMAL_TMU_DT_H */
