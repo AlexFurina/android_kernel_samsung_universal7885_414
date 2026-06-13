@@ -38,6 +38,10 @@
 		*/
 	};
 
+	exynos-helper {
+		compatible = "samsung,exynos-helper";
+	};
+
        exynos-handler {
                compatible = "samsung,exynos-handler";
                interrupts =    <0 157 0>,      /* INTREQ__CPUCL0_nINTERRIRQ */
