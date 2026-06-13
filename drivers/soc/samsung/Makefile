@@ -24,7 +24,8 @@ obj-$(CONFIG_EXYNOS_ACPM)       += acpm/
 obj-$(CONFIG_EXYNOS_RGT)        += exynos-rgt.o
 
 #obj-$(CONFIG_EXYNOS_REBOOT)     += exynos-reboot.o
-obj-$(CONFIG_EXYNOS_REBOOT)     += exynos-reboot_7885.o
+obj-$(CONFIG_SOC_EXYNOS7885)     += exynos-reboot_7885.o
+obj-$(CONFIG_SOC_EXYNOS9810)     += exynos-reboot_9810.o
 
 # CP
 obj-$(CONFIG_SEC_SIPC_MODEM_IF) += pmu-cp.o
