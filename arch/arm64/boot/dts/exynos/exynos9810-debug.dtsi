@@ -1,0 +1,123 @@
+/*
+ * SAMSUNG EXYNOS9810 SoC device tree source
+ *
+ * Copyright (c) 2017 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * SAMSUNG EXYNOS9810 SoC device nodes are listed in this file.
+ * EXYNOS9810 based board files can include this file and provide
+ * values for board specfic bindings.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/ {
+	debug-snapshot-soc {
+		compatible = "debug-snapshot-soc";
+		use_multistage_wdt_irq = <497>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* -----------<< Example >>-------------------
+		dump-info@0x0 {
+			sfr-dump-list = "sfr-dump-cmu-peris", "sfr-dump-cmu-abox";
+			sfr-dump-cmu-peris {
+				reg = <0x10010100 0x4000>;
+				addr = <0x10010100 0x10010104 0x10010108 0xFFFFFFFF>;
+			};
+
+			sfr-dump-cmu-abox {
+				reg = <0x103e0000 0x4000>;
+				addr = <0x103e0100 0x103e0104 0x103e0108 0xFFFFFFFF>;
+			};
+		};
+	};
+
+        coresight@1e000000 {
+		compatible = "exynos,coresight";
+		base = <0x1e000000>;
+		sj-offset = <0x6000>;
+		/* coresight component count */
+		funnel-num = <3>;
+		etf-num = <2>;
+
+		cl0_cpu0@800000 {
+		        device_type = "cs";
+			dbg-offset = <0x810000>;
+		        etm-offset = <0x840000>;
+		        funnel-port = <1 0>;
+		};
+		cl0_cpu1@900000 {
+		        device_type = "cs";
+			dbg-offset = <0x910000>;
+		        etm-offset = <0x940000>;
+		        funnel-port = <1 1>;
+		};
+		cl0_cpu2@A00000 {
+		        device_type = "cs";
+			dbg-offset = <0xA10000>;
+		        etm-offset = <0xA40000>;
+		        funnel-port = <1 2>;
+		};
+		cl0_cpu3@B00000 {
+		        device_type = "cs";
+			dbg-offset = <0xB10000>;
+		        etm-offset = <0xB40000>;
+		        funnel-port = <1 3>;
+		};
+		cl1_cpu0@400000 {
+		        device_type = "cs";
+			dbg-offset = <0x410000>;
+		        etm-offset = <0x440000>;
+		        funnel-port = <0 0>;
+		};
+		cl1_cpu1@500000 {
+		        device_type = "cs";
+			dbg-offset = <0x510000>;
+		        etm-offset = <0x540000>;
+		        funnel-port = <0 1>;
+		};
+		cl1_cpu2@600000 {
+		        device_type = "cs";
+			dbg-offset = <0x610000>;
+		        etm-offset = <0x640000>;
+		        funnel-port = <0 2>;
+		};
+		cl1_cpu3@700000 {
+		        device_type = "cs";
+			dbg-offset = <0x710000>;
+		        etm-offset = <0x740000>;
+		        funnel-port = <0 3>;
+		};
+		cs_etf0: cs_etf0@C000 {
+		        device_type = "etf";
+		        offset = <0x4000>;
+		        funnel-port = <2 0>;
+		};
+		cs_etf1: cs_etf1@5000 {
+		        device_type = "etf";
+		        offset = <0x5000>;
+		        funnel-port = <2 1>;
+		};
+		cs_funnel0@4000 {
+		        device_type = "funnel";
+		        offset = <0x7000>;
+		};
+		cs_funnel1@9000 {
+		        device_type = "funnel";
+		        offset = <0x8000>;
+		};
+		cs_funnelm2@9000 {
+		        device_type = "funnel";
+		        offset = <0x9000>;
+		};
+		cs_etr@A000 {
+		        device_type = "etr";
+			samsung,cs-sfr = <0x1E00c000 0x100>;
+			samsung,q-offset = <0x2c>;
+		        offset = <0xA000>;
+		};
+	};
+};
