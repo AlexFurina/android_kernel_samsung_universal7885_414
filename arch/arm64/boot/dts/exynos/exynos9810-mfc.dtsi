@@ -15,6 +15,7 @@
 
 / {
 	mfc_0: mfc0@178D0000 {
+		/* Basic setting */
 		compatible = "samsung,mfc-v6";
 		reg = <0x0 0x178D0000 0x10000>;
 		interrupts = <0 INTREQ__MFC 0>;
@@ -23,13 +24,20 @@
 		iommus = <&sysmmu_mfc0>, <&sysmmu_mfc1>;
 		samsung,power-domain = <&pd_mfc>;
 		status = "ok";
+
+		/* MFC version */
 		ip_ver = <17>;
+
 		clock_rate = <400000000>;
 		min_rate = <100000>;
 		enc_ts_delta = <1 2167304>;
+
+		/* QoS */
 		num_qos_steps = <8>;
 		max_qos_steps = <9>;
 		max_mb = <4757298>;
+
+		/* QoS table */
 		mfc_qos_table {
 			mfc_qos_variant_0 {
 				thrd_mb = <0>;
