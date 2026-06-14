@@ -537,6 +537,10 @@
 		};
 	};
 
+	cpuhp {
+		compatible = "exynos,cpuhp";
+	};
+
 	psci {
 		compatible = "arm,psci";
 		method = "smc";
