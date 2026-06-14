@@ -4973,6 +4973,23 @@
 		};
 	};
 
+	esg {
+		domain@0 {
+			device_type = "esgov-pol0";
+			shared-cpus = "0-3";
+			pm_qos-min-class = <3>;
+			pm_qos-max-class = <4>;
+			step = <10>;
+		};
+
+		domain@1 {
+			device_type = "esgov-pol6";
+			shared-cpus = "4-7";
+			pm_qos-min-class = <5>;
+			pm_qos-max-class = <6>;
+			step = <12>;
+		};
+	};
 
 	cpufreq {
 		cpufreq_domain0: domain@0 {
