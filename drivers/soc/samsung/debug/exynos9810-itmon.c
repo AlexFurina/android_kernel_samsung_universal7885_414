@@ -20,7 +20,7 @@
 #include <linux/delay.h>
 #include <soc/samsung/exynos-pmu.h>
 #include <soc/samsung/exynos-itmon.h>
-#include <linux/exynos-ss.h>
+#include <linux/debug-snapshot.h>
 #if defined(CONFIG_SEC_SIPC_MODEM_IF)
 #include <soc/samsung/exynos-modem-ctrl.h>
 #endif
@@ -652,7 +652,7 @@ const static char *itmon_nodestring[] = {
 static struct itmon_dev *g_itmon;
 
 /* declare notifier_list */
-static ATOMIC_NOTIFIER_HEAD(itmon_notifier_list);
+ATOMIC_NOTIFIER_HEAD(itmon_notifier_list);
 
 static const struct of_device_id itmon_dt_match[] = {
 	{.compatible = "samsung,exynos-itmon",
@@ -664,9 +664,9 @@ MODULE_DEVICE_TABLE(of, itmon_dt_match);
 #define EXYNOS_PMU_BURNIN_CTRL 		0x0A08
 #define BIT_ENABLE_DBGSEL_WDTRESET 	BIT(25)
 #ifdef CONFIG_S3C2410_WATCHDOG
-extern int s3c2410wdt_set_emergency_reset(unsigned int timeout, int index);
+extern int s3c2410wdt_set_emergency_reset(unsigned int timeout);
 #else
-#define s3c2410wdt_set_emergency_reset(a, b)	do { } while (0)
+#define s3c2410wdt_set_emergency_reset(a)	do { } while (0)
 #endif
 static void itmon_switch_scandump(struct itmon_dev *itmon)
 {
@@ -679,8 +679,8 @@ static void itmon_switch_scandump(struct itmon_dev *itmon)
 
 		ret = exynos_pmu_read(EXYNOS_PMU_BURNIN_CTRL, &val);
 		ret = exynos_pmu_write(EXYNOS_PMU_BURNIN_CTRL, val | BIT_ENABLE_DBGSEL_WDTRESET);
-		s3c2410wdt_set_emergency_reset(3, 0);
-		exynos_ss_spin_func();
+		s3c2410wdt_set_emergency_reset(5);
+		dbg_snapshot_spin_func();
 	}
 }
 
@@ -688,7 +688,7 @@ static void itmon_switch_scandump(struct itmon_dev *itmon)
 static void __itmon_switch_s2d(void)
 {
 	s3c2410wdt_set_emergency_reset(3, 0);
-	exynos_ss_spin_func();
+	dbg_snapshot_spin_func();
 }
 #endif
 
