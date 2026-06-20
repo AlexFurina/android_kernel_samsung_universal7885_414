@@ -42,11 +42,9 @@ struct dbg_log_info {
 /**
  * struct build_info
  */
-#define APSHARE_BUILDINFO_OFFSET				(25 * 4)
-#define BUILDINFO_ELEMENT_SIZE					(24)
 struct build_info {
-	char build_version[BUILDINFO_ELEMENT_SIZE];
-	char build_time[BUILDINFO_ELEMENT_SIZE];
+	char build_version[25];
+	char build_time[25];
 };
 
 /**
@@ -66,16 +64,21 @@ struct acpm_ops {
 	u32 (*get_tx_dest) (u32 ch_num, u32 *index);
 	void (*enqueue_tx) (u32 ch_num, u32 index);
 	u32 (*get_total_size) (void);
-	//s32 (*secure_func) (void *plugin, u32 arg0, u32 arg1,
-                        //u32 arg2, u32 arg3);
+	s32 (*secure_func) (void *plugin, u32 arg0, u32 arg1,
+                        u32 arg2, u32 arg3);
 	s32 (*external_plugin_func) (void *plugin, u32 pid,
 			u32 *arg0, u32 *arg1, u32 *arg2);
 	s32 (*speedy_init)(void);
+#ifdef CONFIG_MULTI_PMIC
+	s32 (*speedy_read)(u8 channel, u32 addr);
+	s32 (*speedy_write)(u8 channel, u32 addr, u32 data);
+#else
 	s32 (*speedy_read)(u32 addr);
 	s32 (*speedy_write)(u32 addr, u32 data);
-	//void (*udelay)(u32 udelay);
-	//void (*intr_enable)(u32 pid, u32 intr);
-	//void (*intr_disable)(u32 pid, u32 intr);
+#endif
+	void (*udelay)(u32 udelay);
+	void (*intr_enable)(u32 pid, u32 intr);
+	void (*intr_disable)(u32 pid, u32 intr);
 };
 
 /**
@@ -90,7 +93,7 @@ struct plugin_ops {
 	s32 (*irq_handler) (u32 intr);
 	s32 (*timer_event_handler) (void);
 	s32 (*extern_func) (u32 *arg0, u32 *arg1, u32 *arg2);
-	//struct build_info info;
+	struct build_info info;
 };
 
 /**
@@ -126,7 +129,7 @@ struct plugin {
 	u32 acpm_ops;
 	u32 plugin_ops;
 #endif
-	//u32 secure_func_mask;
+	u32 secure_func_mask;
         u32 extern_func_mask;
 	struct timer_desc timer;
 	u8 is_attached;

@@ -17,11 +17,26 @@
 #include <soc/samsung/acpm_ipc_ctrl.h>
 #include <linux/debugfs.h>
 #include <linux/slab.h>
+#include <linux/sched/clock.h>
 #include <linux/debug-snapshot.h>
+#include <soc/samsung/exynos-pmu.h>
 
+#define RESET_SEQUENCER_CONFIGURATION		(0x0500)
 
 #define EXYNOS_S2D_DBG_PREFIX	"EXYNOS-S2D-DBG: "
 #define BUF_SIZE		32
+
+#ifdef CONFIG_EXYNOS_REBOOT
+extern void dfd_set_dump_gpr(int en);
+extern void little_reset_control(int en);
+extern void big_reset_control(int en);
+#else
+#define dfd_set_dump_gpr(a)            do { } while(0)
+#define little_reset_control(a)                do { } while(0)
+#define big_reset_control(a)           do { } while(0)
+#endif
+
+#define DEFAULT_S2D_BLOCK		(0xFFFFF3BF)
 
 struct scan2dram_info {
 	struct device_node *np;
@@ -33,10 +48,28 @@ struct scan2dram_info {
 };
 
 static int s2d_en = 0;
+static u32 s2d_sel_block = DEFAULT_S2D_BLOCK;
 static struct scan2dram_info *acpm_s2d;
 static struct dentry *s2d_dbg_root;
 
-static int exynos_acpm_s2d_update_en(void)
+void exynos_acpm_set_s2d_enable(int en)
+{
+	if (en) {
+		dfd_set_dump_gpr(0);
+		little_reset_control(0);
+		big_reset_control(0);
+		exynos_pmu_write(RESET_SEQUENCER_CONFIGURATION, 0x0);
+	}
+
+	s2d_en = en;
+}
+
+void exynos_acpm_select_s2d_blk(u32 sel)
+{
+	s2d_sel_block = sel;
+}
+
+int exynos_acpm_s2d_update_en(void)
 {
 	struct ipc_config config;
 	unsigned int cmd[4] = {0,};
@@ -46,8 +79,11 @@ static int exynos_acpm_s2d_update_en(void)
 	config.cmd = cmd;
 	config.response = true;
 	config.indirection = false;
-	config.cmd[1] = dbg_snapshot_get_item_paddr("log_s2d");
-	config.cmd[2] = s2d_en;
+	config.cmd[1] = exynos_ss_get_item_paddr("log_s2d");
+	if (s2d_en)
+		config.cmd[2] = s2d_sel_block;
+	else
+		config.cmd[2] = 0;
 
 	before = sched_clock();
 	ret = acpm_ipc_send_data(acpm_s2d->ch, &config);
@@ -84,10 +120,10 @@ static ssize_t exynos_s2d_en_dbg_write(struct file *file, const char __user *use
 		return ret;
 
 	if (buf[0] == '0') {
-		s2d_en = 0;
+		exynos_acpm_set_s2d_enable(0);
 		exynos_acpm_s2d_update_en();
 	} else if (buf[0] == '1') {
-		s2d_en = 1;
+		exynos_acpm_set_s2d_enable(1);
 		exynos_acpm_s2d_update_en();
 	}
 
