@@ -473,32 +473,35 @@
 			   /* WAKEUP_STAT	WAKEUP_STAT4 */
 		wakeup_stat = <0x600>,		<0x60c>;
 
-		wakeup_stat_irqno = <0>,	/* [0] EINT */
-			<INTREQ__RTC_ALARM_INT>, <INTREQ__RTC_TIC_INT_0>,
-			<INTREQ__TOP_RTC_ALARM_INT>, <INTREQ__TOP_RTC_TIC_INT_0>,
-			<INTREQ__PCIE_WIFI0>, <INTREQ__PCIE_WIFI1>,
-			<0>, <0>,		/* [7:8] EXT_PCIE_GEN2,3 */
-			<0>, <0>,		/* [9:10] RSVD */
-			<INTREQ__MMC_CARD>,
-			<0>, <0>,		/* [12:13] RSVD */
-			<INTREQ__MCT_G0>,
-			<0>,			/* [15] CEC */
-			<INTREQ__USB3_REMOTE_WAKEUP>, <INTREQ__USB2_REMOTE_WAKEUP>,
-			<0>,			/* [18] RSVD */
-			<INTREQ__MAILBOX_APM2AP>, <INTREQ__CP2AP_WAKEUP>,
-			<INTREQ__GNSS2AP_WAKEUP>, <INTREQ__GNSS2AP_WDOG_RESET>,
-			<INTREQ__ALIVE_GNSS_ACTIVE>, <INTREQ__MAILBOX_CP2AP>,
-			<INTREQ__ALIVE_CP_ACTIVE>, <INTREQ__MAILBOX_GNSS2AP>,
-			<0>, <0>,		/* [27] CORTEXM23_APM [28] RSVD */
-			<INTREQ__S_MAILBOX_CP2AP>,
-			<0>, <0>;		/* [30] RSVD [31] WAKEUP */
-
-		extra_wakeup_stat_irqno {
-			wakeup_stat4 {
-				irqno = <INTREQ__MAILBOX_VTS2CHUB>, <INTREQ__WDT_VTS>,
-				      <INTREQ__SPEEDY_APM>, <INTREQ__UART_BT>,
-				      <INTREQ__UART_BT>, <INTREQ__WDT_CHUB>;
-					/* [6:31] RSVD */
+		wakeup_stats {
+			wakeup_stat {
+				ws-name =
+					"RTC_ALARM",		/* [ 0] */
+					"RTC_TICK",		/* [ 1] */
+					"TRTC_ALARM",		/* [ 2] */
+					"TRTC_TICK",		/* [ 3] */
+					"SPARE",		/* [ 4] */
+					"CMGP2PMU_AP_EINT0",	/* [ 5] */
+					"CMGP2PMU_AP_EINT1",	/* [ 6] */
+					"MAILBOX_APM2AP",	/* [ 7] */
+					"MAILBOX_CP2AP",	/* [ 8] */
+					"MAILBOX_VTS2AP",	/* [ 9] */
+					"S_MAILBOX_CP2AP",	/* [10] */
+					"VTS_WDT",		/* [11] */
+					"EINT",			/* [12] */
+					"EXT_PCIE_GEN2",	/* [13] */
+					"PCIE_GEN2",		/* [14] */
+					"USB_REWA",		/* [15] */
+					"USBDP",		/* [16] */
+					"MMC_CARD",		/* [17] */
+					"TIMER";		/* [18] */
+			};
+			wakeup2_stat {
+				ws-name =
+					"UART_BT_CTSn",		/* [ 0] */
+					"UART_BT_RXD",		/* [ 1] */
+					"USB20_PHY_FS_VMINUS",	/* [ 2] */
+					"USB20_PHY_FS_VPLUS";	/* [ 3] */
 			};
 		};
 	};
