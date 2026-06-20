@@ -470,8 +470,11 @@
 		usbl2_suspend_available = <1>;	/* SYS_SLEEP_AUD_ON */
 		usbl2_suspend_mode_idx = <12>;	/* SYS_SLEEP_AUD_ON */
 		conn_req_offset = <0x00c0>;	/* PMU_ALIVE__CONNECT_REQ_STATUS */
-			   /* WAKEUP_STAT	WAKEUP_STAT4 */
-		wakeup_stat = <0x600>,		<0x60c>;
+	};
+
+	exynos-pm-extra {
+		compatible = "samsung,exynos-pm-extra";
+		wakeup_stat = <0x600 0x60c>;
 
 		wakeup_stats {
 			wakeup_stat {
