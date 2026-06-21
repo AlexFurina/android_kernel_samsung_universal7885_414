@@ -995,7 +995,7 @@ usi_mode = "hsi2c0" or "hsi2c1" or "spi" or "uart"
 	supports-8bit;
 	supports-cmd23;
 	supports-erase;
-	supports-hs400-enhanced-strobe;
+	mmc-hs400-enhanced-strobe;
 	card-init-hwacg-ctrl;
 	support-cmdq;
 	qos-dvfs-level = <100000>;
