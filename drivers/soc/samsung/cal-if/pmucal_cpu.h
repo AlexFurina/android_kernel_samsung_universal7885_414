@@ -30,5 +30,6 @@ extern unsigned int pmucal_cluster_list_size;
 #ifdef CONFIG_FLEXPMU
 extern unsigned int cpu_inform_c2;
 extern unsigned int cpu_inform_cpd;
+extern unsigned int pmucal_sys_powermode[];
 #endif
 #endif
