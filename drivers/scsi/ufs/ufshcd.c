@@ -900,7 +900,7 @@ static inline void ufshcd_hba_start(struct ufs_hba *hba)
 	ufshcd_writel(hba, CONTROLLER_ENABLE, REG_CONTROLLER_ENABLE);
 }
 
-#ifdef CUSTOMIZE_UPIU_FLAGS
+#if 0
 SIO_PATCH_VERSION(UPIU_customize, 1, 1, "");
 
 /* IOPP-ufs_cp-v1.0.4.9 */
@@ -2261,9 +2261,9 @@ static void ufshcd_prepare_req_desc_hdr(struct ufshcd_lrb *lrbp,
 		data_direction = UTP_NO_DATA_TRANSFER;
 		*upiu_flags = UPIU_CMD_FLAGS_NONE;
 	}
-
+#if 0
 	set_customized_upiu_flags(lrbp, upiu_flags);
-
+#endif
 	dword_0 = data_direction | (lrbp->command_type
 				<< UPIU_COMMAND_TYPE_OFFSET);
 	if (lrbp->intr_cmd)

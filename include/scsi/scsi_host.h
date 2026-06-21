@@ -732,6 +732,7 @@ struct Scsi_Host {
 #ifdef CONFIG_USB_STORAGE_DETECT
 	unsigned int  by_usb;
 #endif
+	unsigned int  by_ufs;
 
 	/*
 	 * We should ensure that this is aligned, both for better performance

@@ -13,12 +13,8 @@
 #define _UFS_EXYNOS_H_
 
 #include <linux/pm_qos.h>
-#ifdef CONFIG_SOC_EXYNOS9610
-#include "ufs-cal-9610.h"
-#else
-#include "ufs-cal-9810.h"
-#endif
 #include <crypto/fmp.h>
+#include "ufs-cal-9810.h"
 
 #define UFS_VER_0004	4
 #define UFS_VER_0005	5
@@ -463,8 +459,32 @@ struct ufs_phy_cfg {
 	u32 lyr;
 };
 
+struct exynos_ufs_soc {
+	struct ufs_phy_cfg *tbl_phy_init;
+	struct ufs_phy_cfg *tbl_post_phy_init;
+	struct ufs_phy_cfg *tbl_calib_of_pwm;
+	struct ufs_phy_cfg *tbl_calib_of_hs_rate_a;
+	struct ufs_phy_cfg *tbl_calib_of_hs_rate_b;
+	struct ufs_phy_cfg *tbl_post_calib_of_pwm;
+	struct ufs_phy_cfg *tbl_post_calib_of_hs_rate_a;
+	struct ufs_phy_cfg *tbl_post_calib_of_hs_rate_b;
+	struct ufs_phy_cfg *tbl_lpa_restore;
+	struct ufs_phy_cfg *tbl_pre_clk_off;
+	struct ufs_phy_cfg *tbl_post_clk_on;
+	struct ufs_phy_cfg *tbl_lane1_sq_off;
+};
+
 struct exynos_ufs_phy {
 	void __iomem *reg_pma;
+	void __iomem *reg_pmu;
+	struct exynos_ufs_soc *soc;
+};
+
+#define NUM_OF_SYSREG 1
+struct exynos_ufs_sys {
+	void __iomem *reg_sys[NUM_OF_SYSREG];
+	u32 mask[NUM_OF_SYSREG];
+	u32 bits[NUM_OF_SYSREG];
 };
 
 struct exynos_ufs_clk_info {
@@ -503,12 +523,6 @@ struct exynos_ufs_debug {
 	struct exynos_ufs_misc_log misc;
 };
 
-struct exynos_access_cxt {
-	u32 offset;
-	u32 mask;
-	u32 val;
-};
-
 struct exynos_ufs {
 	struct device *dev;
 	struct ufs_hba *hba;
@@ -516,9 +530,6 @@ struct exynos_ufs {
 	void __iomem *reg_hci;
 	void __iomem *reg_unipro;
 	void __iomem *reg_ufsp;
-
-	struct regmap *pmureg;
-	struct regmap *sysreg;
 
 	struct clk *clk_hci;
 	struct clk *pclk;
@@ -533,7 +544,7 @@ struct exynos_ufs {
 	int num_tx_lanes;
 
 	struct exynos_ufs_phy phy;
-	struct notifier_block tcxo_nb;
+	struct exynos_ufs_sys sys;
 	struct uic_pwr_mode req_pmd_parm;
 	struct uic_pwr_mode act_pmd_parm;
 
@@ -557,10 +568,6 @@ struct exynos_ufs {
 	int idle_ip_index;
 
 	u32 hw_rev;
-
-	u32 tcxo_ex_ctrl;			/* TCXO exclusive control */
-	struct exynos_access_cxt cxt_iso;	/* phy isolation */
-	struct exynos_access_cxt cxt_coherency;	/* io coherency */
 
 	struct pm_qos_request	pm_qos_int;
 	s32			pm_qos_int_value;
@@ -642,13 +649,6 @@ extern int exynos_ufs_init_dbg(struct ufs_hba *hba);
 extern void exynos_ufs_show_uic_info(struct ufs_hba *hba);
 extern void exynos_ufs_cmd_log_start(struct ufs_hba *hba, struct scsi_cmnd *cmd);
 extern void exynos_ufs_cmd_log_end(struct ufs_hba *hba, int tag);
-
-/* TCXO UFS */
-enum shared_resource_owner {
-        OWNER_FIRST,
-        OWNER_SECOND,
-        OWNER_MAX,
-};
 
 #ifndef __EXYNOS_UFS_VS_DEBUG__
 #define __EXYNOS_UFS_VS_DEBUG__
