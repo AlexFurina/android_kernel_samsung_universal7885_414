@@ -374,8 +374,9 @@
 			};
 
 			sec_thermistor@0 {
-				compatible = "samsung,sec-ap-thermistor";
+				compatible = "samsung,sec-thermistor";
 				status = "okay";
+				thermistor_name = "sec-ap-thermistor";
 
 				adc_array = <263 308 366 439 518 614 709 854 977 1145
 					1343 1535 1746 1953 2171 2398 2609 2796 2989 3115
