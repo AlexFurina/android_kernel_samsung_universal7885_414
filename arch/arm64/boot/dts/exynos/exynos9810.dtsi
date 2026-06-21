@@ -4908,6 +4908,8 @@
 		#define	AARCH64_MODE			0
 		#define AARCH32_MODE			1
 
+		device_type = "cpufreq_ufc";
+
 		domain@0 {
 			device_type = "cpufreq-userctrl";
 			shared-cpus = "0-3";
