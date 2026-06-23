@@ -275,7 +275,7 @@ static void simulate_QDP(char *arg)
 {
 	pr_crit("%s()\n", __func__);
 
-	s3c2410wdt_set_emergency_reset(10);
+//	s3c2410wdt_set_emergency_reset(10);
 
 	mdelay(DELAY_TIME);
 
