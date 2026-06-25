@@ -1,21 +1,18 @@
 /*
  * sec_cisd.h
- * Samsung Mobile CISD Header
+ * Samsung Mobile Charger Header
  *
- * Copyright (C) 2020 Samsung Electronics, Inc.
+ * Copyright (C) 2015 Samsung Electronics, Inc.
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
  *
  */
 #ifndef __SEC_CISD_H
@@ -85,9 +82,9 @@ enum cisd_data {
 	CISD_DATA_SAFETY_TIMER,
 	CISD_DATA_VSYS_OVP,
 	CISD_DATA_VBAT_OVP,
-	CISD_DATA_AFC_FAIL,
+	CISD_DATA_USB_OVERHEAT_RAPID_CHANGE,
 	CISD_DATA_BUCK_OFF,
-	CISD_DATA_WATER_DETECT,
+	CISD_DATA_USB_OVERHEAT_ALONE,
 
 	CISD_DATA_DROP_VALUE,
 
@@ -134,9 +131,9 @@ enum cisd_data_per_day {
 	CISD_DATA_SAFETY_TIMER_PER_DAY, /* 32 */
 	CISD_DATA_VSYS_OVP_PER_DAY,
 	CISD_DATA_VBAT_OVP_PER_DAY,
-	CISD_DATA_AFC_FAIL_PER_DAY,
+	CISD_DATA_USB_OVERHEAT_RAPID_CHANGE_PER_DAY,
 	CISD_DATA_BUCK_OFF_PER_DAY,
-	CISD_DATA_WATER_DETECT_PER_DAY,
+	CISD_DATA_USB_OVERHEAT_ALONE_PER_DAY,
 	CISD_DATA_DROP_VALUE_PER_DAY,
 
 	CISD_DATA_MAX_PER_DAY,
@@ -157,28 +154,21 @@ enum {
 	WC_DATA_MAX,
 };
 
-enum {
-	/* 0x01~1F : Single Port */
-	SNGL_NOBLE = 0x10,
-	SNGL_VEHICLE,
-	SNGL_MINI,
-	SNGL_ZERO,
-	SNGL_DREAM,
-	/* 0x20~2F : Multi Port */
-	/* 0x30~3F : Stand Type */
-	STAND_HERO = 0x30,
-	STAND_DREAM,
-	/* 0x40~4F : External Battery Pack */
-	EXT_PACK = 0x40,
-	EXT_PACK_TA,
-
-	/* 0x50~6F : Reserved */
-	TX_TYPE_MAX = 0x6F,
-};
-
 extern const char *cisd_data_str[];
-extern const char *cisd_wc_data_str[];
 extern const char *cisd_data_str_d[];
+
+#define PAD_INDEX_STRING	"INDEX"
+#define PAD_INDEX_VALUE		1
+#define PAD_JSON_STRING		"PAD_0x"
+#define MAX_PAD_ID			0xFF
+
+struct pad_data {
+	unsigned int id;
+	unsigned int count;
+
+	struct pad_data* prev;
+	struct pad_data* next;
+};
 
 struct cisd {
 	unsigned int cisd_alg_index;
@@ -218,9 +208,34 @@ struct cisd {
 	unsigned int max_voltage_thr;
 
 	/* Big Data Field */
-	int data[CISD_DATA_MAX_PER_DAY];
-	int wc_data[WC_DATA_MAX];
 	int capacity_now;
+	int data[CISD_DATA_MAX_PER_DAY];
+
+	struct mutex padlock;
+	struct pad_data* pad_array;
+	unsigned int pad_count;
 };
+
+extern struct cisd *gcisd;
+static inline void set_cisd_data(int type, int value)
+{
+	if (gcisd && (type >= CISD_DATA_RESET_ALG && type < CISD_DATA_MAX_PER_DAY))
+		gcisd->data[type] = value;
+}
+static inline int get_cisd_data(int type)
+{
+	if (!gcisd || (type < CISD_DATA_RESET_ALG || type >= CISD_DATA_MAX_PER_DAY))
+		return -1;
+
+	return gcisd->data[type];
+}
+static inline void increase_cisd_count(int type)
+{
+	if (gcisd && (type >= CISD_DATA_RESET_ALG && type < CISD_DATA_MAX_PER_DAY))
+		gcisd->data[type]++;
+}
+
+void init_cisd_pad_data(struct cisd *cisd);
+void count_cisd_pad_data(struct cisd *cisd, unsigned int pad_id);
 
 #endif /* __SEC_CISD_H */

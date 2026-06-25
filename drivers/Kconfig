@@ -178,6 +178,8 @@ source "drivers/ipack/Kconfig"
 
 source "drivers/battery_v2/Kconfig"
 
+source "drivers/ccic/Kconfig"
+
 source "drivers/reset/Kconfig"
 
 source "drivers/fmc/Kconfig"

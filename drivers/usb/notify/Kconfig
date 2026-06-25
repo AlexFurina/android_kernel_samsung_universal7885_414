@@ -118,19 +118,17 @@ config USB_CCIC_NOTIFIER_USING_QC
 config USB_AUDIO_ENHANCED_DETECT_TIME
 	bool "USB audio enhanced detect time"
 	depends on USB_NOTIFY_LAYER
-	depends on !SEC_FACTORY
 	help
 	 Added uevent for usb audio device(bundle)
 	 uevent includes path, card number, vid, pid
 	 The usb framework gets this uevent.
 	 It is made by samsung.
 
-config USB_HOST_CERTI
-	bool "USB Embedded host certification"
-	depends on USB_NOTIFY_LAYER
-	depends on !SEC_FACTORY
+config USB_HOST_RELOAD_FTDI
+	bool "USB Host reload For FTDI"
+	depends on USB
 	help
-	 Added uevent for usb embedded host certification
-	 uevent includes information of notification
-	 The usb framework gets this uevent.
-	 It is made by samsung.
+	 USB Host driver Reload Feature for FTDI.
+	 This feature is for GTA3 FTDI stuck issue.
+	 If host driver has stuck issue by FTDI,
+	 please use this feature,
