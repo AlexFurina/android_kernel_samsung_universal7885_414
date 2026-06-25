@@ -350,6 +350,34 @@ int dwc3_exynos_vbus_event(struct device *dev, bool vbus_active)
 }
 EXPORT_SYMBOL_GPL(dwc3_exynos_vbus_event);
 
+/**
+ * dwc3_exynos_start_ldo - received ldo control event.
+ */
+int dwc3_exynos_start_ldo(struct device *dev, bool on)
+{
+#if 0 // temp
+	struct dwc3_exynos	*exynos;
+	struct dwc3_exynos_rsw	*rsw;
+	struct otg_fsm		*fsm;
+
+	dev_dbg(dev, "%s, %s\n", __func__, on ? "on" : "off");
+
+	exynos = dev_get_drvdata(dev);
+	if (!exynos)
+		return -ENOENT;
+
+	rsw = &exynos->rsw;
+
+	fsm = rsw->fsm;
+	if (!fsm)
+		return -ENOENT;
+
+	dwc3_otg_ldo_control(fsm, on);
+#endif
+	return 0;
+}
+EXPORT_SYMBOL_GPL(dwc3_exynos_start_ldo);
+
 static int dwc3_exynos_register_phys(struct dwc3_exynos *exynos)
 {
 	struct usb_phy_generic_platform_data pdata;

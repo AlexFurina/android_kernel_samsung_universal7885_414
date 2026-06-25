@@ -1,23 +1,3 @@
-/*
- *  battery_notifier.c
- *  Samsung Mobile Battery Notifier Driver
- *
- * Copyright (C) 2017 Samsung Electronics, Inc.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
- */
 #include <linux/device.h>
 
 #include <linux/notifier.h>
@@ -80,7 +60,7 @@ int charger_notifier_unregister(struct notifier_block *nb)
 	return ret;
 }
 
-int bat_pdic_notifier_register(struct notifier_block *nb, notifier_fn_t notifier,
+int pdic_notifier_register(struct notifier_block *nb, notifier_fn_t notifier,
 			pdic_notifier_device_t listener)
 {
 	int ret = 0;
@@ -106,7 +86,7 @@ int bat_pdic_notifier_register(struct notifier_block *nb, notifier_fn_t notifier
 	return ret;
 }
 
-int bat_pdic_notifier_unregister(struct notifier_block *nb)
+int pdic_notifier_unregister(struct notifier_block *nb)
 {
 	int ret = 0;
 
@@ -188,7 +168,7 @@ static void pdic_notifier_set_property(struct pdic_notifier_struct *value)
 	}
 }
 
-void bat_pdic_notifier_call(struct pdic_notifier_struct *value)
+void pdic_notifier_call(struct pdic_notifier_struct *value)
 {
 	/* pdic's event broadcast */
 	pdic_notifier_set_property(value);

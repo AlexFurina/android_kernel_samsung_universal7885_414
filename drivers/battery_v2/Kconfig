@@ -17,13 +17,6 @@ config BATTERY_SAMSUNG_V2
 	 To see battery-related functions,
 	 refer to sec_charging_common.h
 
-config CHARGING_VZWCONCEPT
-	tristate "VZW concept about the charging"
-	default n
-	depends on BATTERY_SAMSUNG
-	help
-	 Say Y to include support for the VZW concepts.
-
 config BATTERY_SWELLING
 	bool "prevent battery swelling"
 	help
@@ -41,38 +34,26 @@ config CALC_TIME_TO_FULL
 	help
 	  Say Y to use calc time to full function.
 
-config SW_SELF_DISCHARGING
-	bool "enable sw_self_discharging"
-	default n
-	help
-	  Say Y to enable CONFIG_SW_SELF_DISCHARGING
-
 config BATTERY_AGE_FORECAST
 	tristate "battery age forecast"
 	default n
 	depends on BATTERY_SWELLING
 	help
-	Say Y to use calc time to full function.
+	Say Y to use battery age forecast
 
 config BATTERY_AGE_FORECAST_DETACHABLE
 	tristate "battery age forecast for detachable"
 	default n
 	select BATTERY_AGE_FORECAST
 	help
-	 Say Y to use battery age forecast for detachable battery models.
-	 In detachable battery models the battery cycles
-	 are calculated based on the RIL time to give an estimate
-	 on weeks that the battery has been used to determine aging.
+	Say Y to use battery age forecast for detachable
 
-config FUELGAUGE_ASOC_FROM_CYCLES
-	bool "FUELGAUGE ASOC output based on mapping with battery cycles"
+config BATTERY_AGE_FORECAST_B2B
+	tristate "battery age forecast for B2B"
 	default n
-	depends on BATTERY_AGE_FORECAST
+	select BATTERY_AGE_FORECAST
 	help
-	 Say Y to enable support for the mapping of ASOC with charging cycles.
-	 Support for this feature implies that a mapping table has been shared
-	 from HW team and big data side. This feature is providing
-	 support for platform required battery health monitoring concepts.
+	Say Y to use battery age forecast for B2B
 
 config MULTI_CHARGING
 	bool "support for multi charger ICs"
@@ -105,22 +86,11 @@ config AFC_CURR_CONTROL_BY_TEMP
 	help
 	 Say Y to set afc current control by temp
 
-config BATTERY_CISD
-	bool "support for cisd"
-	help
+ config BATTERY_CISD
+	 bool "support for cisd"
+	 help
 	 Say Y to include support for cisd
 	 cisd means cell internal short detection
-
-config FG_FULLCAP_FROM_BATTERY
-	bool "support Fuelgauge FULLCAP measurment concept via battery driver"
-	default n
-	depends on BATTERY_CISD
-	help
-	 Say Y to enable support for Fuelgauge (FG) FULLCAP
-	 measurement directly from the battery driver.
-	 This is an approximation of the remaining battery
-	 capacity. It is shouldn't be enabled if the FG
-	 supports this internally.
 
 # Fuel Gauge
 
@@ -251,6 +221,15 @@ config FUELGAUGE_MAX77865
 	 for MAXIM MAX77865 fuel gauge driver.
 	 This fuel-gauge can be used in coulomb-counting mode.
 
+config FUELGAUGE_MAX77705
+	tristate "MAX77705 fuel gauge driver"
+	default n
+	depends on BATTERY_SAMSUNG
+	help
+	 Say Y to include support
+	 for MAXIM MAX77705 fuel gauge driver.
+	 This fuel-gauge can be used in coulomb-counting mode.
+
 config FUELGAUGE_MAX77823_VOLTAGE_TRACKING
 	tristate "use MAX77823 fuel gauge only as voltage tracking"
 	default n
@@ -270,56 +249,6 @@ config FUELGAUGE_MAX77823_COULOMB_COUNTING
 	 as coulomb counting (including voltage tracking).
 	 This mode is for target that consumes high current
 	 like tablet.
-
-config FUELGAUGE_S2MU205
-	tristate "S2MU205 fuel gauge driver"
-	default n
-	depends on (MFD_S2MU205) && I2C
-	help
-	 Say Y to include support
-	 for S.LSI S2MU205 fuel gauge driver.
-	 Ths fuel-gauge supports current tracking and
-	 voltage tracking to model the battery SOC.
-
-config FUELGAUGE_S2MU106
-	tristate "S2MU106 fuel gauge driver"
-	default n
-	depends on (MFD_S2MU106) && I2C
-	help
-	 Say Y to include support
-	 for S.LSI S2MU106 fuel gauge driver.
-	 Ths fuel-gauge supports current tracking and
-	 voltage tracking to model the battery SOC.
-
-config FUELGAUGE_S2MU004
-	tristate "S2MU004 fuel gauge driver"
-	default n
-	depends on (MFD_S2MU004) && I2C
-	help
-	 Say Y to include support
-	 for S.LSI S2MU004 fuel gauge driver.
-	 Ths fuel-gauge supports current tracking and
-	 voltage tracking to model the battery SOC.
-
-config FUELGAUGE_S2MU005
-	tristate "S2MU005 fuel gauge driver"
-	default n
-	depends on BATTERY_SAMSUNG
-	help
-	 Say Y to include support
-	 for S.LSI S2MU005 fuel gauge driver.
-	 Ths fuel-gauge supports current tracking and
-	 voltage tracking to model the battery SOC.
-
-config S2MU005_VOLT_MODE_TUNING
-	tristate "S2MU005 volt mode tuning"
-	default n
-	depends on FUELGAUGE_S2MU005
-	help
-	 Say Y to include support 0x13
-	 register volt tunning, so the value should be
-	 existed in device tree to prevent wrong
-	 fuelgauge parameter reading.
 
 # Charger
 
@@ -403,16 +332,6 @@ config CHARGER_BQ24260
 	 This driver source code implemented
 	 all functions for BQ24260 charger.
 
-config CHARGER_BQ25898S
-	tristate "BQ25898S charger driver"
-	default n
-	depends on BATTERY_SAMSUNG
-	help
-	 Say Y to include support
-	 for TI BQ25898S charger driver.
-	 This driver source code implemented
-	 all functions for BQ25898S charger.
-
 config CHARGER_MAX77693
 	tristate "MAX77693 battery charger support"
 	depends on MFD_MAX77693 && I2C
@@ -452,6 +371,26 @@ config CHARGER_MAX77865
 	help
 	  Say Y here to enable support for the MAX77865 charger
 
+config CHARGER_MAX77705
+	tristate "MAX77705 battery charger support"
+	depends on BATTERY_SAMSUNG
+	help
+	  Say Y here to enable support for the MAX77705 charger
+
+config CHARGER_MAX77705_OTG_LIMIT
+	bool "enable for controlling limitation"
+	default n
+	depends on CHARGER_MAX77705
+	help
+	  Say Y to control limitation
+
+config MAX77705_CHECK_B2SOVRC
+	bool "enable for check B2SOVRC"
+	default n
+	depends on CHARGER_MAX77705
+	help
+	  Say Y to check B2SOVRC
+
 config CHARGER_MAX77804
 	tristate "MAX77804 battery charger support"
 	depends on (MFD_MAX77804 || MFD_MAX77804K) && I2C
@@ -477,81 +416,6 @@ config CHARGER_S2MU003
           Say Y here to enable support for the S2MU003 charger
           S2MU003 incluse pmic, led driver.
           You have to define MFD_S2MU003
-
-config CHARGER_S2MU106
-	tristate "S2MU106 charger support"
-	depends on (MFD_S2MU106) && I2C
-	help
-	 Say Y here to enable support for the S2MU106 charger.
-	 S2MU106 charger is an AFC compatible charging IC.
-	 S2MU106 charger is dependent on MFD_S2MU106
-	 so it needs to be defined.
-
-config CHARGER_S2MU205
-	tristate "S2MU205 charger support"
-	depends on (MFD_S2MU205) && I2C
-	help
-	 Say Y here to enable support for the S2MU205 charger.
-	 S2MU205 charger is an AFC compatible charging IC.
-	 S2MU205 charger is dependent on MFD_S2MU205
-	 so it needs to be defined.
-
-config PM_S2MU106
-	tristate "S2MU106 power meter support"
-	depends on (MFD_S2MU106) && I2C
-	help
-	 Say Y here to enable support for the S2MU106 power meter.
-	 S2MU106 power meter is dependent on MFD_S2MU106
-	 so it needs to be defined.
-
-config CHARGER_S2MU004
-	tristate "S2MU004 charger support"
-	depends on (MFD_S2MU004) && I2C
-	help
-	 Say Y here to enable support for the S2MU004 charger.
-	 S2MU004 charger is an AFC compatible charging IC.
-	 S2MU004 charger is dependent on MFD_S2MU004
-	 so it needs to be defined.
-
-config CHARGER_S2MU004_IVR_IRQ
-	bool "Enable IVR IRQ support for S2MU004 CHARGER IC"
-	default n
-	depends on CHARGER_S2MU004
-	help
-	 Say Y here to enable IVR IRQ for S2MU004 charger.
-	 IVR IRQ is used to detect input current reduction
-	 that the IC is automatically performing so that the new
-	 currents are also set and propagated in SW.
-	 This is necessary to support Slow Charging concept.
-
-config CHARGER_S2MU005
-	tristate "S2MU005 charger support"
-	depends on (MFD_S2MU005) && I2C
-	help
-	 Say Y here to enable support for the S2MU005 charger
-	 S2MU005 includes pmic, led driver.
-	 S2MU004 charger is dependent on MFD_S2MU004
-	 so it needs to be defined.
-
-config S2MU005_INNER_BATTERY
-	tristate "S2MU005 inner battery type"
-	depends on CHARGER_S2MU005
-	help
-	 Say Y here to enable support for the conditional execution
-	 of code related to in-battery models using S2MU005 IFPMIC.
-	 Some features of S2MU005 might not be necessary to be run for in-battery models.
-	 Dependent on CHARGER_S2MU005
-
-config S2MU005_DISABLE_BUCK_MODE
-	bool "DISABLE buck on mode in S2MU005 charger"
-	default n
-	depends on CHARGER_S2MU005
-	help
-	 Say Y to disable use of buck on mode in S2MU005 IFPMIC.
-	 When BUCK ON only mode is used it can have side-effects such as LCD flicker because of VSYS overshoot.
-	 If model has to be compliant with BC1.2 spec we need to use this feature.
-	 Enable feature based on model requirements.
-
 config CHARGER_DA9155
 	tristate "DA9155 charger driver"
 	default n
@@ -565,6 +429,13 @@ config WIRELESS_CHARGER_HIGH_VOLTAGE
 	depends on BATTERY_SAMSUNG && I2C
 	help
 	  Say Y here to enable support for the wireless charger charger
+	  driver.
+
+config WIRELESS_NO_HV
+	tristate "wireless no hv"
+	depends on BATTERY_SAMSUNG && I2C
+	help
+	  Say Y here to disable HV wireless charging
 	  driver.
 
 config CS100_JPNCONCEPT
@@ -616,6 +487,13 @@ config AFC_CHARGER_MODE
 	help
 	  Say Y to include support for sec afc charging support
 
+config SUPPORT_HV_CTRL
+	bool "afc charging support in sec battery driver"
+	default n
+	depends on AFC_CHARGER_MODE
+	help
+	  Say Y to include support for sec afc charging support
+
 config SAMSUNG_LPM_MODE
 	bool "Off charging mode support in sec battery driver"
 	default n
@@ -655,34 +533,10 @@ config ENABLE_100MA_CHARGING_BEFORE_USB_CONFIGURED
 	help
 	  Say Y to enable 100mA before usb configured
 
-config ABNORMAL_BAT_THM_WA
-	bool "enable SW Workaround for abnormal jump in battery thermistor ADC"
-	default n
+config WIRELESS_FIRMWARE_65
+	tristate "p9220 battery charger support"
+	depends on BATTERY_SAMSUNG
 	help
-	  Say Y to enable SW Workaround for abnormal jump in battery thermistor ADC
+	  Say Y here to enable support for the wireless charger firmware update
+	  wireless charger IC firmware update.
 
-config S2MU004_MODE_CHANGE_BY_TOPOFF
-	bool "enable s2mu004 mode change by topoff"
-	default n
-	help
-	  Say Y to enable s2mu004 mode change by topoff
-	  
-config A10_FACTORY_MAX_SOC
-	bool "enable maximum store mode SOC in factory binary"
-	default n
-	help
-	  Say Y to enable  maximum store mode SOC in factory binary
-
-config LSI_AGING_FUELGAUGE
-	bool "enable LSI fuelgauge specific aging features"
-	default n
-	help
-	  Say Y to enable LSI fuelgauge aging features which 
-	  are different from other solutions
-
-config LSI_IFPMIC
-	bool "enable LSI IFPMIC specific factory mode features"
-	default n
-	help
-	  Say Y to enable LSI IFPMIC factory mode features which
-	  are different from other solutions

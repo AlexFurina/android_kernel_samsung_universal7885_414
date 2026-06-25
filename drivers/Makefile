@@ -192,8 +192,12 @@ obj-$(CONFIG_MULTIPLEXER)	+= mux/
 obj-$(CONFIG_EXYNOS_BTS)	+= bts/
 obj-$(CONFIG_TRUSTONIC_TEE)     += gud/
 obj-$(CONFIG_SWITCH)     	+= switch/
+
 # Vibrator
 obj-y                           += vibrator/
+
+# CCIC
+obj-y	+= ccic/
 
 obj-$(CONFIG_VISION_SUPPORT)    += vision/
 

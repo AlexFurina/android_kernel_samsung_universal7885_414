@@ -2,21 +2,12 @@
  *  sec_adc.c
  *  Samsung Mobile Battery Driver
  *
- * Copyright (C) 2017 Samsung Electronics, Inc.
+ *  Copyright (C) 2012 Samsung Electronics
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 
 #include "include/sec_adc.h"
@@ -25,6 +16,7 @@ struct adc_list {
 	const char*	name;
 	struct iio_channel *channel;
 	bool is_used;
+	int prev_value;
 };
 
 static struct adc_list batt_adc_list[] = {
@@ -59,9 +51,22 @@ static int sec_bat_adc_ap_read(int channel)
 {
 	int data = -1;
 	int ret = 0;
+	int retry_cnt = RETRY_CNT;
 
-	ret = (batt_adc_list[channel].is_used) ?
-		iio_read_channel_raw(batt_adc_list[channel].channel, &data) : 0;
+	if (batt_adc_list[channel].is_used) {
+		do {
+			ret = (batt_adc_list[channel].is_used) ?
+			iio_read_channel_raw(batt_adc_list[channel].channel, &data) : 0;
+			retry_cnt--;
+		} while ((retry_cnt > 0) && (data < 0));
+	}
+
+	if (retry_cnt <= 0) {
+		pr_err("%s: Error in ADC\n", __func__);
+		data = batt_adc_list[channel].prev_value;
+	} else
+		batt_adc_list[channel].prev_value = data;
+
 	return data;
 }
 
@@ -186,11 +191,6 @@ int sec_bat_get_adc_data(struct sec_battery_info *battery,
 #endif
 		mutex_unlock(&battery->adclock);
 
-		if (adc_data < 0) {
-			dev_err(battery->dev, "%s: Error in ADC\n", __func__);
-			return adc_data;
-		}
-
 		if (i != 0) {
 			if (adc_data > adc_max)
 				adc_max = adc_data;
@@ -286,7 +286,7 @@ bool sec_bat_get_value_by_adc(
 		temp_adc_table_size =
 			battery->pdata->usb_temp_adc_table_size;
 		battery->usb_temp_adc = temp_adc;
-		break;		
+		break;
 	case SEC_BAT_ADC_CHANNEL_CHG_TEMP:
 		temp_adc_table = battery->pdata->chg_temp_adc_table;
 		temp_adc_table_size =
@@ -305,6 +305,12 @@ bool sec_bat_get_value_by_adc(
 		temp_adc_table_size =
 			battery->pdata->slave_chg_temp_adc_table_size;
 		battery->slave_chg_temp_adc = temp_adc;
+		break;
+	case SEC_BAT_ADC_CHANNEL_INBAT_VOLTAGE:
+		temp_adc_table = battery->pdata->inbat_adc_table;
+		temp_adc_table_size =
+			battery->pdata->inbat_adc_table_size;
+		battery->inbat_adc = temp_adc;
 		break;
 	default:
 		dev_err(battery->dev,
@@ -342,74 +348,11 @@ bool sec_bat_get_value_by_adc(
 temp_by_adc_goto:
 	value->intval = temp;
 
-	dev_info(battery->dev,
+	dev_dbg(battery->dev,
 		"%s: Temp(%d), Temp-ADC(%d)\n",
 		__func__, temp, temp_adc);
 
 	return true;
-}
-
-int sec_bat_get_inbat_vol_by_adc(struct sec_battery_info *battery)
-{
-	int inbat = 0;
-	int inbat_adc;
-	int low = 0;
-	int high = 0;
-	int mid = 0;
-	const sec_bat_adc_table_data_t *inbat_adc_table;
-	unsigned int inbat_adc_table_size;
-
-	if (!battery->pdata->inbat_adc_table) {
-		dev_err(battery->dev, "%s: not designed to read in-bat voltage\n", __func__);
-		return -1;
-	}
-
-	inbat_adc_table = battery->pdata->inbat_adc_table;
-	inbat_adc_table_size =
-		battery->pdata->inbat_adc_table_size;
-
-	inbat_adc = sec_bat_get_adc_data(battery, SEC_BAT_ADC_CHANNEL_INBAT_VOLTAGE, battery->pdata->adc_check_count);
-	if (inbat_adc <= 0)
-		return inbat_adc;
-	battery->inbat_adc = inbat_adc;
-
-	if (inbat_adc_table[0].adc <= inbat_adc) {
-		inbat = inbat_adc_table[0].data;
-		goto inbat_by_adc_goto;
-	} else if (inbat_adc_table[inbat_adc_table_size-1].adc >= inbat_adc) {
-		inbat = inbat_adc_table[inbat_adc_table_size-1].data;
-		goto inbat_by_adc_goto;
-	}
-
-	high = inbat_adc_table_size - 1;
-
-	while (low <= high) {
-		mid = (low + high) / 2;
-		if (inbat_adc_table[mid].adc < inbat_adc)
-			high = mid - 1;
-		else if (inbat_adc_table[mid].adc > inbat_adc)
-			low = mid + 1;
-		else {
-			inbat = inbat_adc_table[mid].data;
-			goto inbat_by_adc_goto;
-		}
-	}
-
-	inbat = inbat_adc_table[high].data;
-	inbat +=
-		((inbat_adc_table[low].data - inbat_adc_table[high].data) *
-		 (inbat_adc - inbat_adc_table[high].adc)) /
-		(inbat_adc_table[low].adc - inbat_adc_table[high].adc);
-
-	if (inbat < 0)
-		inbat = 0;
-
-inbat_by_adc_goto:
-	dev_info(battery->dev,
-			"%s: inbat(%d), inbat-ADC(%d)\n",
-			__func__, inbat, inbat_adc);
-
-	return inbat;
 }
 
 bool sec_bat_check_vf_adc(struct sec_battery_info *battery)
@@ -430,8 +373,7 @@ bool sec_bat_check_vf_adc(struct sec_battery_info *battery)
 		(battery->check_adc_value >= battery->pdata->check_adc_min)) {
 		return true;
 	} else {
-		dev_info(battery->dev, "%s Missing or Unknown or ID-GND Short Battery : adc (%d)\n",
-			__func__, battery->check_adc_value);
+		dev_info(battery->dev, "%s: adc (%d)\n", __func__, battery->check_adc_value);
 		return false;
 	}
 }

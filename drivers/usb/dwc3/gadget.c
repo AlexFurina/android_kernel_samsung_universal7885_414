@@ -39,7 +39,7 @@
 #include <linux/workqueue.h>
 #ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
 #include <linux/of_platform.h>
-#include <linux/usb/typec/manager/usb_typec_manager_notifier.h>
+#include <linux/usb/manager/usb_typec_manager_notifier.h>
 #endif
 
 #include "debug.h"
@@ -133,28 +133,17 @@ int dwc3_gadget_set_test_mode(struct dwc3 *dwc, int mode)
  * extern module can check dwc3 core link state  This function will
  * return 1 link is on compliance of loopback mode else 0.
  */
-static int dwc3_gadget_get_cmply_link_state(void)
+int dwc3_gadget_get_cmply_link_state(struct usb_gadget *g)
 {
-	struct device_node	*np = NULL;
-	struct platform_device	*pdev = NULL;
-	struct dwc3	*dwc;
+	struct dwc3 *dwc = gadget_to_dwc(g);
 	u32		reg = 0;
 	u32		ret = -ENODEV;
 
-	np = of_find_compatible_node(NULL, NULL, "synopsys,dwc3");
-
-	if (np) {
-		pdev = of_find_device_by_node(np);
-		of_node_put(np);
-		if (pdev)
-			dwc = pdev->dev.driver_data;
-	}
-
-	 if (!dwc)
+ 	if (!dwc)
 		return ret;
 
 	if (dwc->pullups_connected) {
-		reg = dwc3_gadget_get_link_state(dwc);
+		reg= dwc3_gadget_get_link_state(dwc);
 
 		dev_info(dwc->dev, "%s: link state = %d\n", __func__, reg);
 		if ((reg == DWC3_LINK_STATE_CMPLY) || (reg == DWC3_LINK_STATE_LPBK))
@@ -166,10 +155,7 @@ static int dwc3_gadget_get_cmply_link_state(void)
 
 	return ret;
 }
-
-static struct typec_manager_gadget_ops manager_dwc3_gadget_ops = {
-	.gadget_get_cmply_link_state = dwc3_gadget_get_cmply_link_state,
-};
+EXPORT_SYMBOL(dwc3_gadget_get_cmply_link_state);
 #endif
 
 /**
@@ -3471,7 +3457,7 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 		}
 	}
 
-#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
+#if 0
 	probe_typec_manager_gadget_ops(&manager_dwc3_gadget_ops);
 #endif
 

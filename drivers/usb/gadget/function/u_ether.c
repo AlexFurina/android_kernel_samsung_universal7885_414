@@ -945,11 +945,6 @@ static int get_ether_addr_str(u8 dev_addr[ETH_ALEN], char *str, int len)
 const struct net_device_ops eth_netdev_ops_ncm = {
 	.ndo_open		= eth_open,
 	.ndo_stop		= eth_stop,
-#ifndef NCM_WITH_TIMER
-	.ndo_start_xmit		= eth_start_xmit_ncm,
-#else
-	.ndo_start_xmit		= eth_start_xmit_ncm_timer,
-#endif
 	.ndo_set_mac_address 	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
 };
