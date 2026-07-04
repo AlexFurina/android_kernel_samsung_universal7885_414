@@ -191,9 +191,16 @@ show_constraint_tables(DM_INTCAM, dm_intcam);
 show_constraint_tables(DM_DISP, dm_disp);
 #if defined(CONFIG_SOC_EXYNOS7885)
 show_constraint_tables(DM_FSYS, dm_fsys);
-show_constraint_tables(DM_AUD, dm_aud);
 #endif
+#if defined(CONFIG_SOC_EXYNOS9810)
+show_constraint_tables(DM_FSYS0, dm_fsys0);
+#endif
+show_constraint_tables(DM_AUD, dm_aud);
 show_constraint_tables(DM_CAM, dm_cam);
+#ifdef CONFIG_SOC_EXYNOS9810
+show_constraint_tables(DM_IVA, dm_iva);
+show_constraint_tables(DM_SCORE, dm_score);
+#endif
 show_constraint_tables(DM_GPU, dm_gpu);
 
 show_dm_policy(DM_CPU_CL0, dm_cpu_cl0);
@@ -204,9 +211,16 @@ show_dm_policy(DM_INTCAM, dm_intcam);
 show_dm_policy(DM_DISP, dm_disp);
 #if defined(CONFIG_SOC_EXYNOS7885)
 show_dm_policy(DM_FSYS, dm_fsys);
-show_dm_policy(DM_AUD, dm_aud);
 #endif
+#if defined(CONFIG_SOC_EXYNOS9810)
+show_dm_policy(DM_FSYS0, dm_fsys0);
+#endif
+show_dm_policy(DM_AUD, dm_aud);
 show_dm_policy(DM_CAM, dm_cam);
+#ifdef CONFIG_SOC_EXYNOS9810
+show_dm_policy(DM_IVA, dm_iva);
+show_dm_policy(DM_SCORE, dm_score);
+#endif
 show_dm_policy(DM_GPU, dm_gpu);
 
 static DEVICE_ATTR(available, 0440, show_available, NULL);
@@ -218,8 +232,13 @@ static DEVICE_ATTR(constraint_tables_dm_intcam, 0440, show_constraint_tables_dm_
 static DEVICE_ATTR(constraint_tables_dm_disp, 0440, show_constraint_tables_dm_disp, NULL);
 #if defined(CONFIG_SOC_EXYNOS7885)
 static DEVICE_ATTR(constraint_tables_dm_fsys, 0440, show_constraint_tables_dm_fsys, NULL);
-static DEVICE_ATTR(constraint_tables_dm_aud, 0440, show_constraint_tables_dm_aud, NULL);
 #endif
+#if defined(CONFIG_SOC_EXYNOS9810)
+static DEVICE_ATTR(constraint_tables_dm_fsys0, 0440, show_constraint_tables_dm_fsys0, NULL);
+static DEVICE_ATTR(constraint_tables_dm_iva, 0440, show_constraint_tables_dm_iva, NULL);
+static DEVICE_ATTR(constraint_tables_dm_score, 0440, show_constraint_tables_dm_score, NULL);
+#endif
+static DEVICE_ATTR(constraint_tables_dm_aud, 0440, show_constraint_tables_dm_aud, NULL);
 static DEVICE_ATTR(constraint_tables_dm_cam, 0440, show_constraint_tables_dm_cam, NULL);
 static DEVICE_ATTR(constraint_tables_dm_gpu, 0440, show_constraint_tables_dm_gpu, NULL);
 static DEVICE_ATTR(dm_policy_dm_cpu_cl0, 0440, show_dm_policy_dm_cpu_cl0, NULL);
@@ -230,8 +249,13 @@ static DEVICE_ATTR(dm_policy_dm_intcam, 0440, show_dm_policy_dm_intcam, NULL);
 static DEVICE_ATTR(dm_policy_dm_disp, 0440, show_dm_policy_dm_disp, NULL);
 #if defined(CONFIG_SOC_EXYNOS7885)
 static DEVICE_ATTR(dm_policy_dm_fsys, 0440, show_dm_policy_dm_fsys, NULL);
-static DEVICE_ATTR(dm_policy_dm_aud, 0440, show_dm_policy_dm_aud, NULL);
 #endif
+#if defined(CONFIG_SOC_EXYNOS9810)
+static DEVICE_ATTR(dm_policy_dm_fsys0, 0440, show_dm_policy_dm_fsys0, NULL);
+static DEVICE_ATTR(dm_policy_dm_iva, 0440, show_dm_policy_dm_iva, NULL);
+static DEVICE_ATTR(dm_policy_dm_score, 0440, show_dm_policy_dm_score, NULL);
+#endif
+static DEVICE_ATTR(dm_policy_dm_aud, 0440, show_dm_policy_dm_aud, NULL);
 static DEVICE_ATTR(dm_policy_dm_cam, 0440, show_dm_policy_dm_cam, NULL);
 static DEVICE_ATTR(dm_policy_dm_gpu, 0440, show_dm_policy_dm_gpu, NULL);
 
@@ -245,8 +269,13 @@ static struct attribute *exynos_dm_sysfs_entries[] = {
 	&dev_attr_constraint_tables_dm_disp.attr,
 #if defined(CONFIG_SOC_EXYNOS7885)
 	&dev_attr_constraint_tables_dm_fsys.attr,
-	&dev_attr_constraint_tables_dm_aud.attr,
 #endif
+#if defined(CONFIG_SOC_EXYNOS9810)
+        &dev_attr_constraint_tables_dm_fsys0.attr,
+	&dev_attr_constraint_tables_dm_iva.attr,
+	&dev_attr_constraint_tables_dm_score.attr,
+#endif
+	&dev_attr_constraint_tables_dm_aud.attr,
 	&dev_attr_constraint_tables_dm_cam.attr,
 	&dev_attr_constraint_tables_dm_gpu.attr,
 	&dev_attr_dm_policy_dm_cpu_cl0.attr,
@@ -257,8 +286,13 @@ static struct attribute *exynos_dm_sysfs_entries[] = {
 	&dev_attr_dm_policy_dm_disp.attr,
 #if defined(CONFIG_SOC_EXYNOS7885)
 	&dev_attr_dm_policy_dm_fsys.attr,
-	&dev_attr_dm_policy_dm_aud.attr,
 #endif
+#if defined(CONFIG_SOC_EXYNOS9810)
+        &dev_attr_dm_policy_dm_fsys0.attr,
+	&dev_attr_dm_policy_dm_iva.attr,
+	&dev_attr_dm_policy_dm_score.attr,
+#endif
+	&dev_attr_dm_policy_dm_aud.attr,
 	&dev_attr_dm_policy_dm_cam.attr,
 	&dev_attr_dm_policy_dm_gpu.attr,
 	NULL,
@@ -305,9 +339,16 @@ static enum exynos_dvfs_type exynos_dm_dvfs_type(enum exynos_dm_type dm_type)
 	case DM_CPU_CL0...DM_CPU_CL1:
 		dvfs_type = DVFS_CPUFREQ;
 		break;
+#ifdef CONFIG_SOC_EXYNOS9810
+	case DM_MIF...DM_SCORE:
+		dvfs_type = DVFS_DEVFREQ;
+		break;
+#endif
+#ifdef CONFIG_SOC_EXYNOS7885
 	case DM_MIF...DM_CAM:
 		dvfs_type = DVFS_DEVFREQ;
 		break;
+#endif
 	case DM_GPU:
 		dvfs_type = DVFS_GPU;
 		break;
