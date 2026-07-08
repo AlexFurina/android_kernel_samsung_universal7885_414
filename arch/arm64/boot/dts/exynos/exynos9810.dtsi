@@ -359,6 +359,7 @@
 				power-coefficient = <160>;
 				capacity-mips-s = <215>;
 				power-coefficient-s = <130>;
+				static-power-coefficient = <45>;
 
 				capacity-weight = <1>;
 				energy-weight = <1>;
@@ -368,6 +369,7 @@
 				power-coefficient = <800>;
 				capacity-mips-s = <365>;
 				power-coefficient-s = <506>;
+				static-power-coefficient = <120>;
 
 				capacity-weight = <1>;
 				energy-weight = <3>;
