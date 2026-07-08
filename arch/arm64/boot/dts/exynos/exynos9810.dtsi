@@ -355,6 +355,7 @@
 
 		energy-data {
 			ANANKE_ENERGY: ananke-energy {
+				mips-per-mhz = <2776>;
 				capacity-mips = <272>;
 				power-coefficient = <160>;
 				capacity-mips-s = <215>;
@@ -365,6 +366,7 @@
 				energy-weight = <1>;
 			};
 			MEERKAT_ENERGY: meerkat-energy {
+				mips-per-mhz = <8012>;
 				capacity-mips = <785>;
 				power-coefficient = <800>;
 				capacity-mips-s = <365>;
