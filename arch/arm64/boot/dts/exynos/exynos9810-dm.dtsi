@@ -1,0 +1,86 @@
+/*
+ * SAMSUNG EXYNOS9810 SoC device tree source
+ *
+ * Copyright (c) 2017 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * SAMSUNG EXYNOS9810 SoC device nodes are listed in this file.
+ * EXYNOS9810 based board files can include this file and provide
+ * values for board specfic bindings.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/ {
+	exynos_dm: exynos-dm@17000000 {
+		compatible = "samsung,exynos-dvfs-manager";
+		reg = <0x0 0x17000000 0x0>;
+		acpm-ipc-channel = <1>;
+		dm_domains {
+			cpufreq_cl0 {
+				dm-index = <DM_CPU_CL0>;
+				available = "true";
+				cal_id = <ACPM_DVFS_CPUCL0>;
+			};
+			cpufreq_cl1 {
+				dm-index = <DM_CPU_CL1>;
+				available = "true";
+				cal_id = <ACPM_DVFS_CPUCL1>;
+			};
+			devfreq_mif {
+				dm-index = <DM_MIF>;
+				available = "true";
+				policy_use = "true";
+				cal_id = <ACPM_DVFS_MIF>;
+			};
+			devfreq_int {
+				dm-index = <DM_INT>;
+				available = "true";
+				policy_use = "true";
+				cal_id = <ACPM_DVFS_INT>;
+			};
+			devfreq_intcam {
+				dm-index = <DM_INTCAM>;
+				available = "false";
+				cal_id = <0>;
+			};
+			devfreq_disp {
+				dm-index = <DM_DISP>;
+				available = "true";
+				cal_id = <ACPM_DVFS_DISP>;
+			};
+			devfreq_fsys0 {
+				dm-index = <DM_FSYS0>;
+				available = "true";
+				cal_id = <ACPM_DVFS_FSYS0>;
+			};
+			devfreq_aud {
+				dm-index = <DM_AUD>;
+				available = "true";
+				cal_id = <ACPM_DVFS_AUD>;
+			};
+			devfreq_cam {
+				dm-index = <DM_CAM>;
+				available = "true";
+				cal_id = <ACPM_DVFS_CAM>;
+			};
+		        devfreq_iva {
+			        dm-index = <DM_IVA>;
+			        available = "true";
+			        cal_id = <ACPM_DVFS_IVA>;
+		        };
+		        devfreq_score {
+			        dm-index = <DM_SCORE>;
+			        available = "true";
+			        cal_id = <ACPM_DVFS_SCORE>;
+		        };
+			dvfs_gpu {
+				dm-index = <DM_GPU>;
+				available = "false";
+				cal_id = <ACPM_DVFS_G3D>;
+			};
+		};
+	};
+};

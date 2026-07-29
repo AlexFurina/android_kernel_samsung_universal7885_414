@@ -1,0 +1,37 @@
+/*
+ * SAMSUNG EXYNOS9810 SoC device tree source
+ *
+ * Copyright (c) 2017 Samsung Electronics Co., Ltd.
+ *              http://www.samsung.com
+ *
+ * SAMSUNG EXYNOS9810 SoC device nodes are listed in this file.
+ * EXYNOS9810 based board files can include this file and provide
+ * values for board specfic bindings.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/ {
+	aliases {
+		mshc2 = &dwmmc_2;
+	};
+
+        sysreg_fsys1_controller: sysreg-controller@11410000 {
+                compatible = "samsung,exynos8895-sysreg", "syscon";
+                reg = <0x0 0x11410000 0x1200>;
+        };
+
+        dwmmc_2: dwmmc2@11500000 {
+                compatible = "samsung,exynos-dw-mshc";
+                reg = <0x0 0x11500000 0x2000>;
+                reg-names = "dw_mmc";
+                interrupts = <0 INTREQ__MMC_CARD 0>;
+                #address-cells = <1>;
+                #size-cells = <0>;
+                clocks = <&clock MMC_CARD>, <&clock GATE_MMC_CARD>;
+                clock-names = "ciu", "ciu_gate";
+                status = "disabled";
+	};
+};

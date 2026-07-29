@@ -1,0 +1,55 @@
+/*
+ * SAMSUNG EXYNOS9810 SoC device tree source
+ *
+ * Copyright (c) 2017 Samsung Electronics Co., Ltd.
+ *              http://www.samsung.com
+ *
+ * SAMSUNG EXYNOS9810 SoC device nodes are listed in this file.
+ * EXYNOS9810 based board files can include this file and provide
+ * values for board specfic bindings.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/ {
+	aliases {
+		scaler0 = &scaler_0;
+	};
+
+        smfc: smfc@17700000 {
+                compatible = "samsung,exynos8890-jpeg";
+                dma-coherent;
+                reg = <0x0 0x17700000 0x1000>;
+                interrupts = <0 INTREQ__JPEG 0>;
+                clocks = <&clock GATE_JPEG>;
+                clock-names = "gate";
+                iommus = <&sysmmu_g2d2>;
+                smfc,int_qos_minlock = <534000>;
+                samsung,power-domain = <&pd_g2d>;
+        };
+
+        scaler_0: scaler@17710000 {
+                compatible = "samsung,exynos5-scaler";
+                reg = <0x0 0x17710000 0x3000>;
+                interrupts = <0 INTREQ__MSCL 0>;
+                clocks = <&clock GATE_MSCL>;
+                clock-names = "gate";
+                iommus = <&sysmmu_g2d2>;
+                dma-coherent;
+
+                /* MIF / INT */
+                mscl_qos_table = <
+                                1794000 534000 2143260
+                                1352000 400000 1610280
+                                1014000 400000 1458000
+                                 845000 336000  648000
+                                 676000 267000  367200
+                                >;
+
+                /* power domain */
+                samsung,power-domain = <&pd_g2d>;
+	};
+};
+

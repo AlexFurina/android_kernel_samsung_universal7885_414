@@ -1,0 +1,105 @@
+/*
+ * SAMSUNG EXYNOS9810 SoC device tree source
+ *
+ * Copyright (c) 2017 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * SAMSUNG EXYNOS9810 SoC device nodes are listed in this file.
+ * EXYNOS9810 based board files can include this file and provide
+ * values for board specfic bindings.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#include <dt-bindings/interrupt-controller/exynos9810.h>
+
+/ {
+	udc: usb@10C00000 {
+		compatible = "samsung,exynos-dwusb";
+		clocks = <&clock GATE_USB30DRD_USB30DRD_LINK>, <&clock USB30DRD>;
+		clock-names = "aclk", "sclk";
+		reg = <0x0 0x10C00000 0x10000>;
+		#address-cells = <2>;
+		#size-cells = <1>;
+		ranges;
+		status = "disabled";
+
+		usbdrd_dwc3: dwc3 {
+			compatible = "synopsys,dwc3";
+			reg = <0x0 0x10C00000 0x10000>;
+			interrupts = <0 INTREQ__USB30DRD_Interrupt_00 0>;
+			tx-fifo-resize = <0>;
+			adj-sof-accuracy = <0>;
+			is_not_vbus_pad = <1>;
+			enable_sprs_transfer = <1>;
+			phys = <&usbdrd_phy0 0>, <&usbdrd_phy0 1>;
+			phy-names = "usb2-phy", "usb3-phy";
+			/* check susphy support */
+			xhci_l2_support = <1>;
+			/* support usb audio offloading: 1, if not: 0 */
+			usb_audio_offloading = <1>;
+			abox = <&abox>;
+			/* support USB L2 sleep */
+			ldos = <6>;
+			ldo_number = <9 10 11 12 13 14>;
+		};
+	};
+
+	usbdrd_phy0: phy@11100000 {
+		compatible = "samsung,exynos-usbdrd-phy";
+		reg = <0x0 0x11100000 0x200>,
+			<0x0 0x110A0000 0x1000>,
+			<0x0 0x110B0000 0x800>;
+		interrupts = <0 INTREQ__USB2_REMOTE_WAKEUP 0>,
+			     <0 INTREQ__USB2_REMOTE_CONNECT 0>;
+		clocks = <&clock OSCCLK>, <&clock GATE_USB30DRD_USB30DRD_LINK>;
+		clock-names = "ext_xtal", "aclk";
+		samsung,pmu-syscon = <&pmu_system_controller>;
+		pmu_mask = <0x0>;
+		pmu_offset = <0x72c>;
+		pmu_offset_dp = <0x704>;
+
+		/* USBDP combo phy version  - 0x200 */
+		phy_version = <0x300>;
+		/* if it doesn't need phy user mux, */
+		/*  you should write "none" */
+		/*  but refclk shouldn't be omitted */
+		phyclk_mux = "none";
+		phy_refclk = "ext_xtal";
+
+		/* if Main phy has the other phy, it must be set to 1. jusf for usbphy_info */
+		has_other_phy = <0>;
+		/* if combo phy is used, it must be set to 1. usbphy_sub_info is enabled */
+		has_combo_phy = <1>;
+		sub_phy_version = <0x400>;
+
+		/* ip type */
+		/* USB3DRD = 0 */
+		/*  USB3HOST = 1 */
+		/*  USB2DRD = 2 */
+		/*  USB2HOST = 3 */
+		ip_type = <0x0>;
+
+		/* for PHY CAL */
+		/* choice only one item */
+		phy_refsel_clockcore = <1>;
+		phy_refsel_ext_osc = <0>;
+		phy_refsel_xtal = <0>;
+		phy_refsel_diff_pad = <0>;
+		phy_refsel_diff_internal = <0>;
+		phy_refsel_diff_single = <0>;
+
+		/* true : 1 , false : 0 */
+		use_io_for_ovc = <0>;
+		common_block_disable = <1>;
+		is_not_vbus_pad = <1>;
+		used_phy_port = <0>;
+
+		status = "disabled";
+
+		#phy-cells = <1>;
+		ranges;
+	};
+};

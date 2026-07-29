@@ -1,0 +1,35 @@
+/*
+ * SAMSUNG EXYNOS9810 SoC device tree source
+ *
+ * Copyright (c) 2017 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * SAMSUNG EXYNOS9810 SoC device nodes are listed in this file.
+ * EXYNOS9810 based board files can include this file and provide
+ * values for board specfic bindings.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#include <dt-bindings/interrupt-controller/exynos9810.h>
+
+/ {
+	/* tbase */
+	tee {
+		compatible = "samsung,exynos-tee";
+		interrupts = <0 233 0>;
+	};
+
+	seclog {
+		compatible = "samsung,exynos-seclog";
+		interrupts = <0 INTREQ__PPMU_DPUD1_UPPER_OR_NORMAL 0>;
+	};
+
+	/* Secure RPMB */
+	ufs-srpmb {
+		compatible = "samsung,ufs-srpmb";
+		interrupts = <0 460 0>;
+	};
+};
