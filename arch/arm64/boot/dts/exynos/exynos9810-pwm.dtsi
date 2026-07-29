@@ -1,0 +1,26 @@
+/*
+ * SAMSUNG EXYNOS9810 SoC device tree source
+ *
+ * Copyright (c) 2017 Samsung Electronics Co., Ltd.
+ *              http://www.samsung.com
+ *
+ * SAMSUNG EXYNOS9810 SoC device nodes are listed in this file.
+ * EXYNOS9810 based board files can include this file and provide
+ * values for board specfic bindings.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/ {
+        sec_pwm: pwm@10510000 {
+                compatible = "samsung,s3c6400-pwm";
+                reg = <0x0 0x10510000 0x1000>;
+                samsung,pwm-outputs = <0>, <1>, <2>, <3>, <4>;
+                #pwm-cells = <3>;
+                clocks = <&clock UMUX_CLKCMU_PERIC0_BUS>, <&clock OSCCLK>;
+                clock-names = "pwm_pclk", "pwm_sclk";
+                status = "ok";
+	};
+};
