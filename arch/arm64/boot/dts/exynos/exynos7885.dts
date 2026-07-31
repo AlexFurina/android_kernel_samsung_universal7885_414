@@ -149,17 +149,7 @@
 
 			log_sfr {
 				compatible = "debug-snapshot,log_sfr";
-				reg = <0x0 0x92610000 0x0>;
-			};
-
-			log_cachedump {
-				compatible = "debug-snapshot,log_cachedump";
-				reg = <0x0 0x92610000 0x0>;
-			};
-
-			log_bcm {
-				compatible = "debug-snapshot,log_bcm";
-				reg = <0x0 0x92610000 0x0>;
+				reg = <0x0 0x92e00000 0x400000>;
 			};
 
 			log_pstore {
