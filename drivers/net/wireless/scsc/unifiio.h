@@ -109,6 +109,8 @@ extern "C" {
 #define UNIFI_BA_CFG       _IOWR('u',  0x34, struct unifiio_ba_cfg_t)
 #define UNIFI_SUSPEND_RESUME_CFG       _IOWR('u',  0x35, struct unifiio_suspend_resume_cfg_t)
 #define UNIFI_SRC_SINK_IOCTL        _IOWR('u',  0x41, struct unifiio_src_sink_arg_t)
+#define UNIFI_GET_FAPI_VERSION      _IOWR('u',  0x42, char[200])
+#define UNIFI_GET_SW_VERSION        _IOWR('u',  0x43, char[200])
 
 #define src_sink_action uint16_t
 #define SRC_SINK_ACTION_NONE               ((src_sink_action)0x0000)
@@ -225,11 +227,12 @@ struct udi_msg_t {
  * unloaded. The user space applications can based on this indication determine
  * if they should unregister from the char device.
  */
-#define UDI_DRV_UNLOAD_IND           0x8010
-#define UDI_DRV_DROPPED_FRAMES       0x8011
-#define UDI_DRV_DROPPED_DATA_FRAMES  0x8012
-#define UDI_DRV_SUSPEND_IND          0x8013
-#define UDI_DRV_RESUME_IND           0x8014
+#define UDI_DRV_SIGNAL_BASE          0xA000
+#define UDI_DRV_UNLOAD_IND           (UDI_DRV_SIGNAL_BASE + 1)
+#define UDI_DRV_DROPPED_FRAMES       (UDI_DRV_SIGNAL_BASE + 2)
+#define UDI_DRV_DROPPED_DATA_FRAMES  (UDI_DRV_SIGNAL_BASE + 3)
+#define UDI_DRV_SUSPEND_IND          (UDI_DRV_SIGNAL_BASE + 4)
+#define UDI_DRV_RESUME_IND           (UDI_DRV_SIGNAL_BASE + 5)
 
 struct unifiio_udi_config_t {
 	uint16_t ma_unitdata_size_limit;       /* if non-zero, the MA_UNITDATA_REQ and MA_UNITDATA_IND are capped by this size */

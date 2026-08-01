@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Copyright (c) 2012 - 2016 Samsung Electronics Co., Ltd. All rights reserved
+ * Copyright (c) 2012 - 2018 Samsung Electronics Co., Ltd. All rights reserved
  *
  ****************************************************************************/
 
@@ -13,6 +13,11 @@
 #include "mgt.h"
 
 #ifdef CONFIG_SCSC_WLAN_DEBUG
+
+/* frame decoding debug level */
+static int slsi_debug_summary_frame = 3;
+module_param(slsi_debug_summary_frame, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(slsi_debug_summary_frame, "Debug level (0: disable, 1: mgmt only (no scan), 2: mgmt and imp frames, 3: all");
 
 struct slsi_decode_entry {
 	const char *name;
@@ -913,11 +918,11 @@ static bool slsi_decode_80211_frame(u8 *frame, u16 frame_length, char *result, s
 	int                            slen;
 
 	/* Only decode Management Frames at Level 1 */
-	if (*slsi_dbg_filters[SLSI_SUMMARY_FRAMES] == 1 && ftype_idx != 0)
+	if (slsi_debug_summary_frame == 1 && ftype_idx != 0)
 		return false;
 
 	/* Filter Scanning at the debug level 3 and above as it can be noisy with large scan results */
-	if (*slsi_dbg_filters[SLSI_SUMMARY_FRAMES] < 3 &&
+	if (slsi_debug_summary_frame < 3 &&
 	    (ieee80211_is_probe_req(fc_cpu) || ieee80211_is_probe_resp(fc_cpu) || ieee80211_is_beacon(fc_cpu)))
 		return false;
 
@@ -935,11 +940,11 @@ static bool slsi_decode_l3_frame(u8 *frame, u16 frame_length, char *result, size
 	int slen;
 
 	/* Only decode Management Frames at Level 1 */
-	if (*slsi_dbg_filters[SLSI_SUMMARY_FRAMES] == 1)
+	if (slsi_debug_summary_frame == 1)
 		return false;
 
 	/* Only decode high important frames e.g. EAPOL, ARP, DHCP at Level 2 */
-	if (*slsi_dbg_filters[SLSI_SUMMARY_FRAMES] == 2) {
+	if (slsi_debug_summary_frame == 2) {
 		struct ethhdr *ehdr = (struct ethhdr *)frame;
 		u16           eth_type = be16_to_cpu(ehdr->h_proto);
 
@@ -963,6 +968,43 @@ static bool slsi_decode_l3_frame(u8 *frame, u16 frame_length, char *result, size
 	return true;
 }
 
+static bool slsi_decode_amsdu_subframe(u8 *frame, u16 frame_length, char *result, size_t result_length)
+{
+	int slen;
+
+	/* Only decode Management Frames at Level 1 */
+	if (slsi_debug_summary_frame == 1)
+		return false;
+
+	/* Only decode high important frames e.g. EAPOL, ARP, DHCP at Level 2 */
+	if (slsi_debug_summary_frame == 2) {
+		struct msduhdr *msdu_hdr = (struct msduhdr *)frame;
+		u16           eth_type = be16_to_cpu(msdu_hdr->type);
+
+		switch (eth_type) {
+		case ETH_P_IP:
+			/* slsi_is_dhcp_packet() decodes the frame as Ethernet frame so
+			 * pass a offset (difference between MSDU header and ethernet header)
+			 * to frames so it reads at the right offset
+			 */
+			if (slsi_is_dhcp_packet(frame + 8) == SLSI_TX_IS_NOT_DHCP)
+				return false;
+			break;
+		/* Fall through; process EAPOL, WAPI and ARP frames */
+		case ETH_P_PAE:
+		case ETH_P_WAI:
+		case ETH_P_ARP:
+			break;
+		default:
+			/* return for all other frames */
+			return false;
+		}
+	}
+	slen = snprintf(result, result_length, "eth");
+	slsi_decode_proto_data(frame + 20, frame_length - 20, result + slen, result_length - slen);
+	return true;
+}
+
 static inline bool slsi_debug_frame_ratelimited(void)
 {
 	static DEFINE_RATELIMIT_STATE(_rs, (5 * HZ), 200);
@@ -973,7 +1015,7 @@ static inline bool slsi_debug_frame_ratelimited(void)
 }
 
 /* NOTE: dev can be NULL */
-void slsi_debug_frame_f(struct slsi_dev *sdev, struct net_device *dev, struct sk_buff *skb, const char *prefix)
+void slsi_debug_frame(struct slsi_dev *sdev, struct net_device *dev, struct sk_buff *skb, const char *prefix)
 {
 	char frame_info[384];
 	u8   *frame = fapi_get_data(skb);
@@ -985,6 +1027,9 @@ void slsi_debug_frame_f(struct slsi_dev *sdev, struct net_device *dev, struct sk
 	u16  id = fapi_get_sigid(skb);
 	u16  vif = fapi_get_vif(skb);
 	s16  rssi = 0;
+
+	if (!slsi_debug_summary_frame)
+		return;
 
 	if (!len)
 		return;
@@ -1005,7 +1050,14 @@ void slsi_debug_frame_f(struct slsi_dev *sdev, struct net_device *dev, struct sk
 		frametype = fapi_get_u16(skb, u.ma_unitdata_req.data_unit_descriptor);
 		break;
 	case MA_UNITDATA_IND:
-		frametype = fapi_get_u16(skb, u.ma_unitdata_ind.data_unit_descriptor);
+		if (fapi_get_u16(skb, u.ma_unitdata_ind.bulk_data_descriptor) == FAPI_BULKDATADESCRIPTOR_INLINE)
+			frametype = fapi_get_u16(skb, u.ma_unitdata_ind.data_unit_descriptor);
+		break;
+	case MLME_SEND_FRAME_REQ:
+		frametype = fapi_get_u16(skb, u.mlme_send_frame_req.data_unit_descriptor);
+		break;
+	case MLME_RECEIVED_FRAME_IND:
+		frametype = fapi_get_u16(skb, u.mlme_received_frame_ind.data_unit_descriptor);
 		break;
 	case MLME_SCAN_IND:
 		frametype = FAPI_DATAUNITDESCRIPTOR_IEEE802_11_FRAME;
@@ -1013,12 +1065,11 @@ void slsi_debug_frame_f(struct slsi_dev *sdev, struct net_device *dev, struct sk
 		vif = fapi_get_u16(skb, u.mlme_scan_ind.scan_id) >> 8;
 		break;
 	case MLME_CONNECT_CFM:
-		frametype = FAPI_DATAUNITDESCRIPTOR_IEEE802_11_FRAME;
-		break;
 	case MLME_CONNECT_IND:
-		frametype = FAPI_DATAUNITDESCRIPTOR_IEEE802_11_FRAME;
-		break;
 	case MLME_PROCEDURE_STARTED_IND:
+	case MLME_CONNECTED_IND:
+	case MLME_REASSOCIATE_IND:
+	case MLME_ROAMED_IND:
 		frametype = FAPI_DATAUNITDESCRIPTOR_IEEE802_11_FRAME;
 		break;
 	default:
@@ -1044,17 +1095,21 @@ void slsi_debug_frame_f(struct slsi_dev *sdev, struct net_device *dev, struct sk
 		print = slsi_decode_l3_frame(frame, len, frame_info, sizeof(frame_info));
 		break;
 	}
+	case FAPI_DATAUNITDESCRIPTOR_AMSDU_SUBFRAME:
+	{
+		struct ethhdr *ehdr = (struct ethhdr *)frame;
+
+		dst = ehdr->h_dest;
+		src = ehdr->h_source;
+		print = slsi_decode_amsdu_subframe(frame, len, frame_info, sizeof(frame_info));
+		break;
+	}
 	default:
 		return;
 	}
 	if (print) {
-#ifdef CONFIG_SCSC_WLAN_SKB_TRACKING
-		dev_info(&sdev->wiphy->dev, "%-5s: 0x%p %s(vif:%u rssi:%-3d, s:%pM d:%pM)->%s",
-			 dev ? netdev_name(dev) : "", skb, prefix, vif, rssi, src, dst, frame_info);
-#else
-		dev_info(&sdev->wiphy->dev, "%-5s: %s(vif:%u rssi:%-3d, s:%pM d:%pM)->%s",
+		SLSI_DBG4(sdev, SLSI_SUMMARY_FRAMES, "%-5s: %s(vif:%u rssi:%-3d, s:%pM d:%pM)->%s\n",
 			 dev ? netdev_name(dev) : "", prefix, vif, rssi, src, dst, frame_info);
-#endif
 	}
 }
 

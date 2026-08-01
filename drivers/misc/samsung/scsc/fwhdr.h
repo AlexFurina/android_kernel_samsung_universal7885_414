@@ -8,6 +8,7 @@
 #define FWHDR_H
 
 #define FW_BUILD_ID_SZ	128
+#define FW_TTID_SZ	32
 
 struct fwhdr {
 	u16 hdr_major;
@@ -27,9 +28,13 @@ struct fwhdr {
 	u32 hdr_length;
 	u32 r4_panic_record_offset;
 	u32 m4_panic_record_offset;
+#ifdef CONFIG_SCSC_MX450_GDB_SUPPORT
+	u32 m4_1_panic_record_offset;
+#endif
 };
 
 bool fwhdr_parse(char *fw, struct fwhdr *fwhdr);
 char *fwhdr_get_build_id(char *fw, struct fwhdr *fwhdr);
+char *fwhdr_get_ttid(char *fw, struct fwhdr *fwhdr);
 
 #endif /* FWHDR_H */

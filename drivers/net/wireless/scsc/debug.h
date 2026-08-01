@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Copyright (c) 2012 - 2016 Samsung Electronics Co., Ltd. All rights reserved
+ * Copyright (c) 2012 - 2019 Samsung Electronics Co., Ltd. All rights reserved
  *
  ****************************************************************************/
 
@@ -14,6 +14,17 @@
 /* Logging modules
  * =======================
  */
+#ifdef CONFIG_SCSC_WLAN_DEBUG
+#ifndef MAC2STR
+#define MAC2STR(a) (a)[0], (a)[1], (a)[2], (a)[3], (a)[4], (a)[5]
+#define MACSTR "%02x:%02x:%02x:%02x:%02x:%02x"
+#endif
+#else
+#ifndef MAC2STR
+#define MAC2STR(a) (a)[0], (a)[4], (a)[5]
+#define MACSTR "%02x:**:**:**:%02x:%02x"
+#endif
+#endif
 
 #ifndef CONFIG_SCSC_DEBUG_COMPATIBILITY
 extern const int SLSI_INIT_DEINIT;
@@ -47,6 +58,7 @@ extern const int SLSI_TDLS;
 extern const int SLSI_GSCAN;
 extern const int SLSI_MBULK;
 extern const int SLSI_FLOWC;
+extern const int SLSI_SMAPPER;
 #endif /* CONFIG_SCSC_DEBUG_COMPATIBILITY */
 
 extern int       *slsi_dbg_filters[];
@@ -189,13 +201,7 @@ extern int       *slsi_dbg_filters[];
 #define FUNC_ENTER_NODEV() SLSI_DBG4_NODEV(SLSI_FUNC_TRACE, "--->\n")
 #define FUNC_EXIT_NODEV()  SLSI_DBG4_NODEV(SLSI_FUNC_TRACE, "<---\n")
 
-void slsi_debug_frame_f(struct slsi_dev *sdev, struct net_device *dev, struct sk_buff *skb, const char *prefix);
-static inline void slsi_debug_frame(struct slsi_dev *sdev, struct net_device *dev, struct sk_buff *skb, const char *prefix)
-{
-	if (unlikely(*slsi_dbg_filters[SLSI_SUMMARY_FRAMES] != 0))
-		slsi_debug_frame_f(sdev, dev, skb, prefix);
-}
-
+void slsi_debug_frame(struct slsi_dev *sdev, struct net_device *dev, struct sk_buff *skb, const char *prefix);
 #else /* CONFIG_SCSC_WLAN_DEBUG */
 
 #define SLSI_DBG1(sdev, filter, fmt, arg ...)   do {} while (0)
@@ -285,23 +291,4 @@ static inline void slsi_debug_frame(struct slsi_dev *sdev, struct net_device *de
 #define SLSI_DBG4_NODEV(filter, fmt, arg ...)		SCSC_TAG_DBG4(filter, fmt, ## arg)
 
 #endif /* CONFIG_SCSC_DEBUG_COMPATIBILITY */
-
-/* Function relating to offline debug buffer */
-#ifdef CONFIG_SCSC_WLAN_OFFLINE_TRACE
-void slsi_offline_dbg_dump_to_seq_file(struct slsi_dev *sdev, struct seq_file *m);
-void slsi_offline_dbg_dump_to_klog(struct slsi_dev *sdev);
-void slsi_offline_dbg_mark(struct slsi_dev *sdev, int level, u8 id);
-void slsi_offline_dbg_printf(struct slsi_dev *sdev, int level, bool append, const char *fmt, ...);
-void slsi_offline_dbg_strcpy(struct slsi_dev *sdev, int level, bool append, const char *str);
-void slsi_offline_dbg_hex(struct slsi_dev *sdev, int level, const u8 *buff, u16 length);
-#else
-#define slsi_offline_dbg_dump_to_seq_file(sdev, m)
-#define slsi_offline_dbg_dump_to_klog(sdev)
-
-#define slsi_offline_dbg_mark(sdev, level, id)
-#define slsi_offline_dbg_printf(sdev, level, append, fmt, arg ...)
-#define slsi_offline_dbg_strcpy(sdev, level, append, str)
-#define slsi_offline_dbg_hex(sdev, level, buff, length)
-#endif
-
 #endif
