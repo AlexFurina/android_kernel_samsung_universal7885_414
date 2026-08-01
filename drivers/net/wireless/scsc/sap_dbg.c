@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Copyright (c) 2014 - 2016 Samsung Electronics Co., Ltd. All rights reserved
+ * Copyright (c) 2014 - 2018 Samsung Electronics Co., Ltd. All rights reserved
  *
  ****************************************************************************/
 #include <linux/types.h>
@@ -57,7 +57,7 @@ static void slsi_rx_debug(struct slsi_dev *sdev, struct net_device *dev, struct 
 		break;
 	case DEBUG_WORD12IND:
 		atomic_inc(&sdev->debug_inds);
-		SLSI_DBG1(sdev, SLSI_FW_TEST, "FW DEBUG(id:%d, subid:%d, vif:%d, time:%u) %04X %04X %04X %04X %04X %04X %04X %04X %04X %04X %04X %04X\n",
+		SLSI_DBG4(sdev, SLSI_FW_TEST, "FW DEBUG(id:%d, subid:%d, vif:%d, time:%u) %04X %04X %04X %04X %04X %04X %04X %04X %04X %04X %04X %04X\n",
 			  fapi_get_u16(skb, u.debug_word12_ind.module_id),
 			  fapi_get_u16(skb, u.debug_word12_ind.module_sub_id),
 			  fapi_get_vif(skb),
@@ -79,7 +79,7 @@ static void slsi_rx_debug(struct slsi_dev *sdev, struct net_device *dev, struct 
 		SLSI_DBG1(sdev, SLSI_MLME, "Unhandled Debug Ind: 0x%.4x\n", id);
 		break;
 	}
-	slsi_kfree_skb(skb);
+	kfree_skb(skb);
 }
 
 static int slsi_rx_dbg_sap(struct slsi_dev *sdev, struct sk_buff *skb)
@@ -100,7 +100,7 @@ static int slsi_rx_dbg_sap(struct slsi_dev *sdev, struct sk_buff *skb)
 			dev = slsi_get_netdev_rcu(sdev, vif);
 			if (!dev) {
 				rcu_read_unlock();
-				slsi_kfree_skb(skb);
+				kfree_skb(skb);
 				break;
 			}
 			slsi_rx_sink_report(sdev, dev, skb);
@@ -113,7 +113,7 @@ static int slsi_rx_dbg_sap(struct slsi_dev *sdev, struct sk_buff *skb)
 			dev = slsi_get_netdev_rcu(sdev, vif);
 			if (!dev) {
 				rcu_read_unlock();
-				slsi_kfree_skb(skb);
+				kfree_skb(skb);
 				break;
 			}
 			slsi_rx_gen_report(sdev, dev, skb);
@@ -121,7 +121,7 @@ static int slsi_rx_dbg_sap(struct slsi_dev *sdev, struct sk_buff *skb)
 			break;
 		}
 	default:
-		slsi_kfree_skb(skb);
+		kfree_skb(skb);
 		SLSI_ERR(sdev, "Unhandled Ind: 0x%.4x\n", id);
 		break;
 	}
@@ -135,13 +135,13 @@ void slsi_rx_dbg_sap_work(struct work_struct *work)
 	struct slsi_dev *sdev = w->sdev;
 	struct sk_buff *skb = slsi_skb_work_dequeue(w);
 
-	slsi_wakelock(&sdev->wlan_wl);
+	slsi_wake_lock(&sdev->wlan_wl);
 	while (skb) {
 		slsi_debug_frame(sdev, NULL, skb, "RX");
 		slsi_rx_dbg_sap(sdev, skb);
 		skb = slsi_skb_work_dequeue(w);
 	}
-	slsi_wakeunlock(&sdev->wlan_wl);
+	slsi_wake_unlock(&sdev->wlan_wl);
 }
 
 static int sap_dbg_rx_handler(struct slsi_dev *sdev, struct sk_buff *skb)

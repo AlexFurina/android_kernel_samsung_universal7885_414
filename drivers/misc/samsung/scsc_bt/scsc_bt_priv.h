@@ -9,6 +9,15 @@
 #ifndef __SCSC_BT_PRIV_H
 #define __SCSC_BT_PRIV_H
 
+#include <linux/pm_qos.h>
+#include <linux/poll.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#include <scsc/scsc_wakelock.h>
+#else
+#include <linux/wakelock.h>
+#endif
+#include <linux/cdev.h>
+
 #include <scsc/scsc_mx.h>
 #include <scsc/api/bsmhcp.h>
 #include <scsc/api/bhcs.h>
@@ -52,6 +61,9 @@
 #ifdef CONFIG_SCSC_BT_BLUEZ
 #define SCSC_BT_ADDR      "/csa/bluetooth/.bd_addr"
 #define SCSC_BT_ADDR_LEN  (3)
+#elif defined CONFIG_SCSC_BT_ADDRESS_IN_FILE
+#define SCSC_BT_ADDR      CONFIG_SCSC_BT_ADDRESS_FILENAME
+#define SCSC_BT_ADDR_LEN  (6)
 #endif
 
 #define SCSC_H4_DEVICE_NAME             "scsc_h4_0"
@@ -182,6 +194,13 @@ struct scsc_common_service {
 
 extern struct scsc_common_service common_service;
 
+#ifdef CONFIG_SCSC_LOG_COLLECTION
+struct scsc_bt_hcf_collection {
+	void                       *hcf;
+	u32                        hcf_size;
+};
+#endif
+
 struct scsc_bt_service {
 	dev_t                          device;
 	struct scsc_service            *service;
@@ -197,6 +216,7 @@ struct scsc_bt_service {
 
 	atomic_t                       error_count;
 	atomic_t                       service_users;
+	bool                           service_started;
 
 	scsc_mifram_ref                bhcs_ref;                /* Bluetooth host configuration service reference */
 	scsc_mifram_ref                bsmhcp_ref;              /* Bluetooth shared memory host controller protocol reference */
@@ -219,10 +239,15 @@ struct scsc_bt_service {
 	struct scsc_bt_connection_info connection_handle_list[SCSC_BT_CONNECTION_INFO_MAX];
 	bool                           hci_event_paused;
 	bool                           acldata_paused;
-
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	struct scsc_wake_lock	       read_wake_lock;
+        struct scsc_wake_lock	       write_wake_lock;
+        struct scsc_wake_lock	       service_wake_lock;
+#else
 	struct wake_lock               read_wake_lock;
 	struct wake_lock               write_wake_lock;
 	struct wake_lock               service_wake_lock;
+#endif
 	size_t                         write_wake_lock_count;
 	size_t                         write_wake_unlock_count;
 
@@ -244,8 +269,13 @@ struct scsc_bt_service {
 	struct scsc_bt_avdtp_detect    avdtp_detect;
 	struct completion              recovery_release_complete;
 	struct completion              recovery_probe_complete;
+	u8                             recovery_level;
 
 	bool                           iq_reports_enabled;
+
+#ifdef CONFIG_SCSC_LOG_COLLECTION
+	struct scsc_bt_hcf_collection  hcf_collection;
+#endif
 };
 
 extern struct scsc_bt_service bt_service;
@@ -271,15 +301,16 @@ extern struct scsc_bt_service bt_service;
  * - cte type           : 1 octet
  * - Slot durations     : 1 octet
  * - packet_status      : 1 octet
+ * - event_counter      : 2 octets
  * - Sample count       : 1 octet
  *********************************
- * Total                : 15 octets
+ * Total                : 17 octets
  *
  * The maximum hci event size in bytes is:
- *     (15 + (number of samples * 2 (both I and Q)))
+ *     (17 + (number of samples * 2 (both I and Q)))
  *
  */
-#define HCI_IQ_REPORT_MAX_LEN                          (15 + (2 * HCI_IQ_REPORTING_MAX_NUM_SAMPLES))
+#define HCI_IQ_REPORT_MAX_LEN                          (17 + (2 * HCI_IQ_REPORTING_MAX_NUM_SAMPLES))
 #define HCI_LE_CONNECTIONLESS_IQ_REPORT_EVENT_SUB_CODE (0x15)
 #define HCI_LE_CONNECTION_IQ_REPORT_EVENT_SUB_CODE     (0x16)
 
@@ -299,6 +330,7 @@ struct scsc_ant_service {
 
 	atomic_t                       error_count;
 	atomic_t                       service_users;
+	bool                           service_started;
 
 	/* Bluetooth host configuration service reference */
 	scsc_mifram_ref                bhcs_ref;
@@ -314,9 +346,15 @@ struct scsc_ant_service {
 	u32                            read_index;
 	wait_queue_head_t              read_wait;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	struct scsc_wake_lock               read_wake_lock;
+        struct scsc_wake_lock               write_wake_lock;
+        struct scsc_wake_lock               service_wake_lock;
+#else
 	struct wake_lock               read_wake_lock;
 	struct wake_lock               write_wake_lock;
 	struct wake_lock               service_wake_lock;
+#endif
 	size_t                         write_wake_lock_count;
 	size_t                         write_wake_unlock_count;
 
@@ -331,6 +369,8 @@ struct scsc_ant_service {
 
 	struct completion              recovery_release_complete;
 	struct completion              recovery_probe_complete;
+	struct completion              release_complete;
+	u8                             recovery_level;
 };
 
 extern struct scsc_ant_service ant_service;

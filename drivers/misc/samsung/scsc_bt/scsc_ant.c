@@ -20,9 +20,13 @@
 #include <linux/uaccess.h>
 #include <linux/wait.h>
 #include <linux/kthread.h>
+#include <linux/version.h>
 #include <asm/io.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+#include <scsc/scsc_wakelock.h>
+#else
 #include <linux/wakelock.h>
-
+#endif
 #include <scsc/scsc_mx.h>
 #include <scsc/scsc_mifram.h>
 #include <scsc/api/bsmhcp.h>
@@ -136,7 +140,7 @@ static ssize_t scsc_shm_ant_cmd_write(const unsigned char *data, size_t count)
 		ant_service.asmhcp_protocol->header.mailbox_cmd_driv_ctr_write = tr_write;
 
 		/* Memory barrier to ensure out-of-order execution is completed */
-		mmiowb();
+		wmb();
 
 		/* Trigger the interrupt in the mailbox */
 		scsc_service_mifintrbit_bit_set(
@@ -192,7 +196,7 @@ static ssize_t scsc_shm_ant_data_write(const unsigned char *data, size_t count)
 		ant_service.asmhcp_protocol->header.mailbox_data_driv_ctr_write = tr_write;
 
 		/* Memory barrier to ensure out-of-order execution is completed */
-		mmiowb();
+		wmb();
 
 		/* Trigger the interrupt in the mailbox */
 		scsc_service_mifintrbit_bit_set(
@@ -400,6 +404,10 @@ ssize_t scsc_shm_ant_read(struct file *file, char __user *buf, size_t len, loff_
 	ssize_t res;
 	bool    gen_bg_int = false;
 
+	/* Special handling in case read is called after service has closed */
+	if (!ant_service.service_started)
+		return -EIO;
+
 	/* Only 1 reader is allowed */
 	if (atomic_inc_return(&ant_service.ant_readers) != 1) {
 		atomic_dec(&ant_service.ant_readers);
@@ -493,7 +501,7 @@ ssize_t scsc_shm_ant_read(struct file *file, char __user *buf, size_t len, loff_
 	ant_service.asmhcp_protocol->header.mailbox_data_ctr_driv_read = ant_service.mailbox_data_ctr_driv_read;
 
 	/* Ensure the data is updating correctly in memory */
-	mmiowb();
+	wmb();
 
 	if (gen_bg_int)
 		scsc_service_mifintrbit_bit_set(ant_service.service,
@@ -518,6 +526,10 @@ ssize_t scsc_shm_ant_write(struct file *file, const char __user *buf, size_t cou
 
 	UNUSED(file);
 	UNUSED(offset);
+
+	/* Don't allow any writes after service has been closed */
+	if (!ant_service.service_started)
+		return -EIO;
 
 	/* Only 1 writer is allowed */
 	if (atomic_inc_return(&ant_service.ant_writers) != 1) {
@@ -626,7 +638,8 @@ unsigned int scsc_shm_ant_poll(struct file *file, poll_table *wait)
 	/* Add the wait queue to the polling queue */
 	poll_wait(file, &ant_service.read_wait, wait);
 
-	if (atomic_read(&ant_service.error_count) != 0)
+	if (!ant_service.service_started ||
+	    atomic_read(&ant_service.error_count) != 0)
 		return POLLERR;
 
 	/* Has en error been detect then just return with an error */

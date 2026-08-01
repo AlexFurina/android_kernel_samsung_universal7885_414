@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Copyright (c) 2012 - 2016 Samsung Electronics Co., Ltd. All rights reserved
+ * Copyright (c) 2012 - 2020 Samsung Electronics Co., Ltd. All rights reserved
  *
  ****************************************************************************/
 
@@ -12,6 +12,8 @@
 #include <linux/kref.h>
 
 #include <scsc/scsc_mx.h>
+
+#define SLSI_WIFI_CM_IF_SYSTEM_ERROR_PANIC 8
 
 struct slsi_dev;
 
@@ -51,6 +53,8 @@ enum scsc_wifi_cm_if_notifier {
 	SCSC_WIFI_FAILURE_RESET,
 	SCSC_WIFI_SUSPEND,
 	SCSC_WIFI_RESUME,
+	SCSC_WIFI_SUBSYSTEM_RESET,
+	SCSC_WIFI_CHIP_READY,
 	SCSC_MAX_NOTIFIER
 };
 
@@ -63,6 +67,10 @@ struct scsc_wifi_cm_if {
 
 	/* refer to enum scsc_wifi_cm_if_state */
 	atomic_t        cm_if_state;
+
+	int       recovery_state;
+
+	atomic_t                 reset_level;
 };
 
 /*********************************** API ************************************/
@@ -78,12 +86,16 @@ void slsi_dev_detach(struct slsi_dev *sdev);
  */
 int slsi_sm_service_driver_register(void);
 void slsi_sm_service_driver_unregister(void);
-void slsi_sm_service_failed(struct slsi_dev *sdev, const char *reason);
+void slsi_sm_service_failed(struct slsi_dev *sdev, const char *reason, bool is_work);
 int slsi_sm_wlan_service_open(struct slsi_dev *sdev);
 int slsi_sm_wlan_service_start(struct slsi_dev *sdev);
-void slsi_sm_wlan_service_stop(struct slsi_dev *sdev);
+int slsi_sm_wlan_service_stop(struct slsi_dev *sdev);
 void slsi_sm_wlan_service_close(struct slsi_dev *sdev);
 int slsi_wlan_service_notifier_register(struct notifier_block *nb);
 int slsi_wlan_service_notifier_unregister(struct notifier_block *nb);
+int slsi_sm_recovery_service_stop(struct slsi_dev *sdev);
+int slsi_sm_recovery_service_close(struct slsi_dev *sdev);
+int slsi_sm_recovery_service_open(struct slsi_dev *sdev);
+int slsi_sm_recovery_service_start(struct slsi_dev *sdev);
 
 #endif

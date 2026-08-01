@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- * Copyright (c) 2016-2017 Samsung Electronics Co., Ltd. All rights reserved.
+ * Copyright (c) 2016-2018 Samsung Electronics Co., Ltd. All rights reserved.
  *
  ****************************************************************************/
 
@@ -21,7 +21,7 @@ SCSC_MODPARAM_DESC(scsc_decode_binary_len,
  * it also where required, taking care to maintain the same ordering.
  * (Search 4 NOTE_CREATING_TAGS)
  */
-const char *tagstr[] = {
+const char *tagstr[MAX_TAG + 1] = {
 	"binary",
 	"bin_wifi_ctrl_rx",
 	"bin_wifi_data_rx",
@@ -42,6 +42,8 @@ const char *tagstr[] = {
 	"mif",
 	"clk20",
 	"clk20_test",
+	"fm",
+	"fm_test",
 	"mx_file",
 	"mx_fw",
 	"mx_sampler",
@@ -57,6 +59,8 @@ const char *tagstr[] = {
 	"kic_common",
 	"wlbtd",
 	"wlog",
+	"lerna",
+	"mx_cfg",
 #ifdef CONFIG_SCSC_DEBUG_COMPATIBILITY
 	"init_deinit",
 	"netdev",
@@ -85,6 +89,7 @@ const char *tagstr[] = {
 	"gscan",
 	"mbulk",
 	"flowc",
+	"smapper",
 #endif
 	"test_me"
 };
