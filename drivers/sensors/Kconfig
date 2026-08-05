@@ -173,6 +173,13 @@ config SENSORS_TCS3701
 	help
 	   This option enables light sensor using TCS3701 driver.
 
+config SENSORS_TCS3701_A40
+	depends on I2C
+	tristate "TCS3701 driver"
+	default n
+	help
+	   This option to apply parameters only to A40 model.
+
 config SENSORS_TMD3725
 	depends on I2C
 	tristate "TMD3725 driver"
