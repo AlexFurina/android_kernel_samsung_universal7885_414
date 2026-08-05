@@ -57,4 +57,8 @@
 #include "fimc-is-vendor-config_common.h"
 #endif
 
+#ifdef CONFIG_CAMERA_USE_LIBALEX_SO
+#define CAMERA_USE_LIBFLEX_SO 1
+#endif
+
 #endif

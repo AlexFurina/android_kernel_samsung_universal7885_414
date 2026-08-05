@@ -154,3 +154,9 @@ config CAMERA_USE_OTP_DPC_DATA
         default n
         help
           Use otp dpc data.
+config CAMERA_USE_LIBALEX_SO
+	bool "Use libALEX.so for camera"
+	depends on VENDER_MCD_V2
+	default y
+	help
+	    Enable superb alex
