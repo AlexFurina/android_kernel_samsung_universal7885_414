@@ -2489,7 +2489,7 @@ static struct fimc_is_framemgr *get_csi_vc_framemgr(struct fimc_is_device_csi *c
 	return framemgr;
 }
 
-#ifdef USE_MS_PDAF_INTERFACE
+#if defined(USE_MS_PDAF_INTERFACE) || defined(CAMERA_USE_LIBFLEX_SO)
 int get_vc_dma_buf(struct fimc_is_sensor_interface *itf,
 		enum itf_vc_buf_data_type data_type,
 		u32 frame_count,
@@ -3740,7 +3740,7 @@ int init_sensor_interface(struct fimc_is_sensor_interface *itf)
 	itf->flash_itf_ops.request_flash_expo_gain = request_flash_expo_gain;
 	itf->flash_itf_ops.update_flash_dynamic_meta = update_flash_dynamic_meta;
 
-#ifdef USE_MS_PDAF_INTERFACE
+#if defined(USE_MS_PDAF_INTERFACE) || defined(CAMERA_USE_LIBFLEX_SO)
 	/* IRIS interface */
 	itf->aperture_itf_ops.set_aperture_value = set_aperture_value;
 	itf->aperture_itf_ops.get_aperture_value = get_aperture_value;

@@ -710,6 +710,16 @@ int fimc_is_queue_buffer_queue(struct fimc_is_queue *queue,
 	video = GET_VIDEO(vctx);
 	BUG_ON(!video);
 
+	if (unlikely(!vb->num_planes ||
+		vb->num_planes > FIMC_IS_MAX_PLANES)) {
+		mverr("invalid plane count(%u)", vctx, video, vb->num_planes);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	/* Metadata is stored in the final plane. */
+	spare = vb->num_planes - 1;
+
 	/* plane address is updated for checking everytime */
 	for (i = 0; i < vb->num_planes; i++) {
 		queue->buf_box[index][i] = vbuf->ops->plane_cookie(vbuf, i);
@@ -723,6 +733,15 @@ int fimc_is_queue_buffer_queue(struct fimc_is_queue *queue,
 
 	if (framemgr->id & FRAMEMGR_ID_SHOT) {
 		ext_size = sizeof(struct camera2_shot_ext) - sizeof(struct camera2_shot);
+
+		if (unlikely(vb2_plane_size(vb, spare) <
+			sizeof(struct camera2_shot_ext))) {
+			mverr("metadata plane too small(%lu < %zu)", vctx, video,
+				vb2_plane_size(vb, spare),
+				sizeof(struct camera2_shot_ext));
+			ret = -EINVAL;
+			goto exit;
+		}
 
 		/* Create Kvaddr for Metadata */
 		queue->buf_kva[index][spare] = vbuf->ops->plane_kvaddr(vbuf, spare);
@@ -795,7 +814,6 @@ set_info:
 
 	frame->num_buffers = queue->framecfg.num_buffers;
 	frame->planes = vb->num_planes;
-	spare = frame->planes - 1;
 
 	for (i = 0; i < frame->planes; i++) {
 		frame->dvaddr_buffer[i] = (u32)queue->buf_dva[index][i];

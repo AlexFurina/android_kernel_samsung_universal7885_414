@@ -1077,7 +1077,7 @@ struct fimc_is_flash_interface_ops {
 					camera2_shot_t *shot);
 };
 
-#ifdef USE_MS_PDAF_INTERFACE
+#if defined(USE_MS_PDAF_INTERFACE) || defined(CAMERA_USE_LIBFLEX_SO)
 /* arguments: stat_type, frame_count, notifier_data */
 typedef int (*vc_dma_notifier_t)(int, unsigned int, void *);
 
@@ -1168,7 +1168,7 @@ struct fimc_is_sensor_interface {
 	struct fimc_is_actuator_interface_ops	actuator_itf_ops;
 	struct fimc_is_flash_interface_ops	flash_itf_ops;
 	struct fimc_is_aperture_interface_ops	aperture_itf_ops;
-#ifdef USE_MS_PDAF_INTERFACE
+#if defined(USE_MS_PDAF_INTERFACE) || defined(CAMERA_USE_LIBFLEX_SO)
 	struct fimc_is_paf_interface_ops	paf_itf_ops;
 #endif /* USE_MS_PDAF_INTERFACE */
 

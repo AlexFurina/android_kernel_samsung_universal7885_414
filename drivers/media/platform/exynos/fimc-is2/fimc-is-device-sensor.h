@@ -185,7 +185,7 @@ struct fimc_is_sensor_cfg {
 	u32 internal_vc[CSI_VIRTUAL_CH_MAX];
 };
 
-#ifdef USE_MS_PDAF_INTERFACE
+#if defined(USE_MS_PDAF_INTERFACE) || defined(CAMERA_USE_LIBFLEX_SO)
 struct fimc_is_sensor_vc_max_size {
 	int stat_type;
 	int sensor_mode;
