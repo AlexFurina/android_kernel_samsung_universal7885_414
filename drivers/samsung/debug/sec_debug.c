@@ -318,13 +318,18 @@ out:
 }
 __setup("androidboot.recovery_offset=", sec_debug_recovery_cause_setup);
 
-extern struct device *secdbg_dev;
-
 static int __init sec_debug_recovery_cause_init(void)
 {
+	struct device *dev;
+
 	memset(recovery_cause, 0, MAX_RECOVERY_CAUSE_SIZE);
 
-	if (device_create_file(secdbg_dev, &dev_attr_recovery_cause) < 0)
+	dev = sec_device_create(NULL, "sec_debug");
+	WARN_ON(!dev);
+	if (IS_ERR(dev))
+		pr_err("%s:Failed to create devce\n", __func__);
+
+	if (device_create_file(dev, &dev_attr_recovery_cause) < 0)
 		pr_err("%s: Failed to create device file\n", __func__);
 
 	return 0;
@@ -1050,7 +1055,7 @@ static int __init sec_debug_next_setup(char *str)
 #ifdef CONFIG_NO_BOOTMEM
 	if (memblock_is_region_reserved(base, size) || memblock_reserve(base, size)) {
 #else
-	if (reserve_bootmem(base, size, BOOTMEM_EXCLUSIVE)) {
+	if reserve_bootmem(base, size, BOOTMEM_EXCLUSIVE) {
 #endif
 		/* size is not match with -size and size + sizeof(...) */
 		pr_err("%s: failed to reserve size:0x%lx at base 0x%lx\n",

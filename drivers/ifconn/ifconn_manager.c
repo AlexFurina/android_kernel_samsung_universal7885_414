@@ -13,6 +13,9 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/of.h>
+#if defined(CONFIG_CCIC_NOTIFIER)
+#include <linux/ccic/core.h>
+#endif
 
 static int _ifconn_manager_template_notify(struct ifconn_notifier_template *template)
 {

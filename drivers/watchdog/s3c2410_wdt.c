@@ -441,7 +441,7 @@ static int s3c2410wdt_keepalive(struct watchdog_device *wdd)
 	dev_info(wdt->dev, "Watchdog cluster %u keepalive!, wtcnt = %lx\n", wdt->cluster, wtcnt);
 
 #ifdef SEC_WATCHDOGD_FOOTPRINT
-	if (wdt->cluster == 0) {
+	if (wdd_info && wdt->cluster == 0) {
 		wdd_info->last_ping_cpu = raw_smp_processor_id();
 		wdd_info->last_ping_time = sched_clock();
 
@@ -531,7 +531,7 @@ static int s3c2410wdt_start(struct watchdog_device *wdd)
 	dev_info(wdt->dev, "Watchdog cluster %u start, WTCON = %lx\n", wdt->cluster, wtcon);
 
 #ifdef SEC_WATCHDOGD_FOOTPRINT
-	if (wdd_info->init_done == false) {
+	if (wdd_info && wdd_info->init_done == false) {
 		wdd_info->tsk = current;
 		wdd_info->thr = current_thread_info();
 		wdd_info->init_done = true;
@@ -1045,7 +1045,8 @@ inline int __s3c2410wdt_set_emergency_reset(unsigned int timeout_cnt, int index,
 		return -ENODEV;
 
 #ifdef CONFIG_SEC_DEBUG
-	wdd_info->emerg_addr = addr;
+	if (wdd_info)
+		wdd_info->emerg_addr = addr;
 #endif
 
 	/* emergency reset with wdt reset */

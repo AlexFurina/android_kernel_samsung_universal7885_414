@@ -6,8 +6,6 @@
 #include <linux/nsproxy.h>
 #include <linux/security.h>
 #include <../../fs/mount.h>
-#include <linux/rcupdate.h>
-#include <linux/sched.h>
 #include <linux/sched/signal.h>
 
 struct task_security_struct {
@@ -49,9 +47,9 @@ void kdp_print(const char *fmt, ...)
 #ifdef CONFIG_RKP_NS_PROT
 struct vfsmount *get_vfsmnt(struct task_struct *p)
 {
-	if (!p || !(p->nsproxy) ||
-		!(p->nsproxy->mnt_ns) ||
-		!(p->nsproxy->mnt_ns->root))
+	if(!p || !(p->nsproxy) 
+		||!(p->nsproxy->mnt_ns) 
+		||!(p->nsproxy->mnt_ns->root))
 		return NULL;
 
 	return p->nsproxy->mnt_ns->root->mnt;
@@ -68,15 +66,11 @@ static int test_case_kdp_ro(int cmd_id)
 		switch(cmd_id) {
 		case CMD_ID_CRED: 
 			/*Here dst points to struct cred*/
-			rcu_read_lock();
 			dst =(u64)__task_cred(p);
-			rcu_read_unlock();
 			break;
 		case CMD_ID_SEC_CONTEXT: 
 			/*Here dst points to process security context*/
-			rcu_read_lock();
 			dst =(u64)__task_cred(p)->security;
-			rcu_read_unlock();
 			break;
 #ifdef CONFIG_RKP_NS_PROT
 		case CMD_ID_NS: 
@@ -85,7 +79,7 @@ static int test_case_kdp_ro(int cmd_id)
 			break;
 #endif /* CONFIG_RKP_NS_PROT */ 
 		}
-		if (!dst)
+		if(!dst)
 		    continue;
 
 		if (hyp_check_page_ro((u64)dst)) {
@@ -116,22 +110,18 @@ static int cred_match(struct task_struct *p,const struct cred *cred)
 	struct mm_struct *mm = p->mm;
 	pgd_t *tgt = NULL;
 
-	if (cred->bp_task != p) {
+	if(cred->bp_task != p) {
 		kdp_print("KDP_WARN task= #%s# cred=%p,task = %p bp_task = %p\n",p->comm,cred, p,cred->bp_task);
 		return 0;
 	}
-
-	if (!( in_interrupt() || in_softirq())) {
+	if(!( in_interrupt() || in_softirq())) {
 		return 1;
 	}
-	task_lock(p);
-	tgt = mm ? mm->pgd : init_mm.pgd;
-	if (cred->bp_pgd != tgt) {
-		kdp_print("KDP_WARN task= #%s# cred=%p, mm = %p,init_mm = %p, pgd = %p bp_pgd= %p \n", p->comm, cred, mm, init_mm.pgd, tgt, cred->bp_pgd);
-		task_unlock(p);
+	tgt = mm?mm->pgd:init_mm.pgd;
+	if(cred->bp_pgd != tgt) {
+		kdp_print("KDP_WARN task= #%s# cred=%p,mm = %p,init_mm = %p,pgd = %p bp_pgd= %p \n",p->comm,cred,mm,init_mm.pgd,tgt,cred->bp_pgd);
 		return 0;
 	}
-	task_unlock(p);
 	return 1;
 }
 
@@ -139,7 +129,7 @@ static int sec_context_match(const struct cred *cred)
 {
 	struct task_security_struct *tsec = (struct task_security_struct *)cred->security;
     
-	if ((u64)tsec->bp_cred != (u64)cred) {
+	if((u64)tsec->bp_cred != (u64)cred) {
 		return 0;
 	}
 	return 1;
@@ -153,15 +143,11 @@ static int test_case_match_bp(int cmd_id)
 		switch(cmd_id) {
 		case CMD_ID_CRED: 
 			/*Here dst points to struct cred*/
-			rcu_read_lock();
 			ret = cred_match(p,__task_cred(p));
-			rcu_read_unlock();
 			break;
 		case CMD_ID_SEC_CONTEXT: 
 			/*Here dst points to process security context*/
-			rcu_read_lock();
 			ret = sec_context_match(__task_cred(p));
-			rcu_read_unlock();
 			break;
 		}
 		ret ? match++ : mismatch++;
@@ -180,6 +166,7 @@ static int test_case_sec_context_match_bp(void)
 	kdp_print("Security Context Back Poiner check ");
 	return test_case_match_bp(CMD_ID_SEC_CONTEXT);
 }
+
 
 #ifdef CONFIG_RKP_NS_PROT
 static int test_case_ns_ro(void)
@@ -246,7 +233,7 @@ static void sec_test_cred_indirect_pe(int cmd_id)
 	struct cred *rcred;
 
 	rcred = get_root_cred();
-	printk("RKP_SEC_TEST #%d# BEFORE current cred uid = %llx euid = %llx gid = %llx egid = %llx Root Cred%llx\n", cmd_id, current->cred->uid.val, current->cred->euid.val, current->cred->gid.val, current->cred->egid.val, (u64)rcred);
+	printk("RKP_SEC_TEST #%d# BEFORE current cred uid = %llx euid = %llx gid = %llx egid = %llx Root Cred%llx\n",cmd_id,current->cred->uid.val,current->cred->euid.val,current->cred->gid.val,current->cred->egid.val,(u64)rcred);
 
 	switch(cmd_id) {
 	case CMD_ID_COMMIT_CRED:
@@ -260,7 +247,7 @@ static void sec_test_cred_indirect_pe(int cmd_id)
 	break;
 	}
 
-	printk("RKP_SEC_TEST#%d# AFTER current cred uid = %llx euid = %llx gid = %llx egid = %llx  Root Cred %llx\n", cmd_id, current->cred->uid.val, current->cred->euid.val, current->cred->gid.val, current->cred->egid.val, (u64)rcred);
+	printk("RKP_SEC_TEST#%d# AFTER current cred uid = %llx euid = %llx gid = %llx egid = %llx  Root Cred %llx\n",cmd_id,current->cred->uid.val,current->cred->euid.val,current->cred->gid.val,current->cred->egid.val,(u64)rcred);
 }
 ssize_t kdp_write(struct file *filep, const char __user *buffer, size_t len, loff_t *offset)
 {
@@ -270,10 +257,10 @@ ssize_t kdp_write(struct file *filep, const char __user *buffer, size_t len, lof
 
 	buff_size = (len > PROCFS_MAX_SIZE)?PROCFS_MAX_SIZE:len;
 
-	if (copy_from_user(procfs_buffer, buffer, buff_size)) {
+	if ( copy_from_user(procfs_buffer, buffer, buff_size) ) {
 		return -EFAULT;
 	}
-	sscanf(procfs_buffer,"%d", &tcase);
+	sscanf(procfs_buffer,"%d",&tcase);
 	switch(tcase) {
 	case CMD_ID_SEC_WRITE_CRED:
 		sec_test_cred();

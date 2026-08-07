@@ -1517,13 +1517,10 @@ static int s3c24xx_i2c_runtime_resume(struct device *dev)
 #endif
 
 #ifdef CONFIG_SAMSUNG_TUI
-#ifdef CONFIG_PM_RUNTIME
-static int stui_pm_ret;
-#endif /* CONFIG_PM_RUNTIME */
 int stui_i2c_lock(struct i2c_adapter *adap)
 {
 	int ret = 0;
-	static struct s3c24xx_i2c *stui_i2c;
+	struct s3c24xx_i2c *stui_i2c;
 
 	if (!adap) {
 		pr_err("cannot get adapter\n");
@@ -1533,18 +1530,9 @@ int stui_i2c_lock(struct i2c_adapter *adap)
 	i2c_lock_adapter(adap);
 	stui_i2c = (struct s3c24xx_i2c *)adap->algo_data;
 
-#ifdef CONFIG_PM_RUNTIME
-	stui_pm_ret = pm_runtime_get_sync(stui_i2c->dev);
-	if (stui_pm_ret < 0) {
-		ret = clk_enable(stui_i2c->clk);
-		if (ret)
-			goto out_err;
-	}
-#else /* CONFIG_PM_RUNTIME */
 	ret = clk_enable(stui_i2c->clk);
 	if (ret)
 		goto out_err;
-#endif /* CONFIG_PM_RUNTIME */
 
 #ifdef CONFIG_ARCH_EXYNOS_PM
 	exynos_update_ip_idle_status(stui_i2c->idle_ip_index, 0);
@@ -1559,7 +1547,7 @@ out_err:
 
 int stui_i2c_unlock(struct i2c_adapter *adap)
 {
-	static struct s3c24xx_i2c *stui_i2c;
+	struct s3c24xx_i2c *stui_i2c;
 
 	if (!adap) {
 		pr_err("cannot get adapter\n");
@@ -1568,16 +1556,7 @@ int stui_i2c_unlock(struct i2c_adapter *adap)
 
 	stui_i2c = (struct s3c24xx_i2c *)adap->algo_data;
 
-#ifdef CONFIG_PM_RUNTIME
-	if (stui_pm_ret < 0) {
-		clk_disable(stui_i2c->clk);
-	} else {
-		pm_runtime_mark_last_busy(stui_i2c->dev);
-		pm_runtime_put_autosuspend(stui_i2c->dev);
-	}
-#else /* CONFIG_PM_RUNTIME */
 	clk_disable(stui_i2c->clk);
-#endif /* CONFIG_PM_RUNTIME */
 
 #ifdef CONFIG_ARCH_EXYNOS_PM
 	exynos_update_ip_idle_status(stui_i2c->idle_ip_index, 1);

@@ -288,7 +288,6 @@ static void hid_irq_in(struct urb *urb)
 			status = hid_input_report(urb->context, HID_INPUT_REPORT,
 					 urb->transfer_buffer,
 					 urb->actual_length, 1);
-
 			if (status == 0) {
 				if (usbhid->in_err_isr) {
 					usbhid->in_err_isr = 0;

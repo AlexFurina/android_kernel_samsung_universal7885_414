@@ -25,24 +25,23 @@
 #include <linux/smp.h>
 #include <linux/sched.h>
 #include <linux/sched/clock.h>
-#include <linux/slab.h>
-#include <linux/dcache.h>
 #include <linux/sec_class.h>
 #include <linux/sec_ext.h>
 #include <clocksource/arm_arch_timer.h>
+#include <linux/slab.h>
 
 static u32 mct_start;
 
 /* timestamps at /proc/boot_stat
  * freq[2] : cluster0 / cluster1
- * temp[6] : cluster0 / cluster1 / g3d / npu / cp / isp
+ * temp[4] : cluster0 / cluster1 / gpu / isp
  */
 struct boot_event {
 	const char *string;
 	unsigned int time;
 	int freq[2];
 	int online;
-	int temp[6];
+	int temp[4];
 	int order;
 };
 
@@ -84,11 +83,11 @@ static struct boot_event boot_events[] = {
 	{"!@Boot_SVC : IMSI Ready",},
 	{"!@Boot_SVC : completeConnection",},
 	{"!@Boot_DEBUG: finishUserUnlockedCompleted",},
-	{"!@Boot: setIconVisibility: ims_volte: [SHOW]",},
-	{"!@Boot_DEBUG: Launcher.onCreate()",},
-	{"!@Boot_DEBUG: Launcher.onResume()",},
-	{"!@Boot_DEBUG: Launcher.LoaderTask.run() start",},
-	{"!@Boot_DEBUG: Launcher - FinishFirstBind",},
+    {"!@Boot: setIconVisibility: ims_volte: [SHOW]",},
+    {"!@Boot_DEBUG: Launcher.onCreate()",},
+    {"!@Boot_DEBUG: Launcher.onResume()",},
+    {"!@Boot_DEBUG: Launcher.LoaderTask.run() start",},
+    {"!@Boot_DEBUG: Launcher - FinishFirstBind",},
 };
 
 #define MAX_LENGTH_OF_BOOTING_LOG 90
@@ -104,7 +103,6 @@ struct enhanced_boot_time {
 };
 
 #define MAX_LENGTH_OF_SYSTEMSERVER_LOG 90
-
 struct systemserver_init_time_entry {
 	struct list_head next;
 	char buf[MAX_LENGTH_OF_SYSTEMSERVER_LOG];
@@ -139,10 +137,13 @@ void sec_bootstat_add_initcall(const char *s)
 	}
 }
 
+static DEFINE_RAW_SPINLOCK(ebs_list_lock);
 void sec_enhanced_boot_stat_record(const char *buf)
 {
 	unsigned long long t = 0;
 	struct enhanced_boot_time *entry;
+	unsigned long flags;
+	
 	entry = kmalloc(sizeof(*entry), GFP_KERNEL);
 	if (!entry)
 		return;
@@ -152,8 +153,11 @@ void sec_enhanced_boot_stat_record(const char *buf)
 	do_div(t, 1000000);
 	entry->time = (unsigned int)t;
 	sec_bootstat_get_cpuinfo(entry->freq, &entry->online);
+	
+	raw_spin_lock_irqsave(&ebs_list_lock, flags);
 	list_add(&entry->next, &enhanced_boot_time_list);
 	events_ebs++;
+	raw_spin_unlock_irqrestore(&ebs_list_lock, flags);
 }
 
 static int prev;
@@ -217,7 +221,7 @@ void sec_bootstat_add(const char *c)
 
 void print_format(struct boot_event *data, struct seq_file *m, int index, int delta)
 {
-	seq_printf(m, "%-50s %6u %6u %6d %4d %4d L%d%d%d%d B%d%d%d%d %2d %2d %2d %2d %2d %2d\n",
+	seq_printf(m, "%-50s %6u %6u %6d %4d %4d L%d%d%d%d B%d%d%d%d %2d %2d %2d %2d\n",
 		data[index].string, data[index].time + mct_start,
 		data[index].time, delta,
 		data[index].freq[0] / 1000,
@@ -233,9 +237,7 @@ void print_format(struct boot_event *data, struct seq_file *m, int index, int de
 		data[index].temp[0],
 		data[index].temp[1],
 		data[index].temp[2],
-		data[index].temp[3],
-		data[index].temp[4],
-		data[index].temp[5]
+		data[index].temp[3]
 		);
 }
 
@@ -246,10 +248,10 @@ static int sec_boot_stat_proc_show(struct seq_file *m, void *v)
 	struct device_init_time_entry *entry;
 	struct systemserver_init_time_entry *systemserver_entry;
 
-	seq_puts(m, "boot event                                           time  ktime  delta f_c0 f_c1 online_mask  B  L  G  N  C  I\n");
-	seq_puts(m, "---------------------------------------------------------------------------------------------------------------\n");
+	seq_puts(m, "boot event                                           time  ktime  delta f_c0 f_c1 online mask  B  L  G  I\n");
+	seq_puts(m, "---------------------------------------------------------------------------------------------------------\n");
 	seq_puts(m, "BOOTLOADER - KERNEL\n");
-	seq_puts(m, "---------------------------------------------------------------------------------------------------------------\n");
+	seq_puts(m, "---------------------------------------------------------------------------------------------------------\n");
 	seq_printf(m, "MCT is initialized in bl2                          %6u %6u %6u\n", 0, 0, 0);
 	seq_printf(m, "start kernel timer                                 %6u %6u %6u\n", mct_start, 0, mct_start);
 
@@ -258,9 +260,9 @@ static int sec_boot_stat_proc_show(struct seq_file *m, void *v)
 		last_time = boot_initcall[i].time;
 	}
 
-	seq_puts(m, "---------------------------------------------------------------------------------------------------------------\n");
+	seq_puts(m, "---------------------------------------------------------------------------------------------------------\n");
 	seq_puts(m, "FRAMEWORK\n");
-	seq_puts(m, "---------------------------------------------------------------------------------------------------------------\n");
+	seq_puts(m, "---------------------------------------------------------------------------------------------------------\n");
 	i = 0;
 	do {
 		if (boot_events[i].time != 0) {
@@ -273,16 +275,15 @@ static int sec_boot_stat_proc_show(struct seq_file *m, void *v)
 		else
 			break;
 	} while (i > 0 && i < ARRAY_SIZE(boot_events));
-
-	seq_puts(m, "---------------------------------------------------------------------------------------------------------------\n");
+	
+	seq_puts(m, "---------------------------------------------------------------------------------------------------------\n");		
 	seq_printf(m, "device init time over %d ms\n\n",
 			DEVICE_INIT_TIME_100MS / 1000);
-
+	
 	list_for_each_entry (entry, &device_init_time_list, next)
-		seq_printf(m, "%-20s : %lld usces\n",
-				entry->buf, entry->duration);
+		seq_printf(m, "%-20s : %lld usces\n", entry->buf, entry->duration);
 
-	seq_puts(m, "---------------------------------------------------------------------------------------------------------------\n");
+	seq_puts(m, "---------------------------------------------------------------------------------------------------------\n");		
 	seq_puts(m, "SystemServer services that took long time\n\n");
 	list_for_each_entry (systemserver_entry, &systemserver_init_time_list, next)
 		seq_printf(m, "%s\n",systemserver_entry->buf);

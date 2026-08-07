@@ -32,7 +32,6 @@ struct sec_therm_info {
 	struct sec_therm_platform_data *pdata;
 	struct iio_channel *chan;
 	char name[PLATFORM_NAME_SIZE];
-	char hwmon_name[PLATFORM_NAME_SIZE];
 	struct device_node *np;
 };
 
@@ -189,13 +188,25 @@ static ssize_t sec_therm_show_temperature(struct device *dev,
 {
 	struct sec_therm_info *info = dev_get_drvdata(dev);
 	int adc, temp;
+	static int prev_temp = 9990, prev_adc = 0;
 
 	adc = sec_therm_get_adc_data(info);
 
-	if (adc >= 0)
-		temp = convert_adc_to_temper(info, adc);
-	else
+	if (adc < 0)
 		return adc;
+	else
+		temp = convert_adc_to_temper(info, adc);
+
+	if (prev_temp != 9990) {
+		if (temp >= 600 &&
+			((prev_temp > temp && (prev_temp - temp) > 50) ||
+			 (prev_temp < temp && (temp - prev_temp) > 50))) {
+			pr_info("%s: adc %d -> %d, temp %d -> %d\n",
+				__func__, prev_adc, adc, prev_temp, temp);
+		}
+	}
+	prev_temp = temp;
+	prev_adc = adc;
 
 	return sprintf(buf, "%d\n", temp);
 }
@@ -223,27 +234,17 @@ static ssize_t sec_therm_show_name(struct device *dev,
 static SENSOR_DEVICE_ATTR(temperature, 0444, sec_therm_show_temperature,
 		NULL, 0);
 static SENSOR_DEVICE_ATTR(temp_adc, 0444, sec_therm_show_temp_adc, NULL, 0);
-
-static struct attribute *sec_therm_hwmon_attrs[] = {
-	&sensor_dev_attr_temperature.dev_attr.attr,
-	&sensor_dev_attr_temp_adc.dev_attr.attr,
-	NULL
-};
-ATTRIBUTE_GROUPS(sec_therm_hwmon);
-
-static DEVICE_ATTR(temperature, 0444, sec_therm_show_temperature, NULL);
-static DEVICE_ATTR(temp_adc, 0444, sec_therm_show_temp_adc, NULL);
 static DEVICE_ATTR(name, 0444, sec_therm_show_name, NULL);
 
-static struct attribute *sec_therm_attrs[] = {
-	&dev_attr_temperature.attr,
-	&dev_attr_temp_adc.attr,
+static struct attribute *sec_therm_attributes[] = {
+	&sensor_dev_attr_temperature.dev_attr.attr,
+	&sensor_dev_attr_temp_adc.dev_attr.attr,
 	&dev_attr_name.attr,
 	NULL
 };
 
-static const struct attribute_group sec_therm_group = {
-	.attrs = sec_therm_attrs,
+static const struct attribute_group sec_therm_attr_group = {
+	.attrs = sec_therm_attributes,
 };
 
 static struct sec_therm_info *g_ap_therm_info;
@@ -269,7 +270,6 @@ static int sec_therm_probe(struct platform_device *pdev)
 {
 	struct sec_therm_info *info;
 	int ret;
-	char name[PLATFORM_NAME_SIZE];
 
 	dev_dbg(&pdev->dev, "%s: SEC Thermistor Driver Loading\n", __func__);
 
@@ -298,25 +298,13 @@ static int sec_therm_probe(struct platform_device *pdev)
 		return PTR_ERR(info->sec_dev);
 	}
 
-	ret = sysfs_create_group(&info->sec_dev->kobj, &sec_therm_group);
+	ret = sysfs_create_group(&info->sec_dev->kobj, &sec_therm_attr_group);
 	if (ret) {
 		dev_err(info->dev, "failed to create sysfs group\n");
 		goto err_create_sysfs;
 	}
 
-	if (sscanf(info->name, "sec-%s", name)) {
-		char *token;
-		char *str = name;
-		token = strsep(&str, "-");
-		strncpy(info->hwmon_name, token, PLATFORM_NAME_SIZE - 1);
-	} else {
-		dev_err(info->dev, "failed to sscanf hwmon_name\n");
-		goto err_register_hwmon;
-	}
-
-	info->hwmon_dev = devm_hwmon_device_register_with_groups(info->dev,
-			info->hwmon_name, info, sec_therm_hwmon_groups);
-
+	info->hwmon_dev = hwmon_device_register(info->dev);
 	if (IS_ERR(info->hwmon_dev)) {
 		dev_err(info->dev, "unable to register as hwmon device.\n");
 		ret = PTR_ERR(info->hwmon_dev);
@@ -331,7 +319,7 @@ static int sec_therm_probe(struct platform_device *pdev)
 	return 0;
 
 err_register_hwmon:
-	sysfs_remove_group(&info->sec_dev->kobj, &sec_therm_group);
+	sysfs_remove_group(&info->sec_dev->kobj, &sec_therm_attr_group);
 err_create_sysfs:
 	sec_device_destroy(info->sec_dev->devt);
 	return ret;
@@ -347,7 +335,8 @@ static int sec_therm_remove(struct platform_device *pdev)
 	if (info->id == 0)
 		g_ap_therm_info = NULL;
 
-	sysfs_remove_group(&info->sec_dev->kobj, &sec_therm_group);
+	hwmon_device_unregister(info->hwmon_dev);
+	sysfs_remove_group(&info->sec_dev->kobj, &sec_therm_attr_group);
 	iio_channel_release(info->chan);
 	sec_device_destroy(info->sec_dev->devt);
 	platform_set_drvdata(pdev, NULL);

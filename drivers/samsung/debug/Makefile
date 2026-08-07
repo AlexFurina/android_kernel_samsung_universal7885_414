@@ -23,3 +23,5 @@ obj-$(CONFIG_SEC_DEBUG_AUTO_COMMENT)	+= sec_debug_auto_comment.o
 obj-$(CONFIG_SEC_DEBUG_LAST_KMSG)	+= sec_debug_last_kmsg.o
 obj-$(CONFIG_SEC_DEBUG_FIRST_KMSG)	+= sec_debug_first_kmsg.o
 obj-$(CONFIG_SEC_DEBUG_DTASK)		+= sec_debug_dtask.o
+obj-$(CONFIG_SEC_BOOTSTAT)		+= sec_bootstat.o
+obj-$(CONFIG_SEC_DEBUG_SOFTDOG)   	+= sec_debug_softdog.o

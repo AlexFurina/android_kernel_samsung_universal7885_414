@@ -1,10 +1,10 @@
 #include <linux/module.h>
 #include <linux/proc_fs.h>
 #include <linux/mm.h>
-#include <asm-generic/sections.h>
 #include <linux/rkp.h>
 #include <linux/uh.h>
 #include <linux/sched/signal.h>
+#include <soc/samsung/exynos-bcm_dbg.h>
 
 /*
  * BIT[0:1]	TYPE	PXN BIT
@@ -22,26 +22,37 @@
 #define RKP_PA_READ	0
 #define RKP_PA_WRITE	1
 
-#define RKP_ROBUFFER_ARG_TEST 1
-
 /**********************************************************
  *			FIMC defines
  **********************************************************/
 #ifdef CONFIG_USE_DIRECT_IS_CONTROL //which means FIMC
-#define FIMC_LIB_OFFSET_VA		(VMALLOC_START + 0xF6000000 - 0x8000000)
-#define FIMC_LIB_START_VA		(FIMC_LIB_OFFSET_VA + 0x04000000)
-#define VRA_START_VA	FIMC_LIB_START_VA
+
+#define CDH_CODE_SIZE		(SZ_16K)			/* CDH : Camera Debug Helper */
+#define CDH_DATA_SIZE		(SZ_128K - SZ_16K)
+
+#define FIMC_LIB_OFFSET_VA	(VMALLOC_START + 0xF6000000 - 0x8000000)
+#define FIMC_LIB_START_VA	(FIMC_LIB_OFFSET_VA + 0x04000000 - CDH_CODE_SIZE - CDH_DATA_SIZE)
+
+#define CDH_START_VA	FIMC_LIB_START_VA
+
+#define VRA_START_VA	(CDH_START_VA + CDH_CODE_SIZE + CDH_DATA_SIZE)
+// #define VRA_CODE_SIZE	0x40000 /* for Great and Crown */
 #define VRA_CODE_SIZE	0x80000
 #define VRA_DATA_SIZE	0x40000
 
-#define DDK_START_VA	(FIMC_LIB_START_VA + VRA_CODE_SIZE + VRA_DATA_SIZE)
+#define DDK_START_VA	(VRA_START_VA + VRA_CODE_SIZE + VRA_DATA_SIZE)
+// #define DDK_CODE_SIZE	0x300000 /* for Great and Crown */
 #define DDK_CODE_SIZE	0x340000
 #define DDK_DATA_SIZE	0x100000
 
 #define RTA_START_VA	(DDK_START_VA + DDK_CODE_SIZE + DDK_DATA_SIZE)
 
-#define RTA_CODE_SIZE	0x200000
-#define RTA_DATA_SIZE	0x100000
+/*#define RTA_CODE_SIZE	0x100000	*//* for Dream and Star */
+/*#define RTA_DATA_SIZE	0x200000*/
+//#define RTA_CODE_SIZE	0x180000	/* for Great and Crown*/
+//#define RTA_DATA_SIZE	0x180000
+#define RTA_CODE_SIZE	0x200000	/* for Beyond*/
+#define RTA_DATA_SIZE	0x200000
 
 #define FIMC_LIB_END_VA (RTA_START_VA+RTA_CODE_SIZE+RTA_DATA_SIZE)
 #endif
@@ -420,32 +431,73 @@ static int test_case_kernel_range_rwx(void)
 	int ret = 0;
 	u64 ro = 0, rw = 0;
 	u64 xn = 0, x = 0;
-	int len, i;
+	int len = 0, i;
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
-	u64 fixmap_va = __fix_to_virt(FIX_ENTRY_TRAMP_TEXT);
+	u64 fixmap_va1 = __fix_to_virt(FIX_ENTRY_TRAMP_TEXT1);
+	u64 fixmap_va2 = __fix_to_virt(FIX_ENTRY_TRAMP_TEXT2);
+	u64 fixmap_va3 = __fix_to_virt(FIX_ENTRY_TRAMP_TEXT3);
+#else
+	u64 fixmap_va1 = MEM_END;
 #endif
-	struct mem_range_struct test_ranges[] = {
+
+	struct mem_range_struct test_ranges[20];
+	struct mem_range_struct test_ranges_cdh_loaded[] = {
 		{(u64)VMALLOC_START,		((u64)_text) - ((u64)VMALLOC_START),	"VMALLOC -  STEXT", false, true},
 		{((u64)_text),			((u64)_etext) - ((u64)_text),		"STEXT - ETEXT   ", true, false},
 
 		// For STAR, two bit maps are between etext and srodata
 		{((u64)_etext),			((u64) __end_rodata) - ((u64)_etext),	"ETEXT -  ERODATA", true, true},
 		// For STAR, FIMC is after erodata
-		{((u64) __end_rodata),		VRA_START_VA-((u64) __end_rodata),	"ERODATA - S_FIMC", false, true},
+		{((u64) __end_rodata),		CDH_START_VA-((u64) __end_rodata),	"ERODATA - S_FIMC", false, true},
+		{CDH_START_VA,			CDH_CODE_SIZE,				"     CDH CODE   ", true, false},
+		{CDH_START_VA+CDH_CODE_SIZE,	CDH_DATA_SIZE,				"     CDH DATA   ", false, true},
 		{VRA_START_VA,			VRA_CODE_SIZE,				"     VRA CODE   ", true, false},
 		{VRA_START_VA+VRA_CODE_SIZE,	VRA_DATA_SIZE,				"     VRA DATA   ", false, true},
 		{DDK_START_VA,			DDK_CODE_SIZE,				"     DDK CODE   ", true, false},
 		{DDK_START_VA+DDK_CODE_SIZE,	DDK_DATA_SIZE,				"     DDK_DATA   ", false, true},
 		{RTA_START_VA,			RTA_CODE_SIZE,				"     RTA CODE   ", true, false},
-		{RTA_START_VA+RTA_CODE_SIZE,	RTA_DATA_SIZE,				"     RTA DATA   ", false, true}
+		{RTA_START_VA+RTA_CODE_SIZE,	RTA_DATA_SIZE,				"     RTA DATA   ", false, true},
+		{((u64)FIMC_LIB_END_VA),	fixmap_va1 - ((u64)FIMC_LIB_END_VA),	"FIMC_END- FIXMAP1", false, true},
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
-		, {((u64)FIMC_LIB_END_VA),	fixmap_va - ((u64)FIMC_LIB_END_VA),	"FIMC_END- FIXMAP", false, true},
-		{((u64)fixmap_va),		((u64) PAGE_SIZE),			"     FIXMAP     ", true, false},
-		{((u64)fixmap_va+PAGE_SIZE),	((u64) MEM_END-(fixmap_va+PAGE_SIZE)),	"FIXMAP - MEM_END", false, true}
+		{((u64)fixmap_va1),		((u64) PAGE_SIZE),			"     FIXMAP1     ", true, false},
+		{((u64)fixmap_va2),		((u64) PAGE_SIZE),			"     FIXMAP2     ", true, false},
+		{((u64)fixmap_va3),		((u64) PAGE_SIZE),			"     FIXMAP3     ", true, false},
+		{((u64)fixmap_va3+PAGE_SIZE),	((u64) MEM_END-(fixmap_va3+PAGE_SIZE)),	"FIXMAP3 - MEM_END", false, true},
 #endif
-};
+	};
+	struct mem_range_struct test_ranges_cdh_not_loaded[] = {
+		{(u64)VMALLOC_START,		((u64)_text) - ((u64)VMALLOC_START),	"VMALLOC -  STEXT", false, true},
+		{((u64)_text),			((u64)_etext) - ((u64)_text),		"STEXT - ETEXT   ", true, false},
 
-	len = sizeof(test_ranges)/sizeof(struct mem_range_struct);
+		// For STAR, two bit maps are between etext and srodata
+		{((u64)_etext),			((u64) __end_rodata) - ((u64)_etext),	"ETEXT -  ERODATA", true, true},
+		// For STAR, FIMC is after erodata
+		{((u64) __end_rodata),		CDH_START_VA-((u64) __end_rodata),	"ERODATA - S_FIMC", false, true},
+		{CDH_START_VA,			CDH_CODE_SIZE+CDH_DATA_SIZE,		"   CDH REGION   ", false, true},
+		{VRA_START_VA,			VRA_CODE_SIZE,				"     VRA CODE   ", true, false},
+		{VRA_START_VA+VRA_CODE_SIZE,	VRA_DATA_SIZE,				"     VRA DATA   ", false, true},
+		{DDK_START_VA,			DDK_CODE_SIZE,				"     DDK CODE   ", true, false},
+		{DDK_START_VA+DDK_CODE_SIZE,	DDK_DATA_SIZE,				"     DDK_DATA   ", false, true},
+		{RTA_START_VA,			RTA_CODE_SIZE,				"     RTA CODE   ", true, false},
+		{RTA_START_VA+RTA_CODE_SIZE,	RTA_DATA_SIZE,				"     RTA DATA   ", false, true},
+		{((u64)FIMC_LIB_END_VA),	fixmap_va1 - ((u64)FIMC_LIB_END_VA),	"FIMC_END- FIXMAP1", false, true},
+#ifdef CONFIG_UNMAP_KERNEL_AT_EL0
+		{((u64)fixmap_va1),		((u64) PAGE_SIZE),			"     FIXMAP1     ", true, false},
+		{((u64)fixmap_va2),		((u64) PAGE_SIZE),			"     FIXMAP2     ", true, false},
+		{((u64)fixmap_va3),		((u64) PAGE_SIZE),			"     FIXMAP3     ", true, false},
+		{((u64)fixmap_va3+PAGE_SIZE),	((u64) MEM_END-(fixmap_va3+PAGE_SIZE)),	"FIXMAP3 - MEM_END", false, true},
+#endif
+	};
+
+	if(bcm_dbg_data && bcm_dbg_data->bcm_load_bin){
+		len = sizeof(test_ranges_cdh_loaded)/sizeof(struct mem_range_struct);
+		for (i = 0; i < len; i++)
+			test_ranges[i] = test_ranges_cdh_loaded[i];
+	}else{
+		len = sizeof(test_ranges_cdh_not_loaded)/sizeof(struct mem_range_struct);
+		for (i = 0; i < len; i++)
+			test_ranges[i] = test_ranges_cdh_not_loaded[i];
+	}
 
 	buf_print("\t\t| MEMORY RANGES  | %16s - %16s | %8s %8s %8s %8s\n",
 		"START", "END", "RO", "RW", "PXN", "PX");
@@ -488,7 +540,7 @@ ssize_t	rkp_read(struct file *filep, char __user *buffer, size_t count, loff_t *
 		{test_case_user_pgtable_ro,	"TEST USER_PGTABLE_RO"},
 		{test_case_kernel_pgtable_ro,	"TEST KERNEL_PGTABLE_RO"},
 		{test_case_kernel_l3pgt_ro,	"TEST KERNEL TEXT HEAD TAIL L3PGT RO"},
-		{test_case_kernel_range_rwx,	"TEST KERNEL_RANGE_RWX"}
+		{test_case_kernel_range_rwx,	"TEST KERNEL_RANGE_RWX"},
 	};
 	int tc_num = sizeof(test_cases)/sizeof(struct test_case_struct);
 
@@ -534,18 +586,19 @@ static int __init rkp_test_init(void)
 {
 	phys_addr_t ret = 0;
 
-#ifdef CONFIG_KNOX_KAP
-	if (!boot_mode_security)
-		return 0;
-#endif
 	if (proc_create("rkp_test", 0444, NULL, &rkp_proc_fops) == NULL) {
 		printk(KERN_ERR "RKP_TEST: Error creating proc entry");
 		return -1;
 	}
 
-	ret = uh_call(UH_APP_RKP, RKP_RKP_ROBUFFER_ALLOC, RKP_ROBUFFER_ARG_TEST, 0, 0, 0);
+	ret = uh_call(UH_APP_RKP, RKP_RKP_ROBUFFER_ALLOC, 1, 0, 0, 0);
 	ha1 = (u64 *)(__va(ret));
 	ha2 = (u64 *)(__va(ret) + 8);
+
+	/*
+	ha1 = (u64 *)(__va(RKP_ROBUF_START)+RKP_ROBUF_SIZE-16);
+	ha2 = (u64 *)(__va(RKP_ROBUF_START)+RKP_ROBUF_SIZE-8);
+	*/
 
 	return 0;
 }

@@ -220,3 +220,5 @@ obj-$(CONFIG_SENSORS_FINGERPRINT) += fingerprint/
 
 # CCIC
 obj-y	+= ccic/
+
+obj-$(CONFIG_KPERFMON)	+= kperfmon/

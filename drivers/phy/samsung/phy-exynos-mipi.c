@@ -1,9 +1,8 @@
 /*
- * Samsung EXYNOS SoC series MIPI CSIS/DSIM DPHY driver
+ * Samsung EXYNOS SoC series MIPI CSI/DSI D/C-PHY driver
  *
- * Copyright (C) 2015 Samsung Electronics Co., Ltd.
- * Author: Sewoon Park <seuni.park@samsung.com>
- * Author: Wooki Min <wooki.min@samsung.com>
+ * Copyright (C) 2018 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -21,42 +20,60 @@
 #include <linux/regmap.h>
 #include <linux/spinlock.h>
 #include <linux/io.h>
+#include <soc/samsung/exynos-pmu.h>
+
+/* the maximum number of PHY for each module */
+#define EXYNOS_MIPI_PHYS_NUM	4
 
 #define EXYNOS_MIPI_PHY_ISO_BYPASS  BIT(0)
-#define EXYNOS_MIPI_PHYS_NUM 6
 
-#define MIPI_PHY_MxSx_UNIQUE 	(0 << 1)
-#define MIPI_PHY_MxSx_SHARED 	(1 << 1)
-#define MIPI_PHY_MxSx_INIT_DONE (2 << 1)
+#define MIPI_PHY_MxSx_UNIQUE	(0 << 1)
+#define MIPI_PHY_MxSx_SHARED	(1 << 1)
+#define MIPI_PHY_MxSx_INIT_DONE	(2 << 1)
 
-void __iomem *shared_regs[EXYNOS_MIPI_PHYS_NUM];
-
-/* reference count for phy-m4s4 */
-static int phy_m4s4_count;
-
-enum exynos_mipi_phy_type {
-	EXYNOS_MIPI_PHY_FOR_DSIM,
-	EXYNOS_MIPI_PHY_FOR_CSIS,
+enum exynos_mipi_phy_owner {
+	EXYNOS_MIPI_PHY_OWNER_DSIM = 0,
+	EXYNOS_MIPI_PHY_OWNER_CSIS = 1,
 };
 
-struct mipi_phy_data {
-	enum exynos_mipi_phy_type type;
+/* per MIPI-PHY module */
+struct exynos_mipi_phy_data {
 	u8 flags;
+	int active_count;
+	spinlock_t slock;
 };
 
+#define MKVER(ma, mi)	(((ma) << 16) | (mi))
+enum phy_infos {
+	VERSION,
+	TYPE,
+	LANES,
+	SPEED,
+	SETTLE,
+};
+
+struct exynos_mipi_phy_cfg {
+	u16 major;
+	u16 minor;
+	u32 type;
+	/* u32 max_speed */
+	int (*set)(void __iomem *regs, int option, u32 *info);
+};
+
+/* per DT MIPI-PHY node, can have multiple elements */
 struct exynos_mipi_phy {
 	struct device *dev;
 	spinlock_t slock;
-	void __iomem *regs;
 	struct regmap *reg_pmu;
+	struct regmap *reg_reset;
+	enum exynos_mipi_phy_owner owner;
 	struct mipi_phy_desc {
 		struct phy *phy;
+		struct exynos_mipi_phy_data *data;
 		unsigned int index;
-		enum exynos_mipi_phy_type type;
 		unsigned int iso_offset;
 		unsigned int rst_bit;
-		unsigned int init_bit;
-		u8 flags;
+		void __iomem *regs;
 	} phys[EXYNOS_MIPI_PHYS_NUM];
 };
 
@@ -69,74 +86,61 @@ static int __set_phy_isolation(struct regmap *reg_pmu,
 
 	val = on ? EXYNOS_MIPI_PHY_ISO_BYPASS : 0;
 
-	ret = regmap_update_bits(reg_pmu, offset,
+	if (reg_pmu)
+		ret = regmap_update_bits(reg_pmu, offset,
+			EXYNOS_MIPI_PHY_ISO_BYPASS, val);
+	else
+		ret = exynos_pmu_update(offset,
 			EXYNOS_MIPI_PHY_ISO_BYPASS, val);
 
+	if (ret)
+		pr_err("%s failed to %s PHY isolation 0x%x\n",
+				__func__, on ? "set" : "clear", offset);
+
 	pr_debug("%s off=0x%x, val=0x%x\n", __func__, offset, val);
+
 	return ret;
 }
 
-static int __set_phy_init_ctrl(struct exynos_mipi_phy *state,
-		unsigned int bit)
-{
-	void __iomem *addr = state->regs;
-	unsigned int cfg;
-
-	if (!addr)
-		return 0;
-
-	if (IS_ERR(addr)) {
-		dev_err(state->dev, "%s Invalid address\n", __func__);
-		return -EINVAL;
-	}
-
-	cfg = readl(addr);
-	cfg &= ~(1 << bit);
-	cfg |= (1 << bit);
-	writel(cfg, addr);
-
-	pr_debug("%s bit=%d, val=0x%x\n", __func__, bit, cfg);
-	return 0;
-
-}
-
 /* 1: Enable reset -> release reset, 0: Enable reset */
-static int __set_phy_reset(struct exynos_mipi_phy *state,
+static int __set_phy_reset(struct regmap *reg_reset,
 		unsigned int bit, unsigned int on)
 {
-	void __iomem *addr = state->regs;
 	unsigned int cfg;
+	int ret = 0;
 
-	if (!addr)
+	if (!reg_reset)
 		return 0;
 
-	if (IS_ERR(addr)) {
-		dev_err(state->dev, "%s Invalid address\n", __func__);
-		return -EINVAL;
-	}
+	ret = regmap_update_bits(reg_reset, 0, BIT(bit), 0);
+	if (ret)
+		pr_err("%s failed to reset PHY(%d)\n", __func__, bit);
 
-	cfg = readl(addr);
-	cfg &= ~(1 << bit);
-	writel(cfg, addr);
-
-	/* release a reset before using a PHY */
 	if (on) {
-		cfg |= (1 << bit);
-		writel(cfg, addr);
+		ret = regmap_update_bits(reg_reset, 0, BIT(bit), BIT(bit));
+		if (ret)
+			pr_err("%s failed to release reset PHY(%d)\n",
+					__func__, bit);
 	}
 
-	pr_debug("%s bit=%d, val=0x%x\n", __func__, bit, cfg);
-	return 0;
+	regmap_read(reg_reset, 0, &cfg);
+	pr_debug("%s bit=%d, cfg=0x%x\n", __func__, bit, cfg);
+
+	return ret;
 }
 
 static int __set_phy_init(struct exynos_mipi_phy *state,
 		struct mipi_phy_desc *phy_desc, unsigned int on)
 {
-	int ret = 0;
 	unsigned int cfg;
+	int ret = 0;
 
-	ret = regmap_read(state->reg_pmu,
+	if (state->reg_pmu)
+		ret = regmap_read(state->reg_pmu,
 			phy_desc->iso_offset, &cfg);
+	else
+		ret = exynos_pmu_read(phy_desc->iso_offset, &cfg);
+
 	if (ret) {
 		dev_err(state->dev, "%s Can't read 0x%x\n",
 				__func__, phy_desc->iso_offset);
@@ -146,10 +150,7 @@ static int __set_phy_init(struct exynos_mipi_phy *state,
 
 	/* Add INIT_DONE flag when ISO is already bypass(LCD_ON_UBOOT) */
 	if (cfg && EXYNOS_MIPI_PHY_ISO_BYPASS)
-		phy_desc->flags |= MIPI_PHY_MxSx_INIT_DONE;
-
-	if (phy_desc->init_bit != UINT_MAX)
-		__set_phy_init_ctrl(state, phy_desc->init_bit);
+		phy_desc->data->flags |= MIPI_PHY_MxSx_INIT_DONE;
 
 phy_exit:
 	return ret;
@@ -166,61 +167,76 @@ static int __set_phy_alone(struct exynos_mipi_phy *state,
 	if (on) {
 		ret = __set_phy_isolation(state->reg_pmu,
 				phy_desc->iso_offset, on);
+		if (ret)
+			goto phy_exit;
 
-		__set_phy_reset(state, phy_desc->rst_bit, on);
-
+		ret = __set_phy_reset(state->reg_reset,
+				phy_desc->rst_bit, on);
 	} else {
-		__set_phy_reset(state, phy_desc->rst_bit, on);
+		ret = __set_phy_reset(state->reg_reset,
+				phy_desc->rst_bit, on);
+		if (ret)
+			goto phy_exit;
 
 		ret = __set_phy_isolation(state->reg_pmu,
 				phy_desc->iso_offset, on);
-
 	}
+
+phy_exit:
 	pr_debug("%s: isolation 0x%x, reset 0x%x\n", __func__,
 			phy_desc->iso_offset, phy_desc->rst_bit);
+
 	spin_unlock_irqrestore(&state->slock, flags);
 
 	return ret;
 }
 
-static DEFINE_SPINLOCK(lock_share);
 static int __set_phy_share(struct exynos_mipi_phy *state,
 		struct mipi_phy_desc *phy_desc, unsigned int on)
 {
 	int ret = 0;
 	unsigned long flags;
 
-	spin_lock_irqsave(&lock_share, flags);
+	spin_lock_irqsave(&phy_desc->data->slock, flags);
 
-	on ? ++phy_m4s4_count : --phy_m4s4_count;
+	on ? ++(phy_desc->data->active_count) : --(phy_desc->data->active_count);
 
 	/* If phy is already initialization(power_on) */
-	if (phy_desc->flags & MIPI_PHY_MxSx_INIT_DONE) {
-		phy_desc->flags &= (~MIPI_PHY_MxSx_INIT_DONE);
-		spin_unlock_irqrestore(&lock_share, flags);
+	if (state->owner == EXYNOS_MIPI_PHY_OWNER_DSIM &&
+			phy_desc->data->flags & MIPI_PHY_MxSx_INIT_DONE) {
+		phy_desc->data->flags &= (~MIPI_PHY_MxSx_INIT_DONE);
+		spin_unlock_irqrestore(&phy_desc->data->slock, flags);
 		return ret;
 	}
 
 	if (on) {
 		/* Isolation bypass when reference count is 1 */
-		if (phy_m4s4_count == 1)
+		if (phy_desc->data->active_count) {
 			ret = __set_phy_isolation(state->reg_pmu,
 					phy_desc->iso_offset, on);
+			if (ret)
+				goto phy_exit;
+		}
 
-		__set_phy_reset(state, phy_desc->rst_bit, on);
-
+		ret = __set_phy_reset(state->reg_reset,
+				phy_desc->rst_bit, on);
 	} else {
-		__set_phy_reset(state, phy_desc->rst_bit, on);
+		ret = __set_phy_reset(state->reg_reset,
+				phy_desc->rst_bit, on);
+		if (ret)
+			goto phy_exit;
 
 		/* Isolation enabled when reference count is zero */
-		if (phy_m4s4_count == 0)
+		if (phy_desc->data->active_count == 0)
 			ret = __set_phy_isolation(state->reg_pmu,
 					phy_desc->iso_offset, on);
 	}
 
+phy_exit:
 	pr_debug("%s: isolation 0x%x, reset 0x%x\n", __func__,
 			phy_desc->iso_offset, phy_desc->rst_bit);
-	spin_unlock_irqrestore(&lock_share, flags);
+
+	spin_unlock_irqrestore(&phy_desc->data->slock, flags);
 
 	return ret;
 }
@@ -230,7 +246,7 @@ static int __set_phy_state(struct exynos_mipi_phy *state,
 {
 	int ret = 0;
 
-	if (phy_desc->flags & MIPI_PHY_MxSx_SHARED)
+	if (phy_desc->data->flags & MIPI_PHY_MxSx_SHARED)
 		ret = __set_phy_share(state, phy_desc, on);
 	else
 		ret = __set_phy_alone(state, phy_desc, on);
@@ -238,58 +254,254 @@ static int __set_phy_state(struct exynos_mipi_phy *state,
 	return ret;
 }
 
-static const struct mipi_phy_data mipi_phy_m4sx = {
-	.type = EXYNOS_MIPI_PHY_FOR_DSIM,
-	.flags =  MIPI_PHY_MxSx_SHARED,
+static void update_bits(void __iomem *addr, unsigned int start,
+			unsigned int width, unsigned int val)
+{
+	unsigned int cfg;
+	unsigned int mask = (width >= 32) ? 0xffffffff : ((1U << width) - 1);
+
+	cfg = readl(addr);
+	cfg &= ~(mask << start);
+	cfg |= ((val & mask) << start);
+	writel(cfg, addr);
+}
+
+#define PHY_REF_SPEED	(1500)
+static int __set_phy_cfg_0501_0000_dphy(void __iomem *regs, int option, u32 *cfg)
+{
+
+	int i;
+	u32 skew_cal_en = 0;
+	u32 skew_delay_sel = 0;
+	u32 hs_mode_sel = 1;
+
+	if (cfg[SPEED] >= PHY_REF_SPEED) {
+		skew_cal_en = 1;
+
+		if (cfg[SPEED] >= 3000)
+			skew_delay_sel = 1;
+		else if (cfg[SPEED] >= 2000)
+			skew_delay_sel = 2;
+		else
+			skew_delay_sel = 3;
+
+		hs_mode_sel = 0;
+	}
+
+	writel(0x2, regs + 0x0018);
+	update_bits(regs + 0x0084, 0, 8, 0x1);
+	for (i = 0; i <= cfg[LANES]; i++) {
+		update_bits(regs + 0x04e0 + (i * 0x400), 0, 1, skew_cal_en);
+		update_bits(regs + 0x043c + (i * 0x400), 5, 2, skew_delay_sel);
+		update_bits(regs + 0x04ac + (i * 0x400), 2, 1, hs_mode_sel);
+		update_bits(regs + 0x04b0 + (i * 0x400), 0, 8, cfg[SETTLE]);
+	}
+
+	return 0;
+}
+
+static int __set_phy_cfg_0502_0000_dphy(void __iomem *regs, int option, u32 *cfg)
+{
+
+	int i;
+	u32 settle_clk_sel = 1;
+	u32 skew_delay_sel = 0;
+
+	if (cfg[SPEED] >= PHY_REF_SPEED)
+		settle_clk_sel = 0;
+
+	if (cfg[SPEED] >= PHY_REF_SPEED && cfg[SPEED] < 4000) {
+		if (cfg[SPEED] >= 3000)
+			skew_delay_sel = 1;
+		else if (cfg[SPEED] >= 2000)
+			skew_delay_sel = 2;
+		else
+			skew_delay_sel = 3;
+	}
+
+	writel(0x00000001, regs + 0x0000); /* SC_GNR_CON0 */
+	writel(0x00001450, regs + 0x0004); /* SC_GNR_CON1 */
+	writel(0x00000004, regs + 0x0008); /* SC_ANA_CON0 */
+	writel(0x00009000, regs + 0x000c); /* SC_ANA_CON1 */
+	writel(0x00000005, regs + 0x0010); /* SC_ANA_CON2 */
+	writel(0x00000600, regs + 0x0014); /* SC_ANA_CON3 */
+	writel(0x00000301, regs + 0x0030); /* SC_TIME_CON0 */
+
+	for (i = 0; i <= cfg[LANES]; i++) {
+		writel(0x00000001, regs + 0x0100 + (i * 0x100)); /* SD_GNR_CON0 */
+		writel(0x00001450, regs + 0x0104 + (i * 0x100)); /* SD_GNR_CON1 */
+		writel(0x00000004, regs + 0x0108 + (i * 0x100)); /* SD_ANA_CON0 */
+		writel(0x00009000, regs + 0x010c + (i * 0x100)); /* SD_ANA_CON1 */
+		writel(0x00000005, regs + 0x0110 + (i * 0x100)); /* SD_ANA_CON2 */
+		update_bits(regs + 0x0110 + (i * 0x100), 8, 2, skew_delay_sel); /* SD_ANA_CON2 */
+		writel(0x00000600, regs + 0x0114 + (i * 0x100)); /* SD_ANA_CON3 */
+		writel(0x00000040, regs + 0x0124 + (i * 0x100)); /* SD_ANA_CON7 */
+		update_bits(regs + 0x0130 + (i * 0x100), 0, 8, cfg[SETTLE]); /* SD_TIME_CON0 */
+		update_bits(regs + 0x0130 + (i * 0x100), 8, 1, settle_clk_sel); /* SD_TIME_CON0 */
+		writel(0x00000003, regs + 0x0134 + (i * 0x100)); /* SD_TIME_CON1 */
+		writel(0x0000081a, regs + 0x0150 + (i * 0x100)); /* SD_DESKEW_CON4 */
+	}
+
+	return 0;
+}
+
+static int __set_phy_cfg_0502_0001_dphy(void __iomem *regs, int option, u32 *cfg)
+{
+
+	int i;
+	u32 settle_clk_sel = 1;
+	u32 skew_delay_sel = 0;
+
+	if (cfg[SPEED] >= PHY_REF_SPEED)
+		settle_clk_sel = 0;
+
+	if (cfg[SPEED] >= PHY_REF_SPEED && cfg[SPEED] < 4000) {
+		if (cfg[SPEED] >= 3000)
+			skew_delay_sel = 1;
+		else if (cfg[SPEED] >= 2000)
+			skew_delay_sel = 2;
+		else
+			skew_delay_sel = 3;
+	}
+
+	writel(0x00000001, regs + 0x0500); /* SC_GNR_CON0 */
+	writel(0x00001450, regs + 0x0504); /* SC_GNR_CON1 */
+	writel(0x00000004, regs + 0x0508); /* SC_ANA_CON0 */
+	writel(0x00009000, regs + 0x050c); /* SC_ANA_CON1 */
+	writel(0x00000005, regs + 0x0510); /* SC_ANA_CON2 */
+	writel(0x00000600, regs + 0x0514); /* SC_ANA_CON3 */
+	writel(0x00000301, regs + 0x0530); /* SC_TIME_CON0 */
+
+	for (i = 0; i <= cfg[LANES]; i++) {
+		writel(0x00000001, regs + 0x0000 + (i * 0x100)); /* SD_GNR_CON0 */
+		writel(0x00001450, regs + 0x0004 + (i * 0x100)); /* SD_GNR_CON1 */
+		writel(0x00000004, regs + 0x0008 + (i * 0x100)); /* SD_ANA_CON0 */
+		writel(0x00009000, regs + 0x000c + (i * 0x100)); /* SD_ANA_CON1 */
+		writel(0x00000005, regs + 0x0010 + (i * 0x100)); /* SD_ANA_CON2 */
+		update_bits(regs + 0x0010 + (i * 0x100), 8, 2, skew_delay_sel); /* SD_ANA_CON2 */
+		writel(0x00000600, regs + 0x0014 + (i * 0x100)); /* SD_ANA_CON3 */
+		writel(0x00000040, regs + 0x0024 + (i * 0x100)); /* SD_ANA_CON7 */
+		update_bits(regs + 0x0030 + (i * 0x100), 0, 8, cfg[SETTLE]); /* SD_TIME_CON0 */
+		update_bits(regs + 0x0030 + (i * 0x100), 8, 1, settle_clk_sel); /* SD_TIME_CON0 */
+		writel(0x00000003, regs + 0x0034 + (i * 0x100)); /* SD_TIME_CON1 */
+		writel(0x0000081a, regs + 0x0050 + (i * 0x100)); /* SD_DESKEW_CON4 */
+	}
+
+	return 0;
+}
+
+static const struct exynos_mipi_phy_cfg phy_cfg_table[] = {
+	{
+		.major = 0x0501,
+		.minor = 0x0000,
+		.type = 0xD,
+		.set = __set_phy_cfg_0501_0000_dphy,
+	},
+	{
+		.major = 0x0502,
+		.minor = 0x0000,
+		.type = 0xD,
+		.set = __set_phy_cfg_0502_0000_dphy,
+	},
+	{
+		.major = 0x0502,
+		.minor = 0x0001,
+		.type = 0xD,
+		.set = __set_phy_cfg_0502_0001_dphy,
+	},
+	{ },
 };
 
-static const struct mipi_phy_data mipi_phy_mxs4 = {
-	.type = EXYNOS_MIPI_PHY_FOR_CSIS,
-	.flags =  MIPI_PHY_MxSx_SHARED,
+static int __set_phy_cfg(struct exynos_mipi_phy *state,
+		struct mipi_phy_desc *phy_desc, int option, void *info)
+{
+	u32 *cfg = (u32 *)info;
+	int i;
+	int ret = -EINVAL;
+
+	for (i = 0; i < ARRAY_SIZE(phy_cfg_table); i++) {
+		if ((cfg[VERSION] == MKVER(phy_cfg_table[i].major,
+					phy_cfg_table[i].minor))
+		    && (cfg[TYPE] == phy_cfg_table[i].type)) {
+			ret = phy_cfg_table[i].set(phy_desc->regs,
+					option, cfg);
+			break;
+		}
+	}
+
+	return ret;
+}
+
+static struct exynos_mipi_phy_data mipi_phy_m4s4_top = {
+	.flags = MIPI_PHY_MxSx_SHARED,
+	.active_count = 0,
+	.slock = __SPIN_LOCK_UNLOCKED(mipi_phy_m4s4_top.slock),
 };
 
-static const struct mipi_phy_data mipi_phy_mxs0 = {
-	.type = EXYNOS_MIPI_PHY_FOR_DSIM,
-	.flags =  MIPI_PHY_MxSx_UNIQUE,
+static struct exynos_mipi_phy_data mipi_phy_m4s4_mod = {
+	.flags = MIPI_PHY_MxSx_SHARED,
+	.active_count = 0,
+	.slock = __SPIN_LOCK_UNLOCKED(mipi_phy_m4s4_mod.slock),
 };
 
-static const struct mipi_phy_data mipi_phy_m0sx = {
-	.type = EXYNOS_MIPI_PHY_FOR_CSIS,
-	.flags =  MIPI_PHY_MxSx_UNIQUE,
+static struct exynos_mipi_phy_data mipi_phy_m4s4s4 = {
+	.flags = MIPI_PHY_MxSx_SHARED,
+	.active_count = 0,
+	.slock = __SPIN_LOCK_UNLOCKED(mipi_phy_m4s4s4.slock),
+};
+
+static struct exynos_mipi_phy_data mipi_phy_m4s0 = {
+	.flags = MIPI_PHY_MxSx_UNIQUE,
+	.active_count = 0,
+	.slock = __SPIN_LOCK_UNLOCKED(mipi_phy_m4s0.slock),
+};
+
+static struct exynos_mipi_phy_data mipi_phy_m2s4s4s2 = {
+	.flags = MIPI_PHY_MxSx_SHARED,
+	.active_count = 0,
+	.slock = __SPIN_LOCK_UNLOCKED(mipi_phy_m2s4s4s2.slock),
+};
+
+static struct exynos_mipi_phy_data mipi_phy_m1s2s2 = {
+	.flags = MIPI_PHY_MxSx_SHARED,
+	.active_count = 0,
+	.slock = __SPIN_LOCK_UNLOCKED(mipi_phy_m1s2s2.slock),
+};
+
+static struct exynos_mipi_phy_data mipi_phy_m0s4s4s4_mod = {
+	.flags = MIPI_PHY_MxSx_SHARED,
+	.active_count = 0,
+	.slock = __SPIN_LOCK_UNLOCKED(mipi_phy_m0s4s4s4.slock),
 };
 
 static const struct of_device_id exynos_mipi_phy_of_table[] = {
 	{
-		.compatible = "samsung,mipi-phy-dsim",
-		.data = &mipi_phy_m4sx,
+		.compatible = "samsung,mipi-phy-m4s4-top",
+		.data = &mipi_phy_m4s4_top,
 	},
 	{
-		.compatible = "samsung,mipi-phy-m4",
-		.data = &mipi_phy_mxs0,
+		.compatible = "samsung,mipi-phy-m4s4-mod",
+		.data = &mipi_phy_m4s4_mod,
 	},
 	{
-		.compatible = "samsung,mipi-phy-m2",
-		.data = &mipi_phy_mxs0,
+		.compatible = "samsung,mipi-phy-m4s4s4",
+		.data = &mipi_phy_m4s4s4,
 	},
 	{
-		.compatible = "samsung,mipi-phy-m1",
-		.data = &mipi_phy_mxs0,
+		.compatible = "samsung,mipi-phy-m4s0",
+		.data = &mipi_phy_m4s0,
 	},
 	{
-		.compatible = "samsung,mipi-phy-csis",
-		.data = &mipi_phy_mxs4,
+		.compatible = "samsung,mipi-phy-m2s4s4s2",
+		.data = &mipi_phy_m2s4s4s2,
 	},
 	{
-		.compatible = "samsung,mipi-phy-s4",
-		.data = &mipi_phy_m0sx,
+		.compatible = "samsung,mipi-phy-m1s2s2",
+		.data = &mipi_phy_m1s2s2,
 	},
 	{
-		.compatible = "samsung,mipi-phy-s2",
-		.data = &mipi_phy_m0sx,
-	},
-	{
-		.compatible = "samsung,mipi-phy-s1",
-		.data = &mipi_phy_m0sx,
+		.compatible = "samsung,mipi-phy-m0s4s4s4-mod",
+		.data = &mipi_phy_m0s4s4s4_mod,
 	},
 	{ },
 };
@@ -305,7 +517,6 @@ static int exynos_mipi_phy_init(struct phy *phy)
 
 	return __set_phy_init(state, phy_desc, 1);
 }
-
 
 static int exynos_mipi_phy_power_on(struct phy *phy)
 {
@@ -323,6 +534,14 @@ static int exynos_mipi_phy_power_off(struct phy *phy)
 	return __set_phy_state(state, phy_desc, 0);
 }
 
+static int exynos_mipi_phy_set(struct phy *phy, int option, void *info)
+{
+	struct mipi_phy_desc *phy_desc = phy_get_drvdata(phy);
+	struct exynos_mipi_phy *state = to_mipi_video_phy(phy_desc);
+
+	return __set_phy_cfg(state, phy_desc, option, info);
+}
+
 static struct phy *exynos_mipi_phy_of_xlate(struct device *dev,
 					struct of_phandle_args *args)
 {
@@ -338,6 +557,7 @@ static struct phy_ops exynos_mipi_phy_ops = {
 	.init		= exynos_mipi_phy_init,
 	.power_on	= exynos_mipi_phy_power_on,
 	.power_off	= exynos_mipi_phy_power_off,
+	.set		= exynos_mipi_phy_set,
 	.owner		= THIS_MODULE,
 };
 
@@ -345,17 +565,15 @@ static int exynos_mipi_phy_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct device_node *node = dev->of_node;
-	struct resource *res;
 	struct exynos_mipi_phy *state;
 	struct phy_provider *phy_provider;
-	struct mipi_phy_data *phy_data;
+	struct exynos_mipi_phy_data *phy_data;
 	const struct of_device_id *of_id;
 	unsigned int iso[EXYNOS_MIPI_PHYS_NUM];
 	unsigned int rst[EXYNOS_MIPI_PHYS_NUM];
-	unsigned int init[EXYNOS_MIPI_PHYS_NUM];
-	unsigned int i, elements;
-	unsigned int reg_index;
-	int ret = 0;
+	struct resource *res;
+	unsigned int i;
+	int ret = 0, elements = 0;
 
 	state = devm_kzalloc(dev, sizeof(*state), GFP_KERNEL);
 	if (!state)
@@ -367,85 +585,60 @@ static int exynos_mipi_phy_probe(struct platform_device *pdev)
 	if (!of_id)
 		return -EINVAL;
 
-	phy_data = (struct mipi_phy_data *)of_id->data;
-	phy_m4s4_count = 0;
+	phy_data = (struct exynos_mipi_phy_data *)of_id->data;
 
 	dev_set_drvdata(dev, state);
 	spin_lock_init(&state->slock);
 
-	/* PMU isolation */
+	/* PMU isolation (optional) */
 	state->reg_pmu = syscon_regmap_lookup_by_phandle(node,
 						   "samsung,pmu-syscon");
 	if (IS_ERR(state->reg_pmu)) {
-		dev_err(dev, "Failed to lookup PMU regmap\n");
-		return PTR_ERR(state->reg_pmu);
+		dev_err(dev, "failed to lookup PMU regmap, use PMU interface\n");
+		state->reg_pmu = NULL;
 	}
 
 	elements = of_property_count_u32_elems(node, "isolation");
+	if ((elements < 0) || (elements > EXYNOS_MIPI_PHYS_NUM))
+		return -EINVAL;
+
 	ret = of_property_read_u32_array(node, "isolation", iso,
 					elements);
 	if (ret) {
-		dev_err(dev, "cannot get mipi-phy isolation!!!\n");
+		dev_err(dev, "cannot get PHY isolation offset\n");
 		return ret;
 	}
 
-	/* reset control */
-	for (i = 0; i < EXYNOS_MIPI_PHYS_NUM; ++i) {
-		rst[i] = UINT_MAX;
-		init[i] = UINT_MAX;
-	}
-
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (res) {
-		state->regs = devm_ioremap_resource(dev, res);
-		if (IS_ERR(state->regs))
-			return PTR_ERR(state->regs);
-
-		ret = of_property_read_u32_array(node, "reset", rst,
-				elements);
+	/* SYSREG reset (optional) */
+	state->reg_reset = syscon_regmap_lookup_by_phandle(node,
+						"samsung,reset-sysreg");
+	if (IS_ERR(state->reg_reset)) {
+		state->reg_reset = NULL;
+	} else {
+		ret = of_property_read_u32_array(node, "reset", rst, elements);
 		if (ret) {
-			dev_err(dev, "cannot get mipi-phy reset!!!\n");
+			dev_err(dev, "cannot get PHY reset bit\n");
 			return ret;
 		}
-
-		/* it's optional */
-		if (of_property_read_u32_array(node, "init", init,
-					elements))
-			dev_info(dev, "doesn't use mipi-phy init control!!!\n");
-
-		/* it's optional */
-		if (!of_property_read_u32(node, "reg_index", &reg_index)) {
-			if (reg_index < EXYNOS_MIPI_PHYS_NUM)
-				shared_regs[reg_index] = state->regs;
-		}
-	} else {
-		/* it's optional */
-		if (of_property_read_u32(node, "reg_index", &reg_index)) {
-			state->regs = NULL;
-			dev_info(dev, "mipi-phy reset be controlled from outside!!!\n");
-		} else {
-			if (reg_index < EXYNOS_MIPI_PHYS_NUM) {
-				state->regs = shared_regs[reg_index];
-				if (IS_ERR_OR_NULL(state->regs))
-					return PTR_ERR(state->regs);
-
-				ret = of_property_read_u32_array(node, "reset", rst,
-						elements);
-				if (ret) {
-					dev_err(dev, "cannot get mipi-phy reset!!!\n");
-					return ret;
-				}
-			}
-		}
 	}
+
+	of_property_read_u32(node, "owner", &state->owner);
 
 	for (i = 0; i < elements; i++) {
 		state->phys[i].iso_offset = iso[i];
 		state->phys[i].rst_bit	  = rst[i];
-		state->phys[i].init_bit	  = init[i];
-		dev_info(dev, "%s: iso 0x%x, reset %d (%d)\n", __func__,
-				state->phys[i].iso_offset, state->phys[i].rst_bit,
-				state->phys[i].init_bit);
+		dev_info(dev, "%s: isolation 0x%x\n", __func__,
+				state->phys[i].iso_offset);
+		if (state->reg_reset)
+			dev_info(dev, "%s: reset %d\n", __func__,
+				state->phys[i].rst_bit);
+
+		res = platform_get_resource(pdev, IORESOURCE_MEM, i);
+		if (res) {
+			state->phys[i].regs = devm_ioremap_resource(dev, res);
+			if (IS_ERR(state->phys[i].regs))
+				return PTR_ERR(state->phys[i].regs);
+		}
 	}
 
 	for (i = 0; i < elements; i++) {
@@ -458,11 +651,7 @@ static int exynos_mipi_phy_probe(struct platform_device *pdev)
 
 		state->phys[i].index	= i;
 		state->phys[i].phy	= generic_phy;
-		state->phys[i].type	= phy_data->type;
-		if (i == 0)
-			state->phys[i].flags	= phy_data->flags;
-		else /* 0 index only can support MIPI_PHY_MxSx_SHARED */
-			state->phys[i].flags	= MIPI_PHY_MxSx_UNIQUE;
+		state->phys[i].data	= phy_data;
 		phy_set_drvdata(generic_phy, &state->phys[i]);
 	}
 
@@ -472,7 +661,7 @@ static int exynos_mipi_phy_probe(struct platform_device *pdev)
 	if (IS_ERR(phy_provider))
 		dev_err(dev, "failed to create exynos mipi-phy\n");
 	else
-		dev_err(dev, "Creating exynos-mipi-phy\n");
+		dev_err(dev, "creating exynos-mipi-phy\n");
 
 	return PTR_ERR_OR_ZERO(phy_provider);
 }
@@ -482,9 +671,10 @@ static struct platform_driver exynos_mipi_phy_driver = {
 	.driver = {
 		.name  = "exynos-mipi-phy",
 		.of_match_table = of_match_ptr(exynos_mipi_phy_of_table),
+		.suppress_bind_attrs = true,
 	}
 };
 module_platform_driver(exynos_mipi_phy_driver);
 
-MODULE_DESCRIPTION("Samsung EXYNOS SoC MIPI CSI/DSI PHY driver");
+MODULE_DESCRIPTION("Samsung EXYNOS SoC MIPI CSI/DSI D/C-PHY driver");
 MODULE_LICENSE("GPL v2");

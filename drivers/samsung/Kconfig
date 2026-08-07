@@ -44,16 +44,10 @@ config CM_OFFSET
 	help
 	  set Charging Mode Offset when you enable SEC_PARAM.
 
-config FMM_LOCK_OFFSET
-	int "FMM lock Offset"
-	default 0
-	depends on SEC_PARAM
-	help
-	  set FMM lock Offset when you enable SEC_PARAM.
-
 config SEC_KEY_NOTIFIER
 	bool "Enable Samsung key event notifier"
 	depends on SEC_EXT
+	default y
 	help
 	  Samsung Key input event notifier
 
@@ -96,11 +90,6 @@ config ARGOS_CLUSTER_NUM
 	default 2
 	help
 	  This option enables that argos supports 3 clusters in SMP nodes.
-
-config SEC_BOOTSTAT
-	bool "Enable TN Bootstat logging"
-	depends on SEC_EXT
-	default y
 
 source "drivers/samsung/debug/Kconfig"
 source "drivers/samsung/misc/Kconfig"

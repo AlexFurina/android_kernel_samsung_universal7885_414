@@ -35,6 +35,7 @@
 #include <linux/cpuidle.h>
 #include <linux/timer.h>
 #include <linux/wakeup_reason.h>
+#include <linux/sec_debug.h>
 
 #include "../base.h"
 #include "power.h"
@@ -628,6 +629,7 @@ void dpm_noirq_resume_devices(pm_message_t state)
 
 	while (!list_empty(&dpm_noirq_list)) {
 		dev = to_device(dpm_noirq_list.next);
+		sec_debug_set_suspend_device(__func__, dev_name(dev));
 		get_device(dev);
 		list_move_tail(&dev->power.entry, &dpm_late_early_list);
 		mutex_unlock(&dpm_list_mtx);
@@ -647,6 +649,7 @@ void dpm_noirq_resume_devices(pm_message_t state)
 		mutex_lock(&dpm_list_mtx);
 		put_device(dev);
 	}
+	sec_debug_set_suspend_device(NULL, NULL);
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	dpm_show_time(starttime, state, 0, "noirq");
@@ -772,6 +775,7 @@ void dpm_resume_early(pm_message_t state)
 
 	while (!list_empty(&dpm_late_early_list)) {
 		dev = to_device(dpm_late_early_list.next);
+		sec_debug_set_suspend_device(__func__, dev_name(dev));
 		get_device(dev);
 		list_move_tail(&dev->power.entry, &dpm_suspended_list);
 		mutex_unlock(&dpm_list_mtx);
@@ -790,6 +794,7 @@ void dpm_resume_early(pm_message_t state)
 		mutex_lock(&dpm_list_mtx);
 		put_device(dev);
 	}
+	sec_debug_set_suspend_device(NULL, NULL);
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	dpm_show_time(starttime, state, 0, "early");
@@ -946,6 +951,7 @@ void dpm_resume(pm_message_t state)
 
 	while (!list_empty(&dpm_suspended_list)) {
 		dev = to_device(dpm_suspended_list.next);
+		sec_debug_set_suspend_device(__func__, dev_name(dev));
 		get_device(dev);
 		if (!is_async(dev)) {
 			int error;
@@ -966,6 +972,7 @@ void dpm_resume(pm_message_t state)
 			list_move_tail(&dev->power.entry, &dpm_prepared_list);
 		put_device(dev);
 	}
+	sec_debug_set_suspend_device(NULL, NULL);
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	dpm_show_time(starttime, state, 0, NULL);
@@ -1041,6 +1048,7 @@ void dpm_complete(pm_message_t state)
 	while (!list_empty(&dpm_prepared_list)) {
 		struct device *dev = to_device(dpm_prepared_list.prev);
 
+		sec_debug_set_suspend_device(__func__, dev_name(dev));
 		get_device(dev);
 		dev->power.is_prepared = false;
 		list_move(&dev->power.entry, &list);
@@ -1053,6 +1061,7 @@ void dpm_complete(pm_message_t state)
 		mutex_lock(&dpm_list_mtx);
 		put_device(dev);
 	}
+	sec_debug_set_suspend_device(NULL, NULL);
 	list_splice(&list, &dpm_list);
 	mutex_unlock(&dpm_list_mtx);
 
@@ -1172,10 +1181,6 @@ static void async_suspend_noirq(void *data, async_cookie_t cookie)
 	if (error) {
 		dpm_save_failed_dev(dev_name(dev));
 		pm_dev_err(dev, pm_transition, " async", error);
-#ifdef CONFIG_SEC_PM_DEBUG
-		log_suspend_abort_reason("Device %s failed to suspend async: %d",
-				dev_name(dev), error);
-#endif /* CONFIG_SEC_PM_DEBUG */
 	}
 
 	put_device(dev);
@@ -1215,6 +1220,7 @@ int dpm_noirq_suspend_devices(pm_message_t state)
 	while (!list_empty(&dpm_late_early_list)) {
 		struct device *dev = to_device(dpm_late_early_list.prev);
 
+		sec_debug_set_suspend_device(__func__, dev_name(dev));
 		get_device(dev);
 		mutex_unlock(&dpm_list_mtx);
 
@@ -1234,6 +1240,7 @@ int dpm_noirq_suspend_devices(pm_message_t state)
 		if (async_error)
 			break;
 	}
+	sec_debug_set_suspend_device(NULL, NULL);
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	if (!error)
@@ -1377,6 +1384,7 @@ int dpm_suspend_late(pm_message_t state)
 	while (!list_empty(&dpm_suspended_list)) {
 		struct device *dev = to_device(dpm_suspended_list.prev);
 
+		sec_debug_set_suspend_device(__func__, dev_name(dev));
 		get_device(dev);
 		mutex_unlock(&dpm_list_mtx);
 
@@ -1397,6 +1405,7 @@ int dpm_suspend_late(pm_message_t state)
 		if (async_error)
 			break;
 	}
+	sec_debug_set_suspend_device(NULL, NULL);
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	if (!error)
@@ -1618,6 +1627,10 @@ static void async_suspend(void *data, async_cookie_t cookie)
 	if (error) {
 		dpm_save_failed_dev(dev_name(dev));
 		pm_dev_err(dev, pm_transition, " async", error);
+#ifdef CONFIG_SEC_PM_DEBUG
+		log_suspend_abort_reason("Device %s failed to suspend async: %d",
+				dev_name(dev), error);
+#endif
 	}
 
 	put_device(dev);
@@ -1657,6 +1670,7 @@ int dpm_suspend(pm_message_t state)
 	while (!list_empty(&dpm_prepared_list)) {
 		struct device *dev = to_device(dpm_prepared_list.prev);
 
+		sec_debug_set_suspend_device(__func__, dev_name(dev));
 		get_device(dev);
 		mutex_unlock(&dpm_list_mtx);
 
@@ -1669,7 +1683,7 @@ int dpm_suspend(pm_message_t state)
 #ifdef CONFIG_SEC_PM_DEBUG
 			log_suspend_abort_reason("Device %s failed to suspend: %d",
 					dev_name(dev), error);
-#endif /* CONFIG_SEC_PM_DEBUG */
+#endif
 			put_device(dev);
 			break;
 		}
@@ -1679,6 +1693,7 @@ int dpm_suspend(pm_message_t state)
 		if (async_error)
 			break;
 	}
+	sec_debug_set_suspend_device(NULL, NULL);
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	if (!error)
@@ -1797,6 +1812,7 @@ int dpm_prepare(pm_message_t state)
 	while (!list_empty(&dpm_list)) {
 		struct device *dev = to_device(dpm_list.next);
 
+		sec_debug_set_suspend_device(__func__, dev_name(dev));
 		get_device(dev);
 		mutex_unlock(&dpm_list_mtx);
 
@@ -1817,7 +1833,7 @@ int dpm_prepare(pm_message_t state)
 #ifdef CONFIG_SEC_PM_DEBUG
 			log_suspend_abort_reason("Device %s not prepared: %d",
 					dev_name(dev), error);
-#endif /* CONFIG_SEC_PM_DEBUG */
+#endif
 			put_device(dev);
 			break;
 		}
@@ -1826,6 +1842,7 @@ int dpm_prepare(pm_message_t state)
 			list_move_tail(&dev->power.entry, &dpm_prepared_list);
 		put_device(dev);
 	}
+	sec_debug_set_suspend_device(NULL, NULL);
 	mutex_unlock(&dpm_list_mtx);
 	dbg_snapshot_suspend("dpm_prepare", dpm_prepare,
 				NULL, state.event, DSS_FLAG_OUT);
