@@ -77,7 +77,7 @@ typedef enum {
 
 typedef enum {
 	PDIC_NOTIFY_EVENT_DETACH = 0,
-	PDIC_NOTIFY_EVENT_PDIC_ATTACH,
+	PDIC_NOTIFY_EVENT_CCIC_ATTACH,
 	PDIC_NOTIFY_EVENT_PD_SINK,
 	PDIC_NOTIFY_EVENT_PD_SOURCE,
 	PDIC_NOTIFY_EVENT_PD_SINK_CAP,
@@ -109,12 +109,12 @@ struct pdic_notifier_struct {
 	pdic_notifier_event_t event;
 	PDIC_SINK_STATUS sink_status;
 	struct blocking_notifier_head notifier_call_chain;
-	void *pusbpd;
+	struct s2mm005_data *pusbpd;
 	struct usbpd_data *pd_data;
 };
 
-extern void bat_pdic_notifier_call(struct pdic_notifier_struct *value);
-extern int bat_pdic_notifier_register(struct notifier_block *nb,
+extern void pdic_notifier_call(struct pdic_notifier_struct *value);
+extern int pdic_notifier_register(struct notifier_block *nb,
 		notifier_fn_t notifier, pdic_notifier_device_t listener);
-extern int bat_pdic_notifier_unregister(struct notifier_block *nb);
+extern int pdic_notifier_unregister(struct notifier_block *nb);
 #endif /* __BATTERY_NOTIFIER_H__ */

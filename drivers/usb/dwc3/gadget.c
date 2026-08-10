@@ -39,7 +39,7 @@
 #include <linux/workqueue.h>
 #ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
 #include <linux/of_platform.h>
-#include <linux/usb/typec/manager/usb_typec_manager_notifier.h>
+#include <linux/usb/manager/usb_typec_manager_notifier.h>
 #endif
 
 #include "debug.h"
@@ -166,10 +166,7 @@ static int dwc3_gadget_get_cmply_link_state(void)
 
 	return ret;
 }
-
-static struct typec_manager_gadget_ops manager_dwc3_gadget_ops = {
-	.gadget_get_cmply_link_state = dwc3_gadget_get_cmply_link_state,
-};
+EXPORT_SYMBOL(dwc3_gadget_get_cmply_link_state);
 #endif
 
 /**
@@ -3470,10 +3467,6 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 			goto err5;
 		}
 	}
-
-#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
-	probe_typec_manager_gadget_ops(&manager_dwc3_gadget_ops);
-#endif
 
 	return 0;
 

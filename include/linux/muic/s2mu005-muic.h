@@ -103,6 +103,7 @@
 #define DEV_TYPE1_AUDIO_1		(0x1 << 0)
 #define DEV_TYPE1_USB_TYPES		(DEV_TYPE1_USB_OTG | DEV_TYPE1_CDP | DEV_TYPE1_USB)
 #define DEV_TYPE1_CHG_TYPES		(DEV_TYPE1_DEDICATED_CHG | DEV_TYPE1_CDP)
+#define DEV_TYPE1_DEDICATED_CHG2	(0x44)
 
 /* S2MU005 MUIC Device Type 2 register */
 #define DEV_TYPE2_SDP_1P8S		(0x1 << 7)
@@ -133,6 +134,7 @@
 #define DEV_TYPE_APPLE_RID_WAKEUP		(0x1 << 2)
 #define DEV_TYPE_APPLE_VBUS_WAKEUP		(0x1 << 1)
 #define DEV_TYPE_APPLE_BCV1P2_OR_OPEN	(0x1 << 0)
+#define DEV_TYPE_APPLE_APPLE_CHG		(0xf << 4)
 
 /* S2MU005 MUIC CHG Type register */
 #define CHG_TYPE_VBUS_R255	(0x1 << 7)
@@ -163,10 +165,13 @@
 
 enum s2mu005_reg_manual_sw_value {
 	MANSW_OPEN		=	(MANUAL_SW_OPEN),
-	MANSW_USB		=	(MANUAL_SW_USB),
-	MANSW_AUDIO		=	(MANUAL_SW_AUDIO), /* Not Used */
-	MANSW_UART		=	(MANUAL_SW_UART),
-	MANSW_UART2		=	(MANUAL_SW_UART2),
+	MANSW_USB			=	(MANUAL_SW_USB),
+	MANSW_AP_UART	=	(MANUAL_SW_UART),
+#if IS_ENABLED(CONFIG_CP_UART_SWITCH)
+	MANSW_CP_UART	=	(MANUAL_SW_UART),
+#else
+	MANSW_CP_UART	=	(MANUAL_SW_UART2),
+#endif
 };
 
 #if !IS_ENABLED(CONFIG_SEC_FACTORY)
@@ -227,17 +232,37 @@ struct s2mu005_muic_data {
 	u8 muic_vendor;			/* Vendor ID */
 	u8 muic_version;		/* Version ID */
 	u8 ic_rev_id;			/* Rev ID */
+	struct delayed_work dp_0p6v;
 
 	bool	is_usb_ready;
 	bool	is_factory_start;
 	bool	is_rustproof;
 	bool	is_otg_test;
+	bool	is_dcp;
+	bool jigonb_enable;
+	bool jig_disable;
 #if !IS_ENABLED(CONFIG_SEC_FACTORY)
 	bool	is_water_wa;
 #endif
 	/* W/A waiting for the charger ic */
 	bool suspended;
 	bool need_to_noti;
+
+#if IS_ENABLED(CONFIG_S2MU005_SUPPORT_BC1P2_CERTI)
+	struct mutex recheck_mutex;
+	struct delayed_work cable_recheck;
+	bool usb_type_rechecked;
+	u8 vbus_ldo;
+#endif
+
+#if IS_ENABLED(CONFIG_S2MU005_MUIC_DEBUG)
+	struct delayed_work debug_dwrok;
+	int irq_attach_cnt;
+	int irq_detach_cnt;
+	int irq_vbus_on_cnt;
+	int irq_adc_change_cnt;
+	int irq_vbus_off_cnt;
+#endif	/* CONFIG_S2MU005_MUIC_DEBUG */
 
 	struct workqueue_struct *muic_wqueue;
 
