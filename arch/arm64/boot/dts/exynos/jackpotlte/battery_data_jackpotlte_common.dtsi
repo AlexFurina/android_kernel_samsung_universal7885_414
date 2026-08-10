@@ -19,6 +19,61 @@
  */
 
 / {
+	pinctrl@11CB0000 {
+		fuel_irq: fuel-irq {
+			samsung,pins = "gpa2-4";
+			samsung,pin-function = <0>;
+			samsung,pin-pud = <2>;
+			samsung,pin-drv = <0>;
+		};
+
+		if_pmic_irq: if-pmic-irq {
+			samsung,pins = "gpa2-2";
+			samsung,pin-function = <0>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <0>;
+		};
+
+		usbpd_irq: usbpd-irq {
+			samsung,pins = "gpa2-3";
+			samsung,pin-function = <0x0f>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <0>;
+		};
+	};
+
+	i2c@13830000 {
+		i2c-gpio,delay-us = <5>;
+		status = "okay";
+		s2mu004-fuelgauge@3B {
+			compatible = "samsung,s2mu004-fuelgauge";
+			reg = <0x3B>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&fuel_irq>;
+			fuelgauge,fuel_int = <&gpa2 4 0>;
+			fuelgauge,fuel_alert_soc = <1>;
+			fuelgauge,fuel_alert_vol = <3300>;
+			fuelgauge,low_temp_limit = <100>;
+			fuelgauge,sw_vbat_l_recovery_vol = <3465>;
+			fuelgauge,capacity_max = <1000>;
+			fuelgauge,capacity_max_margin = <200>;
+			fuelgauge,capacity_min = <0>;
+			fuelgauge,capacity_calculation_type = <28>;
+			fuelgauge,capacity_full = <3000>;
+			fuelgauge,type_str = "SDI";
+			fuelgauge,model_type = <1>;
+			fuelgauge,fg_log_enable = <1>;
+		};
+
+		usbpd-s2mu004@3C {
+			compatible = "sec-usbpd,i2c";
+			reg = <0x3C>;
+			pinctrl-names = "default";
+			pinctrl-0     = <&usbpd_irq>;
+			usbpd,usbpd_int = <&gpa2 3 0>;
+		};
+	};
+
 	battery_params {
 			battery,battery_data =
 				<
@@ -83,7 +138,7 @@
 				44414 43777 43139 42505 41935 41393 40884 40425 39797 39508
 				39053 38582 38315 38113 37953 37819 37665 37471 37207 36964
 				36285 32208
-
+		
 				/***** battery data for 4.31 *****/
 				/* battery,battery_table3 */
 				136 11 5 11 131 10 1 10 140 9
@@ -327,7 +382,7 @@
 		battery,chg_high_temp = <460>;
 		battery,chg_high_temp_recovery = <440>;
 		battery,chg_input_limit_current = <1000>;
-		battery,chg_charging_limit_current = <1250>;
+		battery,chg_charging_limit_current = <1250>; 
 
 		battery,wpc_high_temp = <410>;
 		battery,wpc_high_temp_recovery = <400>;
@@ -556,53 +611,5 @@
 	s2mu004-charger {
 		status = "disable";
 		compatible = "samsung,s2mu004-charger";
-	};
-};
-
-&pinctrl_0 { //11CB0000
-	fuel_irq: fuel-irq {
-		samsung,pins = "gpa2-4";
-		samsung,pin-function = <0>;
-		samsung,pin-pud = <2>;
-		samsung,pin-drv = <0>;
-	};
-
-	usbpd_irq: usbpd-irq {
-		samsung,pins = "gpa2-3";
-		samsung,pin-function = <0x0f>;
-		samsung,pin-pud = <0>;
-		samsung,pin-drv = <0>;
-	};
-};
-
-&i2c_0 {
-	i2c-gpio,delay-us = <5>;
-	status = "okay";
-	s2mu004-fuelgauge@3B {
-		compatible = "samsung,s2mu004-fuelgauge";
-		reg = <0x3B>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&fuel_irq>;
-		fuelgauge,fuel_int = <&gpa2 4 0>;
-		fuelgauge,fuel_alert_soc = <1>;
-		fuelgauge,fuel_alert_vol = <3300>;
-		fuelgauge,low_temp_limit = <100>;
-		fuelgauge,sw_vbat_l_recovery_vol = <3465>;
-		fuelgauge,capacity_max = <1000>;
-		fuelgauge,capacity_max_margin = <200>;
-		fuelgauge,capacity_min = <0>;
-		fuelgauge,capacity_calculation_type = <28>;
-		fuelgauge,capacity_full = <3000>;
-		fuelgauge,type_str = "SDI";
-		fuelgauge,model_type = <1>;
-		fuelgauge,fg_log_enable = <1>;
-	};
-
-	usbpd-s2mu004@3C {
-		compatible = "sec-usbpd,i2c";
-		reg = <0x3C>;
-		pinctrl-names = "default";
-		pinctrl-0     = <&usbpd_irq>;
-		usbpd,usbpd_int = <&gpa2 3 0>;
 	};
 };

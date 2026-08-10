@@ -1,0 +1,91 @@
+/*
+ * SAMSUNG UNIVERSAL7885 board device tree source
+ *
+ * Copyright (c) 2013 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+*/
+
+/dts-v1/;
+#include "exynos7885-jackpotlte_common.dtsi"
+#include "exynos7885-jackpotlte_fingerprint-sensor_00.dtsi"
+#include "exynos7885-jackpotlte_eur_open_gpio_07.dtsi"
+#include "exynos7885-jackpotlte_mst_02.dtsi"
+#include "exynos7885-jackpotlte_svcled.dtsi"
+#include "exynos7885-jackpotlte_sensorhub.dtsi"
+
+/ {
+	model = "Samsung JACKPOTLTE EUR rev07 board based on EXYNOS7885";
+	model_info-chip = <7885>;
+	model_info-platform = "android";
+	model_info-subtype = "samsung";
+	model_info-hw_rev = <7>;
+	model_info-hw_rev_end = <255>;
+	compatible = "samsung, JACKPOTLTE EUR rev07", "samsung,Universal7885";
+
+	pinctrl@139B0000 {
+		nfc_pvdd_en: nfc_pvdd_en {
+				samsung,pins = "gpg1-5";
+				samsung,pin-function = <1>;
+				samsung,pin-pud = <0>;
+				samsung,pin-val = <0>;
+				samsung,pin-con-pdn = <3>;
+				samsung,pin-pud-pdn = <0>;
+		};
+
+		nfc_firm: nfc_firm {
+			samsung,pins = "gpg1-4";
+			samsung,pin-function = <1>;
+			samsung,pin-pud = <0>;
+			samsung,pin-val = <0>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+	};
+
+	i2c_2: i2c@13850000 {
+		sec-nfc@27 {
+			sec-nfc,firm-gpio = <&gpg1 4 1>;
+			sec-nfc,pvdd_en = <&gpg1 5 1>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&nfc_pd &nfc_firm &nfc_int &nfc_clk &nfc_pvdd_en &nfc_clk_req>;
+		};
+	};
+	
+	/* USIM DETECTION FOR CP */
+	usim_det {
+		pinctrl-names = "default";
+		pinctrl-0 = <&sim0_det_gpio &sim1_det_gpio>;
+		mif,num_of_usim_det = <2>;
+		mif,usim-det0-gpio = <&gpa2 6 0>;
+		mif,usim-det1-gpio = <&gpa2 5 0>;
+	};
+
+	/* motor control type :  1 = IFPMIC */
+	/*				2 = Mot driving IC */
+	motor {
+		motor,motor_type = <1>;
+	};
+
+	pinctrl@139B0000 {
+		motor_pwm: motor_pwm {
+			samsung,pins = "gpg0-1";
+			samsung,pin-function = <2>;
+			samsung,pin-pud = <1>;
+			samsung,pin-drv = <0>;
+		};
+	};
+
+	i2c@13830000 {
+		s2mu004-haptic@3A {
+			compatible = "sec,s2mu004-haptic";
+			reg = <0x3A>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&motor_pwm>;
+			
+		};
+	};
+};
