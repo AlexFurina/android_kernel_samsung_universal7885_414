@@ -27,7 +27,7 @@
 #include <linux/mfd/samsung/s2mu004-private.h>
 #include <linux/muic/muic.h>
 #include <linux/muic/s2mu004-muic.h>
-//#include <linux/sec_sysfs.h>
+#include <linux/sec_class.h>
 #include <linux/sec_ext.h>
 #include <linux/sec_batt.h>
 #include "../battery_v2/include/sec_charging_common.h"

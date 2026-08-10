@@ -30,11 +30,11 @@
 #include <linux/jiffies.h>
 
 #if defined(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)
-#include <linux/usb/typec/manager/usb_typec_manager_notifier.h>
+#include <linux/usb/manager/usb_typec_manager_notifier.h>
 #else
-#if defined(CONFIG_PDIC_NOTIFIER)
-#include <linux/usb/typec/common/pdic_notifier.h>
-#endif /* CONFIG_PDIC_NOTIFIER */
+#if defined(CONFIG_CCIC_NOTIFIER)
+#include <linux/ccic/ccic_notifier.h>
+#endif /* CONFIG_CCIC_NOTIFIER */
 #if defined(CONFIG_MUIC_NOTIFIER)
 #include <linux/muic/muic.h>
 #include <linux/muic/muic_notifier.h>
@@ -77,19 +77,6 @@
 #define SEC_BAT_CURRENT_EVENT_WPC_VOUT_LOCK		0x4000
 #define SEC_BAT_CURRENT_EVENT_HV_DISABLE		0x10000
 #define SEC_BAT_CURRENT_EVENT_SELECT_PDO		0x20000
-#define BATT_MISC_EVENT_BATTERY_HEALTH			0x000F0000
-
-#define BATTERY_HEALTH_SHIFT                16
-enum misc_battery_health {
-	BATTERY_HEALTH_UNKNOWN = 0,
-	BATTERY_HEALTH_GOOD,
-	BATTERY_HEALTH_NORMAL,
-	BATTERY_HEALTH_AGED,
-	BATTERY_HEALTH_MAX = BATTERY_HEALTH_AGED,
-
-	/* For event */
-	BATTERY_HEALTH_BAD = 0xF,
-};
 
 #define SIOP_EVENT_NONE 	0x0000
 #define SIOP_EVENT_WPC_CALL 	0x0001
@@ -140,7 +127,7 @@ enum misc_battery_health {
 #define HV_CHARGER_STATUS_STANDARD1	12000 /* mW */
 #define HV_CHARGER_STATUS_STANDARD2	20000 /* mW */
 
-#if defined(CONFIG_PDIC_NOTIFIER)
+#if defined(CONFIG_CCIC_NOTIFIER)
 struct sec_bat_pdic_info {
 	unsigned int input_voltage;
 	unsigned int input_current;
@@ -204,7 +191,7 @@ struct sec_battery_info {
 #if defined(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)
 	struct notifier_block usb_typec_nb;
 #else
-#if defined(CONFIG_PDIC_NOTIFIER)
+#if defined(CONFIG_CCIC_NOTIFIER)
 	struct notifier_block pdic_nb;
 #endif
 #if defined(CONFIG_MUIC_NOTIFIER)
@@ -212,14 +199,12 @@ struct sec_battery_info {
 #endif
 #endif
 
-#if defined(CONFIG_PDIC_NOTIFIER)
+#if defined(CONFIG_CCIC_NOTIFIER)
 	bool pdic_attach;
 	bool pdic_ps_rdy;
-	bool init_src_cap;
 	struct pdic_notifier_struct pdic_info;
 	struct sec_bat_pdic_list pd_list;
 #endif
-	bool update_pd_list;
 #if defined(CONFIG_VBUS_NOTIFIER)
 	struct notifier_block vbus_nb;
 	int muic_vbus_status;
@@ -355,9 +340,6 @@ struct sec_battery_info {
 	int cable_type;
 	int muic_cable_type;
 	int extended_cable_type;
-	bool cable_work_skip_en;
-
-	bool pd_disable_by_afc_option;
 
 	struct wake_lock cable_wake_lock;
 	struct delayed_work cable_work;
@@ -376,8 +358,6 @@ struct sec_battery_info {
 	struct wake_lock siop_level_wake_lock;
 	struct delayed_work wc_headroom_work;
 	struct wake_lock wc_headroom_wake_lock;
-	struct delayed_work hv_disable_work;
-	struct wake_lock hv_disable_wake_lock;
 #if defined(CONFIG_UPDATE_BATTERY_DATA)
 	struct delayed_work batt_data_work;
 	struct wake_lock batt_data_wake_lock;
@@ -415,12 +395,9 @@ struct sec_battery_info {
 	int ps_status;
 	int ps_enable;
 
-	int prev_usb_conf;
-
 	/* test mode */
 	int test_mode;
 	bool factory_mode;
-	bool factory_mode_boot_on;
 	bool store_mode;
 	bool slate_mode;
 
@@ -455,7 +432,6 @@ struct sec_battery_info {
 #if defined(CONFIG_BATTERY_AGE_FORECAST)
 	int batt_cycle;
 #endif
-	int batt_asoc;
 #if defined(CONFIG_STEP_CHARGING)
 	unsigned int step_charging_type;
 	unsigned int step_charging_charge_power;
@@ -705,8 +681,6 @@ extern bool sec_bat_get_value_by_adc(struct sec_battery_info *battery, enum sec_
 extern int sec_bat_get_adc_value(struct sec_battery_info *battery, int channel);
 extern int sec_bat_get_inbat_vol_by_adc(struct sec_battery_info *battery);
 extern bool sec_bat_check_vf_adc(struct sec_battery_info *battery);
-
-extern void sec_bat_check_battery_health(struct sec_battery_info *battery);
 
 #if defined(CONFIG_STEP_CHARGING)
 extern void sec_bat_reset_step_charging(struct sec_battery_info *battery);

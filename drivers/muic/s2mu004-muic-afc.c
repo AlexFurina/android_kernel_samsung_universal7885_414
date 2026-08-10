@@ -1460,11 +1460,10 @@ static void s2mu004_hv_muic_detect_after_charger_init(struct work_struct *work)
 }
 
 #ifdef CONFIG_HV_MUIC_VOLTAGE_CTRL
-void s2mu004_if_change_afc_voltage(void *mdata, int tx_data)
+void hv_muic_change_afc_voltage(int tx_data)
 {
-	struct s2mu004_muic_data *muic_data =
-		(struct s2mu004_muic_data *)mdata;
-	struct i2c_client *i2c = muic_data->i2c;
+	struct i2c_client *i2c = afc_init_data.muic_data->i2c;
+	struct s2mu004_muic_data *muic_data = afc_init_data.muic_data;
 	u8 value;
 	struct muic_platform_data *muic_pdata = muic_data->pdata;
 
@@ -1495,12 +1494,12 @@ void s2mu004_if_change_afc_voltage(void *mdata, int tx_data)
 	}
 }
 
-int s2mu004_if_afc_set_voltage(void *mdata, int vol)
+int muic_afc_set_voltage(int vol)
 {
 	if (vol == 5) {
-		s2mu004_if_change_afc_voltage(mdata, MUIC_HV_5V);
+		hv_muic_change_afc_voltage(MUIC_HV_5V);
 	} else if (vol == 9) {
-		s2mu004_if_change_afc_voltage(mdata, MUIC_HV_9V);
+		hv_muic_change_afc_voltage(MUIC_HV_9V);
 	} else {
 		pr_warn("%s invalid value\n", __func__);
 		return 0;

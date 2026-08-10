@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2017 Samsung Electronics Co. Ltd.
  *
@@ -9,7 +8,7 @@
  */
 
 /* usb hw param */
-/* usb notify layer v3.4 */
+/* usb notify layer v3.3 */
 
 #define MAX_HWPARAM_STR_LEN 1024
 #define MAX_HWPARAM_STRING 10
@@ -67,3 +66,7 @@ enum usb_hw_param {
 	USB_CCIC_VERSION,
 	USB_CCIC_HW_PARAM_MAX,
 };
+
+#if defined(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)
+unsigned long manager_hw_param_update(int param);
+#endif

@@ -22,14 +22,8 @@
 #define __MUIC_INTERNAL_H__
 
 #include <linux/muic/muic.h>
-#if defined(CONFIG_MUIC_SUPPORT_POWERMETER)
 #include <linux/power_supply.h>
-#endif
-#if defined(CONFIG_BATTERY_SAMSUNG_V2)
 #include "../drivers/battery_v2/include/sec_charging_common.h"
-#else
-#include <linux/battery/sec_charging_common.h>
-#endif
 
 #define muic_err(fmt, ...)					\
 	do {							\
@@ -48,7 +42,7 @@
 
 enum muic_op_mode {
 	OPMODE_MUIC = 0<<0,
-	OPMODE_PDIC = 1<<0,
+	OPMODE_CCIC = 1<<0,
 };
 
 /* Slave addr = 0x4A: MUIC */
@@ -149,29 +143,29 @@ typedef union _muic_vps_t {
 struct regmap_desc;
 
 typedef enum {
-	PDIC_RID_UNDEFINED = 0,
-	PDIC_RID_000K,
-	PDIC_RID_001K,
-	PDIC_RID_255K,
-	PDIC_RID_301K,
-	PDIC_RID_523K,
-	PDIC_RID_619K,
-	PDIC_RID_OPEN,
-} muic_pdic_rid_t;
+	CCIC_RID_UNDEFINED = 0,
+	CCIC_RID_000K,
+	CCIC_RID_001K,
+	CCIC_RID_255K,
+	CCIC_RID_301K,
+	CCIC_RID_523K,
+	CCIC_RID_619K,
+	CCIC_RID_OPEN,
+} muic_ccic_rid_t;
 
-struct pdic_rid_desc_t {
+struct ccic_rid_desc_t {
 	char *name;
 	int attached_dev;
 };
 
-struct pdic_desc_t {
-	int pdic_evt_attached; /* 1: attached, -1: detached, 0: undefined */
-	int pdic_evt_rid; /* the last rid */
-	int pdic_evt_rprd; /*rprd */
-	int pdic_evt_roleswap; /* check rprd role swap event */
-	int pdic_evt_dcdcnt; /* count dcd timeout */
+struct ccic_desc_t {
+	int ccic_evt_attached; /* 1: attached, -1: detached, 0: undefined */
+	int ccic_evt_rid; /* the last rid */
+	int ccic_evt_rprd; /*rprd */
+	int ccic_evt_roleswap; /* check rprd role swap event */
+	int ccic_evt_dcdcnt; /* count dcd timeout */
 	int attached_dev; /* attached dev */
-	struct pdic_rid_desc_t *rid_desc;
+	struct ccic_rid_desc_t *rid_desc;
 };
 
 typedef enum {
@@ -195,7 +189,7 @@ struct muic_interface_t {
 
 	/* model dependant muic platform data */
 	struct muic_platform_data *pdata;
-	struct pdic_desc_t *pdic;
+	struct ccic_desc_t *ccic;
 
 	void *muic_data;
 
@@ -230,15 +224,12 @@ struct muic_interface_t {
 	bool			is_muic_ready;
 	bool			undefined_range;
 	bool			discard_interrupt;
-#ifndef CONFIG_MUIC_SKIP_INCOMPLETE_INSERT
 	bool			is_dcdtmr_intr;
-	bool			is_dcp_charger;
+	bool 			is_dcp_charger;
 	bool			is_afc_reset;
-#endif
 	bool			is_afc_pdic_ready;
 	bool			is_bypass;
-	bool			is_pdic_attached;
-	bool			is_pdic_probe;
+	bool			is_ccic_attached;
 
 	struct hv_data		*phv;
 
@@ -248,15 +239,15 @@ struct muic_interface_t {
 #endif
 
 #if defined(CONFIG_MUIC_MANAGER)
-	/* legacy TA or USB for PDIC */
+	/* legacy TA or USB for CCIC */
 	muic_attached_dev_t	legacy_dev;
 
 #ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
 	struct notifier_block	manager_nb;
 #else
-	struct notifier_block	pdic_nb;
+	struct notifier_block	ccic_nb;
 #endif
-	struct delayed_work	pdic_work;
+	struct delayed_work	ccic_work;
 	bool 			afc_water_disable;
 #endif
 	/* Operation Mode */
@@ -266,10 +257,8 @@ struct muic_interface_t {
 	muic_prswap_t prswap_status;
 #endif
 
-#if defined(CONFIG_MUIC_SUPPORT_POWERMETER)
 	struct power_supply *psy_muic;
 	struct power_supply_desc psy_muic_desc;
-#endif
 
 	/* function pointer should be registered from each specific driver file */
 	int (*set_com_to_open_with_vbus)(void *);
@@ -298,11 +287,7 @@ struct muic_interface_t {
 #endif
 #if IS_ENABLED(CONFIG_HV_MUIC_VOLTAGE_CTRL)
 	int (*set_afc_voltage)(void *, int vol);
-	void (*change_afc_voltage)(void *, int);
-	int (*afc_get_voltage)(void *);
-	int (*afc_set_voltage)(void *, int);
 #endif
-	void (*set_chgtype_usrcmd)(void *);
 	void (*hv_reset)(void *);
 	void (*hv_dcp_charger)(void *);
 	void (*hv_fast_charge_adaptor)(void *);
@@ -340,7 +325,6 @@ struct muic_interface_t {
 	void (*prswap_work)(void *, int mode);
 #endif
 	void (*set_bypass)(void *);
-	void (*set_water_state)(void *, bool en);
 };
 
 extern struct device *switch_device;
@@ -349,10 +333,8 @@ struct muic_interface_t *muic_manager_init(void *pdata, void *drv_data);
 void muic_manager_exit(struct muic_interface_t *muic_if);
 int muic_manager_get_legacy_dev(struct muic_interface_t *muic_if);
 void muic_manager_set_legacy_dev(struct muic_interface_t *muic_if, int new_dev);
-void muic_manager_handle_pdic_detach(struct muic_interface_t *muic_if);
+void muic_manager_handle_ccic_detach(struct muic_interface_t *muic_if);
 int muic_manager_dcd_rescan(struct muic_interface_t *muic_if);
-#if defined(CONFIG_MUIC_SUPPORT_POWERMETER)
 int muic_manager_psy_init(struct muic_interface_t *muic_if, struct device *parent);
-#endif
 
 #endif /* __MUIC_INTERNAL_H__ */

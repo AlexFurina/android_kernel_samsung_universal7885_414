@@ -24,6 +24,9 @@
 #include <linux/muic/muic.h>
 #include <linux/muic/muic_interface.h>
 #include <linux/muic/s2mu004-muic-hv.h>
+#include <linux/time.h>
+#include <linux/ktime.h>
+#include <linux/rtc.h>
 
 #define MUIC_DEV_NAME	"muic-s2mu004"
 

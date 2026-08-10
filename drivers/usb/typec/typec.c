@@ -437,11 +437,6 @@ static ssize_t accessory_mode_show(struct device *dev,
 {
 	struct typec_partner *p = to_typec_partner(dev);
 
-	if (p->accessory > TYPEC_MAX_ACCESSORY || p->accessory < 0) {
-                pr_err("%s Invalid accessory number...", __func__);
-                return sprintf(buf, "%s\n", typec_accessory_modes[0]);
-        }
-
 	return sprintf(buf, "%s\n", typec_accessory_modes[p->accessory]);
 }
 static DEVICE_ATTR_RO(accessory_mode);
@@ -452,7 +447,6 @@ static ssize_t supports_usb_power_delivery_show(struct device *dev,
 {
 	struct typec_partner *p = to_typec_partner(dev);
 
-	pr_info("%s usb_pd=%d\n", __func__, p->usb_pd);
 	return sprintf(buf, "%s\n", p->usb_pd ? "yes" : "no");
 }
 static DEVICE_ATTR_RO(supports_usb_power_delivery);
@@ -577,7 +571,7 @@ void typec_unregister_partner(struct typec_partner *partner)
 	if (partner) {
 		pr_info("%s\n", __func__);
 		device_unregister(&partner->dev);
-#if defined(CONFIG_USB_NOTIFY_LAYER)
+#if defined(CONFIG_USB_NOTIFY_LAYER)	
 		if (o_notify)
 			send_otg_notify(o_notify, NOTIFY_EVENT_PD_CONTRACT, 0);
 #endif
@@ -1279,6 +1273,7 @@ void typec_set_pwr_opmode(struct typec_port *port,
 
 	port->pwr_opmode = opmode;
 	sysfs_notify(&port->dev.kobj, NULL, "power_operation_mode");
+	kobject_uevent(&port->dev.kobj, KOBJ_CHANGE);
 
 	partner_dev = device_find_child(&port->dev, NULL, partner_match);
 	if (partner_dev) {
@@ -1291,8 +1286,6 @@ void typec_set_pwr_opmode(struct typec_port *port,
 		}
 		put_device(partner_dev);
 	}
-	pr_info("%s uevent\n", __func__);
-	kobject_uevent(&port->dev.kobj, KOBJ_CHANGE);
 }
 EXPORT_SYMBOL_GPL(typec_set_pwr_opmode);
 

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  drivers/usb/notify/usblog_proc_notify.c
  *
@@ -7,7 +6,7 @@
  *
  */
 
- /* usb notify layer v3.4 */
+ /* usb notify layer v3.3 */
 
  #define pr_fmt(fmt) "usb_notify: " fmt
 
@@ -15,7 +14,6 @@
 #include <linux/errno.h>
 #include <linux/time.h>
 #include <linux/kernel.h>
-#include <linux/vmalloc.h>
 #include <linux/security.h>
 #include <linux/syscalls.h>
 #include <linux/proc_fs.h>
@@ -31,14 +29,12 @@
 #define USBLOG_MAX_BUF4_SIZE	(1 << 9) /* 512 */
 #define USBLOG_MAX_STRING_SIZE	(1 << 4) /* 16 */
 #define USBLOG_CMP_INDEX	3
-#define USBLOG_MAX_STORE_PORT	(1 << 6) /* 64 */
 
 #define USBLOG_CCIC_BUFFER_SIZE	USBLOG_MAX_BUF4_SIZE
 #define USBLOG_MODE_BUFFER_SIZE	USBLOG_MAX_BUF_SIZE
 #define USBLOG_STATE_BUFFER_SIZE	USBLOG_MAX_BUF3_SIZE
 #define USBLOG_EVENT_BUFFER_SIZE	USBLOG_MAX_BUF_SIZE
 #define USBLOG_PORT_BUFFER_SIZE		USBLOG_MAX_BUF2_SIZE
-#define USBLOG_PCM_BUFFER_SIZE		USBLOG_MAX_BUF_SIZE
 #define USBLOG_EXTRA_BUFFER_SIZE	USBLOG_MAX_BUF2_SIZE
 
 struct ccic_buf {
@@ -68,19 +64,6 @@ struct port_buf {
 	int type;
 	uint16_t param1;
 	uint16_t param2;
-	uint16_t count;
-};
-
-struct port_count {
-	uint16_t vid;
-	uint16_t pid;
-	uint16_t count;
-};
-
-struct pcm_buf {
-	unsigned long long ts_nsec;
-	int type;
-	int enable;
 };
 
 struct extra_buf {
@@ -106,14 +89,7 @@ struct usblog_buf {
 	struct state_buf state_buffer[USBLOG_STATE_BUFFER_SIZE];
 	struct event_buf event_buffer[USBLOG_EVENT_BUFFER_SIZE];
 	struct port_buf port_buffer[USBLOG_PORT_BUFFER_SIZE];
-	struct port_count store_port_cnt[USBLOG_MAX_STORE_PORT];
 	struct extra_buf extra_buffer[USBLOG_EXTRA_BUFFER_SIZE];
-};
-
-struct usblog_vm_buf {
-	unsigned long long pcm_count;
-	unsigned long pcm_index;
-	struct pcm_buf pcm_buffer[USBLOG_PCM_BUFFER_SIZE];
 };
 
 struct ccic_version {
@@ -124,7 +100,6 @@ struct ccic_version {
 
 struct usblog_root_str {
 	struct usblog_buf *usblog_buffer;
-	struct usblog_vm_buf *usblog_vm_buffer;
 	struct ccic_version ccic_ver;
 	struct ccic_version ccic_bin_ver;
 	spinlock_t usblog_lock;
@@ -291,17 +266,10 @@ static const char *ccic_rid_string(enum ccic_rid rid)
 	switch (rid) {
 	case NOTIFY_RID_UNDEFINED:
 		return "RID_UNDEFINED";
-#if defined(CONFIG_USB_CCIC_NOTIFIER_USING_QC)
-	case NOTIFY_RID_GND:
-		return "RID_GND";
-	case NOTIFY_RID_056K:
-		return "RID_056K";
-#else
 	case NOTIFY_RID_000K:
 		return "RID_000K";
 	case NOTIFY_RID_001K:
 		return "RID_001K";
-#endif
 	case NOTIFY_RID_255K:
 		return "RID_255K";
 	case NOTIFY_RID_301K:
@@ -454,10 +422,6 @@ static const char *extra_string(enum extra event)
 		return "CC OPEN SET";
 	case NOTIFY_EXTRA_CCOPEN_REQ_CLEAR:
 		return "CC OPEN CLEAR";
-	case NOTIFY_EXTRA_USB_ANALOGAUDIO:
-		return "USB ANALOG AUDIO";
-	case NOTIFY_EXTRA_USBHOST_OVERCURRENT:
-		return "USB HOST OVERCURRENT";
 	default:
 		return "ETC";
 	}
@@ -760,18 +724,16 @@ static void print_ccic_event(struct seq_file *m, unsigned long long ts,
 }
 
 static void print_port_string(struct seq_file *m, unsigned long long ts,
-	unsigned long rem_nsec, int type, uint16_t param1,
-		uint16_t param2, uint16_t cnt)
+	unsigned long rem_nsec, int type, uint16_t param1, uint16_t param2)
 {
 	switch (type) {
 	case NOTIFY_PORT_CONNECT:
-		seq_printf(m, "[%5lu.%06lu] port connect - VID:0x%04x PID:0x%04x cnt:%d\n",
-			(unsigned long)ts, rem_nsec / 1000,
-					param1, param2, cnt);
-		break;
 	case NOTIFY_PORT_DISCONNECT:
-		seq_printf(m, "[%5lu.%06lu] port disconnect - VID:0x%04x PID:0x%04x\n",
-			(unsigned long)ts, rem_nsec / 1000, param1, param2);
+		seq_printf(m, "[%5lu.%06lu] port %s - VID:0x%04x PID:0x%04x\n",
+			(unsigned long)ts, rem_nsec / 1000,
+				(type == NOTIFY_PORT_CONNECT) ?
+					"connect" : "disconnect",
+						param1, param2);
 		break;
 	case NOTIFY_PORT_CLASS:
 		seq_printf(m, "[%5lu.%06lu] device class %d, interface class %d\n",
@@ -784,69 +746,16 @@ static void print_port_string(struct seq_file *m, unsigned long long ts,
 	}
 }
 
-static uint16_t set_port_count(uint16_t vid, uint16_t pid)
-{
-	int i;
-	uint16_t ret = 0;
-	struct port_count *temp_port;
-
-	for (i = 0; i < USBLOG_MAX_STORE_PORT; i++) {
-		temp_port = &usblog_root.usblog_buffer->store_port_cnt[i];
-		if ((temp_port->vid == vid)
-			&& temp_port->pid == pid) {
-			temp_port->count++;
-			ret = temp_port->count;
-			break;
-		}
-
-		if (!temp_port->vid && !temp_port->pid) {
-			temp_port->vid = vid;
-			temp_port->pid = pid;
-			temp_port->count++;
-			ret = temp_port->count;
-			break;
-		}
-	}
-
-	if (i == USBLOG_MAX_STORE_PORT)
-		pr_err("%s store port overflow\n", __func__);
-
-	return ret;
-}
-
-static void print_pcm_string(struct seq_file *m, unsigned long long ts,
-	unsigned long rem_nsec, int type, int enable)
-{
-	switch (type) {
-	case NOTIFY_PCM_PLAYBACK:
-		seq_printf(m, "[%5lu.%06lu] USB PCM PLAYBACK %s\n",
-			(unsigned long)ts, rem_nsec / 1000,
-				enable ? "OPEN" : "CLOSE");
-		break;
-	case NOTIFY_PCM_CAPTURE:
-		seq_printf(m, "[%5lu.%06lu] USB PCM CAPTURE %s\n",
-			(unsigned long)ts, rem_nsec / 1000,
-				enable ? "OPEN" : "CLOSE");
-		break;
-	default:
-		seq_printf(m, "[%5lu.%06lu] undefined event\n",
-			(unsigned long)ts, rem_nsec / 1000);
-		break;
-	}
-}
-
 static int usblog_proc_show(struct seq_file *m, void *v)
 {
 	struct usblog_buf *temp_usblog_buffer;
-	struct usblog_vm_buf *temp_usblog_vm_buffer;
 	unsigned long long ts;
 	unsigned long rem_nsec;
 	unsigned long i;
 
 	temp_usblog_buffer = usblog_root.usblog_buffer;
-	temp_usblog_vm_buffer = usblog_root.usblog_vm_buffer;
 
-	if (!temp_usblog_buffer || !temp_usblog_vm_buffer)
+	if (!temp_usblog_buffer)
 		goto err;
 
 	seq_printf(m,
@@ -997,8 +906,7 @@ static int usblog_proc_show(struct seq_file *m, void *v)
 			print_port_string(m, ts, rem_nsec,
 				temp_usblog_buffer->port_buffer[i].type,
 				temp_usblog_buffer->port_buffer[i].param1,
-				temp_usblog_buffer->port_buffer[i].param2,
-				temp_usblog_buffer->port_buffer[i].count);
+				temp_usblog_buffer->port_buffer[i].param2);
 		}
 	}
 
@@ -1008,34 +916,7 @@ static int usblog_proc_show(struct seq_file *m, void *v)
 		print_port_string(m, ts, rem_nsec,
 			temp_usblog_buffer->port_buffer[i].type,
 			temp_usblog_buffer->port_buffer[i].param1,
-			temp_usblog_buffer->port_buffer[i].param2,
-			temp_usblog_buffer->port_buffer[i].count);
-	}
-
-	seq_printf(m,
-		"\n\n");
-	seq_printf(m,
-		"usblog PCM: count=%llu maxline=%d\n",
-			temp_usblog_vm_buffer->pcm_count,
-				USBLOG_PCM_BUFFER_SIZE);
-
-	if (temp_usblog_vm_buffer->pcm_count >= USBLOG_PCM_BUFFER_SIZE) {
-		for (i = temp_usblog_vm_buffer->pcm_index;
-			i < USBLOG_PCM_BUFFER_SIZE; i++) {
-			ts = temp_usblog_vm_buffer->pcm_buffer[i].ts_nsec;
-			rem_nsec = do_div(ts, 1000000000);
-			print_pcm_string(m, ts, rem_nsec,
-				temp_usblog_vm_buffer->pcm_buffer[i].type,
-				temp_usblog_vm_buffer->pcm_buffer[i].enable);
-		}
-	}
-
-	for (i = 0; i < temp_usblog_vm_buffer->pcm_index; i++) {
-		ts = temp_usblog_vm_buffer->pcm_buffer[i].ts_nsec;
-		rem_nsec = do_div(ts, 1000000000);
-		print_pcm_string(m, ts, rem_nsec,
-			temp_usblog_vm_buffer->pcm_buffer[i].type,
-			temp_usblog_vm_buffer->pcm_buffer[i].enable);
+			temp_usblog_buffer->port_buffer[i].param2);
 	}
 
 	seq_printf(m,
@@ -1128,8 +1009,7 @@ void mode_store_usblog_notify(int type, char *param1)
 		param_len = strlen(b);
 		if (param_len >= USBLOG_MAX_STRING_SIZE)
 			param_len = USBLOG_MAX_STRING_SIZE-1;
-		strncpy(md_buffer->usbmode_str, b,
-			sizeof(md_buffer->usbmode_str)-1);
+		strncpy(md_buffer->usbmode_str, b, param_len);
 	} else if (type == NOTIFY_USBMODE) {
 		if (b) {
 			name = strsep(&b, ",");
@@ -1342,12 +1222,8 @@ void port_store_usblog_notify(int type, void *param1, void *param2)
 	}
 	pt_buffer->ts_nsec = local_clock();
 	pt_buffer->type = type;
-	if (type == NOTIFY_PORT_CONNECT) {
-		pt_buffer->param1 = le16_to_cpu(*(__le16 *)(param1));
-		pt_buffer->param2 = le16_to_cpu(*(__le16 *)(param2));
-		pt_buffer->count
-			= set_port_count(pt_buffer->param1, pt_buffer->param2);
-	} else if (type == NOTIFY_PORT_DISCONNECT) {
+	if (type == NOTIFY_PORT_CONNECT
+			|| type == NOTIFY_PORT_DISCONNECT) {
 		pt_buffer->param1 = le16_to_cpu(*(__le16 *)(param1));
 		pt_buffer->param2 = le16_to_cpu(*(__le16 *)(param2));
 	} else {
@@ -1356,29 +1232,6 @@ void port_store_usblog_notify(int type, void *param1, void *param2)
 	}
 
 	*target_index = (*target_index+1)%USBLOG_PORT_BUFFER_SIZE;
-	(*target_count)++;
-err:
-	return;
-}
-
-void pcm_store_usblog_notify(int type, int *param1)
-{
-	struct pcm_buf *pcm_buffer;
-	unsigned long long *target_count;
-	unsigned long *target_index;
-
-	target_count = &usblog_root.usblog_vm_buffer->pcm_count;
-	target_index = &usblog_root.usblog_vm_buffer->pcm_index;
-	pcm_buffer = &usblog_root.usblog_vm_buffer->pcm_buffer[*target_index];
-	if (pcm_buffer == NULL) {
-		pr_err("%s target_buffer error\n", __func__);
-		goto err;
-	}
-	pcm_buffer->ts_nsec = local_clock();
-	pcm_buffer->type = type;
-	pcm_buffer->enable = *param1;
-
-	*target_index = (*target_index+1)%USBLOG_PCM_BUFFER_SIZE;
 	(*target_count)++;
 err:
 	return;
@@ -1422,12 +1275,6 @@ void store_usblog_notify(int type, void *param1, void *param2)
 		return;
 	}
 
-	if (!usblog_root.usblog_vm_buffer) {
-		pr_err("%s usblog_vm_buffer is null\n", __func__);
-		spin_unlock_irqrestore(&usblog_root.usblog_lock, flags);
-		return;
-	}
-
 	if (type == NOTIFY_FUNCSTATE || type == NOTIFY_ALTERNATEMODE) {
 		temp = *(int *)param1;
 		ccic_store_usblog_notify(type, &temp);
@@ -1446,9 +1293,6 @@ void store_usblog_notify(int type, void *param1, void *param2)
 				type == NOTIFY_PORT_DISCONNECT ||
 					type == NOTIFY_PORT_CLASS)
 		port_store_usblog_notify(type, param1, param2);
-	else if (type == NOTIFY_PCM_PLAYBACK ||
-				type == NOTIFY_PCM_CAPTURE)
-		pcm_store_usblog_notify(type, (int *)param1);
 	else if (type == NOTIFY_EXTRA)
 		extra_store_usblog_notify(type, (int *)param1);
 	else
@@ -1485,6 +1329,7 @@ void store_ccic_bin_version(const unsigned char *sw_main,
 }
 EXPORT_SYMBOL(store_ccic_bin_version);
 
+#if defined(CONFIG_USB_HW_PARAM)
 unsigned long long show_ccic_version(void)
 {
 	unsigned long long ret = 0;
@@ -1493,6 +1338,7 @@ unsigned long long show_ccic_version(void)
 	return ret;
 }
 EXPORT_SYMBOL(show_ccic_version);
+#endif
 
 int register_usblog_proc(void)
 {
@@ -1517,27 +1363,14 @@ int register_usblog_proc(void)
 		ret = -ENOMEM;
 		goto err;
 	}
-	usblog_root.usblog_vm_buffer
-		= vzalloc(sizeof(struct usblog_vm_buf));
-	if (!usblog_root.usblog_vm_buffer) {
-		ret = -ENOMEM;
-		goto err1;
-	}
 	pr_info("%s size=%zu\n", __func__, sizeof(struct usblog_buf));
-	return ret;
-err1:
-	kfree(usblog_root.usblog_buffer);
-	usblog_root.usblog_buffer = NULL;
 err:
-	pr_err("%s error\n", __func__);
 	return ret;
 }
 EXPORT_SYMBOL(register_usblog_proc);
 
 void unregister_usblog_proc(void)
 {
-	vfree(usblog_root.usblog_vm_buffer);
-	usblog_root.usblog_vm_buffer = NULL;
 	kfree(usblog_root.usblog_buffer);
 	usblog_root.usblog_buffer = NULL;
 	remove_proc_entry("usblog", NULL);

@@ -118,11 +118,7 @@ struct s2mu106_fuelgauge_platform_data {
 	int capacity_min;
 	int capacity_calculation_type;
 	int fullsocthr;
-};
-struct cv_slope {
-	int fg_current;
-	int soc;
-	int time;
+
 };
 
 struct s2mu106_fuelgauge_data {
@@ -132,8 +128,6 @@ struct s2mu106_fuelgauge_data {
 	struct mutex            fuelgauge_mutex;
 	struct s2mu106_fuelgauge_platform_data *pdata;
 	struct power_supply	*psy_fg;
-	struct power_supply	*psy_chg;
-	struct power_supply	*psy_bat;
 	/* struct delayed_work isr_work; */
 
 	int cable_type;
@@ -160,10 +154,6 @@ struct s2mu106_fuelgauge_data {
 	unsigned int capacity_max;      /* only for dynamic calculation */
 	unsigned int standard_capacity;
 	int raw_capacity;
-	int current_avg;
-	unsigned int ttf_capacity;
-	struct cv_slope *cv_data;
-	int cv_data_length;
 
 	bool initial_update_of_soc;
 	bool init_battery_temp;
@@ -178,7 +168,6 @@ struct s2mu106_fuelgauge_data {
 	u8 reg_OTP_52;
 
 	int low_voltage_limit_lowtemp;
-	int low_voltage_recover_lowtemp;
 	int low_voltage_limit;
 	int low_temp_limit;
 	int temperature;
@@ -210,10 +199,6 @@ struct s2mu106_fuelgauge_data {
 
 	int i_socr_coeff;
 	int t_socr_coeff;
-	int t_compen_coeff;
-	int low_t_compen_coeff;
-
-	int soc_map_offset;
 #endif
 #if (BATCAP_LEARN)
 	bool learn_start;
@@ -228,8 +213,6 @@ struct s2mu106_fuelgauge_data {
 	u8 batcap_0x0E;
 	u8 batcap_0x0F;
 #endif
-	int val_0x5C;
-	int low_voltage_limit_cnt;
 };
 
 #if (BATCAP_LEARN)

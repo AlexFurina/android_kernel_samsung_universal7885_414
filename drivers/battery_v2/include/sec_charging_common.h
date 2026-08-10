@@ -2,7 +2,7 @@
  * sec_charging_common.h
  * Samsung Mobile Charging Common Header
  *
- * Copyright (C) 2020 Samsung Electronics, Inc.
+ * Copyright (C) 2017 Samsung Electronics, Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -48,140 +48,30 @@ enum power_supply_ext_property {
 	POWER_SUPPLY_EXT_PROP_WIRELESS_OP_FREQ,
 	POWER_SUPPLY_EXT_PROP_WIRELESS_TX_CMD,
 	POWER_SUPPLY_EXT_PROP_WIRELESS_TX_VAL,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_TX_ID,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_ERR,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_SWITCH,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_TX_ENABLE,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_TX_VOUT,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_TX_IOUT,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_TX_UNO_VIN,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_TX_UNO_IIN,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_RX_CONNECTED,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_DUO_RX_POWER,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_AUTH_ADT_STATUS,	
-	POWER_SUPPLY_EXT_PROP_WIRELESS_AUTH_ADT_DATA,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_AUTH_ADT_SIZE,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_RX_TYPE,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_TX_ERR,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_MIN_DUTY,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_SEND_FSK,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_RX_VOUT,
 	POWER_SUPPLY_EXT_PROP_AICL_CURRENT,
 	POWER_SUPPLY_EXT_PROP_CHECK_MULTI_CHARGE,
 	POWER_SUPPLY_EXT_PROP_CHIP_ID,
-	POWER_SUPPLY_EXT_PROP_ERROR_CAUSE,
 	POWER_SUPPLY_EXT_PROP_SYSOVLO,
 	POWER_SUPPLY_EXT_PROP_VBAT_OVP,
 	POWER_SUPPLY_EXT_PROP_INBAT_VOLTAGE_FGSRC_SWITCHING,
 	POWER_SUPPLY_EXT_PROP_USB_CONFIGURE,
-	POWER_SUPPLY_EXT_PROP_WDT_STATUS,
-	POWER_SUPPLY_EXT_PROP_HV_DISABLE,
+	POWER_SUPPLY_EXT_PROP_WATER_DETECT,
+	POWER_SUPPLY_EXT_PROP_SURGE,
 	POWER_SUPPLY_EXT_PROP_FUELGAUGE_RESET,
 	POWER_SUPPLY_EXT_PROP_FACTORY_VOLTAGE_REGULATION,
 	POWER_SUPPLY_EXT_PROP_ANDIG_IVR_SWITCH,
 	POWER_SUPPLY_EXT_PROP_FUELGAUGE_FACTORY,
-	POWER_SUPPLY_EXT_PROP_DISABLE_FACTORY_MODE,
-	POWER_SUPPLY_EXT_PROP_SUB_PBA_TEMP_REC,
-	POWER_SUPPLY_EXT_PROP_CHARGE_POWER,
-	POWER_SUPPLY_EXT_PROP_MEASURE_SYS,
-	POWER_SUPPLY_EXT_PROP_MEASURE_INPUT,
-	POWER_SUPPLY_EXT_PROP_WC_CONTROL,
-	POWER_SUPPLY_EXT_PROP_CHGINSEL,
-	POWER_SUPPLY_EXT_PROP_MONITOR_WORK,
-	POWER_SUPPLY_EXT_PROP_JIG_GPIO,
-	POWER_SUPPLY_EXT_PROP_SHIPMODE_TEST,
-	POWER_SUPPLY_EXT_PROP_AUTO_SHIPMODE_CONTROL,
-	POWER_SUPPLY_EXT_PROP_WIRELESS_TIMER_ON,
-	POWER_SUPPLY_EXT_PROP_CALL_EVENT,
-	POWER_SUPPLY_EXT_PROP_WATER_DETECT,
-	POWER_SUPPLY_EXT_PROP_SURGE,
-	POWER_SUPPLY_EXT_PROP_OVERHEAT_NOTIFY,
-	POWER_SUPPLY_EXT_PROP_OVERHEAT_HICCUP,
-#if defined(CONFIG_DUAL_BATTERY)
-	POWER_SUPPLY_EXT_PROP_CHGIN_OK,
-	POWER_SUPPLY_EXT_PROP_SUPLLEMENT_MODE,
-	POWER_SUPPLY_EXT_PROP_RECHG_ON,
-	POWER_SUPPLY_EXT_PROP_EOC_ON,
-	POWER_SUPPLY_EXT_PROP_DISCHG_MODE,
-	POWER_SUPPLY_EXT_PROP_CHG_MODE,
-	POWER_SUPPLY_EXT_PROP_CHG_VOLTAGE,
-	POWER_SUPPLY_EXT_PROP_BAT_VOLTAGE,
-	POWER_SUPPLY_EXT_PROP_CHG_CURRENT,
-	POWER_SUPPLY_EXT_PROP_DISCHG_CURRENT,
-	POWER_SUPPLY_EXT_PROP_FASTCHG_LIMIT_CURRENT,
-	POWER_SUPPLY_EXT_PROP_TRICKLECHG_LIMIT_CURRENT,
-	POWER_SUPPLY_EXT_PROP_DISCHG_LIMIT_CURRENT,
-	POWER_SUPPLY_EXT_PROP_RECHG_VOLTAGE,
-	POWER_SUPPLY_EXT_PROP_EOC_VOLTAGE,
-	POWER_SUPPLY_EXT_PROP_EOC_CURRENT,
-	POWER_SUPPLY_EXT_PROP_POWERMETER_ENABLE,
-	POWER_SUPPLY_EXT_PROP_TSD_ENABLE,
-	POWER_SUPPLY_EXT_PROP_DUAL_BAT_DET,
-#endif
-	POWER_SUPPLY_EXT_PROP_CURRENT_EVENT,
-	POWER_SUPPLY_EXT_PROP_CURRENT_EVENT_CLEAR,
-	POWER_SUPPLY_EXT_PROP_MAX_DUTY_EVENT,
-	POWER_SUPPLY_EXT_PROP_VCHGIN_CHANGE,
-#if defined(CONFIG_BATTERY_SAMSUNG_MHS)
-	POWER_SUPPLY_EXT_PROP_CHARGE_PORT,
-#endif
-#if defined(CONFIG_WIRELESS_TX_MODE)
-	POWER_SUPPLY_EXT_PROP_WIRELESS_TX_AVG_CURR,
-#endif
 	POWER_SUPPLY_EXT_PROP_CURRENT_MEASURE,
-#if defined(CONFIG_DIRECT_CHARGING)
-	POWER_SUPPLY_EXT_PROP_DIRECT_CHARGER_MODE,
-	POWER_SUPPLY_EXT_PROP_CHARGING_ENABLED_DC,
-	POWER_SUPPLY_EXT_PROP_DIRECT_DONE,
-	POWER_SUPPLY_EXT_PROP_DIRECT_FIXED_PDO,
-	POWER_SUPPLY_EXT_PROP_DIRECT_WDT_CONTROL,
-	POWER_SUPPLY_EXT_PROP_DIRECT_VOLTAGE_MAX,
-	POWER_SUPPLY_EXT_PROP_DIRECT_CURRENT_MAX,
-	POWER_SUPPLY_EXT_PROP_DIRECT_FLOAT_MAX,
-	POWER_SUPPLY_EXT_PROP_DIRECT_ADC_CTRL,
-	POWER_SUPPLY_EXT_PROP_DIRECT_HV_PDO,
-	POWER_SUPPLY_EXT_PROP_DIRECT_PPS,
-	POWER_SUPPLY_EXT_PROP_DIRECT_PPS_FAILED,
-	POWER_SUPPLY_EXT_PROP_DIRECT_PPS_READY,
-	POWER_SUPPLY_EXT_PROP_DIRECT_DETACHED,
-	POWER_SUPPLY_EXT_PROP_DIRECT_BUCK_OFF,
-	POWER_SUPPLY_EXT_PROP_DIRECT_HARD_RESET,
-	POWER_SUPPLY_EXT_PROP_DIRECT_PPS_DISABLE,
-	POWER_SUPPLY_EXT_PROP_DIRECT_HAS_APDO,
-	POWER_SUPPLY_EXT_PROP_DIRECT_TA_ALERT,
-	POWER_SUPPLY_EXT_PROP_DIRECT_CHARGER_CHG_STATUS,
-	POWER_SUPPLY_EXT_PROP_CHANGE_CHARGING_SOURCE,
-	POWER_SUPPLY_EXT_PROP_DIRECT_CLEAR_ERR,
-#endif
-#if defined(CONFIG_BATTERY_AGE_FORECAST)
+	POWER_SUPPLY_EXT_PROP_DISABLE_FACTORY_MODE,
+#if defined(CONFIG_FUELGAUGE_S2MU004) || defined(CONFIG_FUELGAUGE_S2MU005) || defined(CONFIG_FUELGAUGE_S2MU106) || defined(CONFIG_FUELGAUGE_S2MU205)
 	POWER_SUPPLY_EXT_PROP_UPDATE_BATTERY_DATA,
 #endif
+	POWER_SUPPLY_EXT_PROP_HV_DISABLE,
 	POWER_SUPPLY_EXT_PROP_WD_QBATTOFF,
-	POWER_SUPPLY_EXT_PROP_WPC_DET_STATUS,
-	POWER_SUPPLY_EXT_PROP_CHARGE_BOOST,
-	POWER_SUPPLY_EXT_PROP_CHARGE_MODE,
-	POWER_SUPPLY_EXT_PROP_FLED_BOOST_ON,
-	POWER_SUPPLY_EXT_PROP_FLED_BOOST_OFF,
-	POWER_SUPPLY_EXT_PROP_BYPASS_MODE_DISABLE,
-	POWER_SUPPLY_EXT_PROP_CHARGE_UNO_CONTROL,
-	POWER_SUPPLY_EXT_PROP_PROP_FILTER_CFG,
-	POWER_SUPPLY_EXT_PROP_ENABLE_HW_FACTORY_MODE,
-	POWER_SUPPLY_EXT_PROP_SRCCAP,
-};
-
-enum rx_device_type {
-	NO_DEV = 0,
-	OTHER_DEV,
-	SS_GEAR,
-	SS_PHONE,
-	SS_BUDS,
 };
 
 enum sec_battery_usb_conf {
-	USB_CURRENT_NONE = 0,
-#if defined(CONFIG_ENABLE_USB_SUSPEND_STATE)
 	USB_CURRENT_SUSPENDED = 1,
-#endif
 	USB_CURRENT_UNCONFIGURED = 100,
 	USB_CURRENT_HIGH_SPEED = 500,
 	USB_CURRENT_SUPER_SPEED = 900,
@@ -334,10 +224,12 @@ enum sec_wireless_control_mode {
 	WIRELESS_CLAMP_ENABLE,
 };
 
-#define	SIOP_EVENT_IDLE				0x0000
-#define SIOP_EVENT_WPC_CALL_START	0x0001	/* 5V wireless charging + Call */
-#define SIOP_EVENT_WPC_CALL_END		0x0002	/* 5V wireless charging + Call */
-#define SIOP_EVENT_LRP_OVERHEAT		0x0004	/* LRP Temperature Over-Heat */
+enum sec_siop_event_mode {
+	SIOP_EVENT_IDLE = 0,
+	SIOP_EVENT_WPC_CALL_START,		/* 5V wireless charging + Call */
+	SIOP_EVENT_WPC_CALL_END,		/* 5V wireless charging + Call */
+	SIOP_EVENT_MAX,					/* end */
+};
 
 enum sec_wireless_pad_mode {
 	SEC_WIRELESS_PAD_NONE = 0,
@@ -391,16 +283,9 @@ enum sec_battery_adc_channel {
 };
 
 enum sec_battery_charge_mode {
-	SEC_BAT_CHG_MODE_CHARGING = 0, /* buck, chg on */
+	SEC_BAT_CHG_MODE_CHARGING = 0,
 	SEC_BAT_CHG_MODE_CHARGING_OFF,
-	SEC_BAT_CHG_MODE_BUCK_OFF, /* buck, chg off */
-//	SEC_BAT_CHG_MODE_BUCK_ON,
-	SEC_BAT_CHG_MODE_OTG_ON,
-	SEC_BAT_CHG_MODE_OTG_OFF,
-	SEC_BAT_CHG_MODE_UNO_ON,
-	SEC_BAT_CHG_MODE_UNO_OFF,
-	SEC_BAT_CHG_MODE_UNO_ONLY,
-	SEC_BAT_CHG_MODE_MAX,
+	SEC_BAT_CHG_MODE_BUCK_OFF,
 };
 
 /* charging mode */
@@ -679,8 +564,6 @@ enum sec_battery_temp_check {
   */
 #define SEC_FUELGAUGE_CAPACITY_TYPE_SKIP_ABNORMAL	16
 
-#define SEC_FUELGAUGE_CAPACITY_TYPE_CAPACITY_POINT	32
-
 /* charger function settings (can be used overlapped) */
 #define sec_charger_functions_t unsigned int
 /* SEC_CHARGER_NO_GRADUAL_CHARGING_CURRENT
@@ -738,11 +621,6 @@ struct sec_age_data {
 	struct sec_age_data
 #endif
 
-typedef struct {
-	unsigned int cycle;
-	unsigned int asoc;
-} battery_health_condition;
-
 struct sec_battery_platform_data {
 	/* NO NEED TO BE CHANGED */
 	/* callback functions */
@@ -781,7 +659,6 @@ struct sec_battery_platform_data {
 	/* NO NEED TO BE CHANGED */
 	unsigned int pre_afc_input_current;
 	unsigned int pre_wc_afc_input_current;
-	unsigned int select_pd_input_current;
 	unsigned int store_mode_afc_input_current;
 	unsigned int store_mode_hv_wireless_input_current;
 
@@ -1042,8 +919,6 @@ struct sec_battery_platform_data {
 #endif
 	int fg_cycle_check_value;
 
-	battery_health_condition* health_condition;
-
 	unsigned int siop_default_power;
 
 	unsigned int siop_event_check_type;
@@ -1203,31 +1078,26 @@ static inline struct power_supply *get_power_supply_by_name(char *name)
 }
 
 #define psy_do_property(name, function, property, value) \
-({	\
+{	\
 	struct power_supply *psy;	\
-	int ret = 0;	\
+	int ret;	\
 	psy = get_power_supply_by_name((name));	\
 	if (!psy) {	\
 		pr_err("%s: Fail to "#function" psy (%s)\n",	\
 			__func__, (name));	\
 		value.intval = 0;	\
-		ret = -ENOENT;	\
 	} else {	\
 		if (psy->desc->function##_property != NULL) { \
-			ret = psy->desc->function##_property(psy, \
-				(enum power_supply_property) (property), &(value)); \
+			ret = psy->desc->function##_property(psy, (property), &(value)); \
 			if (ret < 0) {	\
-				pr_err("%s: Fail to %s "#function" "#property" (%d)\n", \
-						__func__, name, ret);	\
+				pr_err("%s: Fail to %s "#function" (%d=>%d)\n", \
+						__func__, name, (property), ret);	\
 				value.intval = 0;	\
 			}	\
-		} else {	\
-			ret = -ENOSYS;	\
 		}	\
 		power_supply_put(psy);		\
 	}					\
-	ret;	\
-})
+}
 
 #define get_battery_data(driver)	\
 	(((struct battery_data_t *)(driver)->pdata->battery_data)	\
@@ -1289,14 +1159,6 @@ static inline struct power_supply *get_power_supply_by_name(char *name)
 
 #define is_hv_wire_type(cable_type) ( \
 	is_hv_afc_wire_type(cable_type) || is_hv_qc_wire_type(cable_type))
-
-#define is_nocharge_type(cable_type) ( \
-	cable_type == SEC_BATTERY_CABLE_NONE || \
-	cable_type == SEC_BATTERY_CABLE_OTG || \
-	cable_type == SEC_BATTERY_CABLE_POWER_SHARING)
-
-#define is_slate_mode(battery) ((battery->current_event & SEC_BAT_CURRENT_EVENT_SLATE) \
-		== SEC_BAT_CURRENT_EVENT_SLATE)
 
 #define is_pd_wire_type(cable_type) ( \
 		cable_type == SEC_BATTERY_CABLE_PDIC)

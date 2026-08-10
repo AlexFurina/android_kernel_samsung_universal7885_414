@@ -2,7 +2,7 @@
  * sec_cisd.h
  * Samsung Mobile CISD Header
  *
- * Copyright (C) 2020 Samsung Electronics, Inc.
+ * Copyright (C) 2017 Samsung Electronics, Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
