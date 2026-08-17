@@ -32,6 +32,7 @@
 #include <linux/of_address.h>
 #include <linux/debugfs.h>
 #include <linux/pinctrl/consumer.h>
+#include <uapi/linux/sched/types.h>
 #include <video/mipi_display.h>
 #include <media/v4l2-subdev.h>
 #include <soc/samsung/cal-if.h>
