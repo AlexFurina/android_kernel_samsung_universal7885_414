@@ -20,6 +20,7 @@ fw-shipped-$(CONFIG_FIVE_TEE_DRIVER) += five/ffffffff000000000000000000000072.tl
 
 # Touchscreen Firmware
 fw-external-$(CONFIG_TOUCHSCREEN_HIMAX_INCELL) += tsp_himax/hx83102d_a20e.bin tsp_himax/hx83102d_a10eu.bin
+fw-external-$(CONFIG_TOUCHSCREEN_SEC_TS) += tsp_sec/y761_star1.fw tsp_sec/y761_star2.fw
 
 quiet_cmd_ihex  = IHEX    $@
       cmd_ihex  = $(OBJCOPY) -Iihex -Obinary $< $@
