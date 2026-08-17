@@ -22,7 +22,7 @@
 #include <linux/pm_qos.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
-#include <linux/exynos_iovmm.h>
+#include <linux/ion_exynos.h>
 #include <soc/samsung/bts.h>
 
 #include "decon.h"
