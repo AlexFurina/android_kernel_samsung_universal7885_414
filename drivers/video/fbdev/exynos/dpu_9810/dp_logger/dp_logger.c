@@ -19,6 +19,7 @@
 #include <linux/time.h>
 #include <linux/uaccess.h>
 #include <linux/dp_logger.h>
+#include <linux/sched/clock.h>
 
 #define BUF_SIZE	SZ_32K
 #define MAX_STR_LEN	128
