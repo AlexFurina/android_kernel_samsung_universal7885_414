@@ -733,6 +733,8 @@ void dpu_dump_afbc_info(void)
 	int i, j;
 	struct decon_device *decon;
 	struct dpu_afbc_info *afbc_info;
+	void *v_addr[2];
+	int size[2];
 
 	for (i = 0; i < MAX_DECON_CNT; i++) {
 		decon = get_decon_drvdata(i);
@@ -745,11 +747,13 @@ void dpu_dump_afbc_info(void)
 			if (!afbc_info->is_afbc[j])
 				continue;
 
+			v_addr[j] = dma_buf_vmap(afbc_info->dma_buf[j]);
+			size[j] = afbc_info->dma_buf[j]->size;
 			decon_info("\t[%s] Base(0x%p), KV(0x%p), size(%d)\n",
 					j ? "VGF1" : "VGF0",
 					(void *)afbc_info->dma_addr[j],
-					afbc_info->v_addr[j],
-					afbc_info->size[j]);
+					v_addr[j], size[j]);
+			dma_buf_vunmap(afbc_info->dma_buf[j], v_addr[j]);
 		}
 
 		afbc_info = &decon->d.cur_afbc_info;
@@ -758,11 +762,13 @@ void dpu_dump_afbc_info(void)
 			if (!afbc_info->is_afbc[j])
 				continue;
 
+			v_addr[j] = dma_buf_vmap(afbc_info->dma_buf[j]);
+			size[j] = afbc_info->dma_buf[j]->size;
 			decon_info("\t[%s] Base(0x%p), KV(0x%p), size(%d)\n",
 					j ? "VGF1" : "VGF0",
 					(void *)afbc_info->dma_addr[j],
-					afbc_info->v_addr[j],
-					afbc_info->size[j]);
+					v_addr[j], size[j]);
+			dma_buf_vunmap(afbc_info->dma_buf[j], v_addr[j]);
 		}
 	}
 }
@@ -774,6 +780,7 @@ static int dpu_dump_buffer_data(struct dpp_device *dpp)
 	int dump_size = 128;
 	struct decon_device *decon;
 	struct dpu_afbc_info *afbc_info;
+	void *v_addr;
 
 	if (dpp->state == DPP_STATE_ON) {
 		for (i = 0; i < MAX_DECON_CNT; i++) {
@@ -788,22 +795,21 @@ static int dpu_dump_buffer_data(struct dpp_device *dpp)
 			if (!afbc_info->is_afbc[id_idx])
 				continue;
 
-			if (afbc_info->size[id_idx] > 2048)
+			if (afbc_info->dma_buf[id_idx]->size > 2048)
 				dump_size = 128;
 			else
-				dump_size = afbc_info->size[id_idx] / 16;
+				dump_size = afbc_info->dma_buf[id_idx]->size / 16;
 
+			v_addr = dma_buf_vmap(afbc_info->dma_buf[id_idx]);
 			decon_info("Base(0x%p), KV(0x%p), size(%d)\n",
 				(void *)afbc_info->dma_addr[id_idx],
-				afbc_info->v_addr[id_idx],
-				dump_size);
+				v_addr, dump_size);
 
-			if (!afbc_info->v_addr[id_idx])
+			if (IS_ERR_OR_NULL(v_addr))
 				continue;
 
-			dpu_dump_data_to_console(
-				afbc_info->v_addr[id_idx],
-				dump_size, dpp->id);
+			dpu_dump_data_to_console(v_addr, dump_size, dpp->id);
+			dma_buf_vunmap(afbc_info->dma_buf[id_idx], v_addr);
 		}
 	}
 
