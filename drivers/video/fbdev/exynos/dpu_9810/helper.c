@@ -417,12 +417,9 @@ void decon_to_init_param(struct decon_device *decon, struct decon_param *p)
 /* sync fence related functions */
 void decon_create_timeline(struct decon_device *decon, char *name)
 {
-	decon->timeline = sync_timeline_create(name);
-#if defined(CONFIG_DPU_2_0_FENCE)
-	decon->timeline_max = 0;
-#else
-	decon->timeline_max = 1;
-#endif
+	decon->fence.context = dma_fence_context_alloc(1);
+	spin_lock_init(&decon->fence.lock);
+	strlcpy(decon->fence.name, name, sizeof(decon->fence.name));
 }
 
 int decon_get_valid_fd(void)
@@ -500,42 +497,66 @@ err:
 }
 #endif
 
+static const char *decon_fence_get_driver_name(struct dma_fence *fence)
+{
+	struct decon_fence *decon_fence;
+
+	decon_fence = container_of(fence->lock, struct decon_fence, lock);
+	return decon_fence->name;
+}
+
+static bool decon_fence_enable_signaling(struct dma_fence *fence)
+{
+	/* nothing to do */
+	return true;
+}
+
+static void decon_fence_value_str(struct dma_fence *fence, char *str, int size)
+{
+	snprintf(str, size, "%d", fence->seqno);
+}
+
+static struct dma_fence_ops decon_fence_ops = {
+	.get_driver_name =	decon_fence_get_driver_name,
+	.get_timeline_name =	decon_fence_get_driver_name,
+	.enable_signaling =	decon_fence_enable_signaling,
+	.wait =			dma_fence_default_wait,
+	.fence_value_str =	decon_fence_value_str,
+};
+
 int decon_create_fence(struct decon_device *decon, struct sync_file **sync_file)
 {
-	struct sync_pt *pt;
+	struct dma_fence *fence;
 	int fd = -EMFILE;
 
-	decon->timeline_max++;
-	pt = sync_pt_create(decon->timeline, sizeof(*pt), decon->timeline_max);
-	if (!pt) {
-		decon_err("%s: failed to create sync pt\n", __func__);
-		goto err;
-	}
+	fence = kzalloc(sizeof(*fence), GFP_KERNEL);
+	if (!fence)
+		return -ENOMEM;
 
-	*sync_file = sync_file_create(&pt->base);
-	fence_put(&pt->base);
+	dma_fence_init(fence, &decon_fence_ops, &decon->fence.lock,
+		   decon->fence.context,
+		   atomic_inc_return(&decon->fence.timeline));
+
+	*sync_file = sync_file_create(fence);
+	dma_fence_put(fence);
 	if (!(*sync_file)) {
 		decon_err("%s: failed to create sync file\n", __func__);
-		goto err;
+		return -ENOMEM;
 	}
 
 	fd = decon_get_valid_fd();
 	if (fd < 0) {
 		decon_err("%s: failed to get unused fd\n", __func__);
 		fput((*sync_file)->file);
-		goto err;
 	}
 
 	return fd;
 
-err:
-	decon->timeline_max--;
-	return fd;
 }
 
-void decon_wait_fence(struct sync_file *sync_file)
+void decon_wait_fence(struct dma_fence *fence)
 {
-	int err = sync_file_wait(sync_file, 900);
+	int err = dma_fence_wait_timeout(fence, false, 900);
 	if (err >= 0)
 		return;
 
@@ -543,9 +564,11 @@ void decon_wait_fence(struct sync_file *sync_file)
 		decon_warn("error waiting on acquire fence: %d\n", err);
 }
 
-void decon_signal_fence(struct decon_device *decon)
+void decon_signal_fence(struct dma_fence *fence)
 {
-	sync_timeline_signal(decon->timeline, 1);
+	if (dma_fence_signal(fence))
+		decon_warn("%s: fence[%p] #%d signal failed\n", __func__,
+				fence, fence->seqno);
 }
 
 void dpu_debug_printk(const char *function_name, const char *format, ...)
