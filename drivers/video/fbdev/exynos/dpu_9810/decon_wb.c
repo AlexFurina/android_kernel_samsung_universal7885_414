@@ -28,12 +28,10 @@ static irqreturn_t decon_wb_irq_handler(int irq, void *dev_data)
 		DPU_EVENT_LOG(DPU_EVT_UNDERRUN, &decon->sd, ktime_set(0, 0));
 		decon_err("DECON%d FIFO underrun\n", decon->id);
 	}
-	if (irq_sts_reg & DPU_FRAME_DONE_INT_EN) {
+
+	if (irq_sts_reg & DPU_FRAME_DONE_INT_EN)
 		DPU_EVENT_LOG(DPU_EVT_DECON_FRAMEDONE, &decon->sd, ktime_set(0, 0));
-		decon_dbg("%s Frame Done is occured. timeline:%d, %d\n",
-				__func__, decon->timeline->value,
-				decon->timeline_max);
-	}
+
 	if (ext_irq & DPU_RESOURCE_CONFLICT_INT_EN) {
 		DPU_EVENT_LOG(DPU_EVT_RSC_CONFLICT, &decon->sd, ktime_set(0, 0));
 		decon_err("DECON%d Resource Conflict(ext_irq=0x%x, irq_sts=0x%x)\n",
