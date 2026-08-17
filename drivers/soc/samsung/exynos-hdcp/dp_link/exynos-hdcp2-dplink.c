@@ -426,6 +426,15 @@ int hdcp_dplink_cancel_auth(void)
 	return dplink_set_integrity_fail();
 }
 
+void hdcp_dplink_clear_all(void)
+{
+	uint32_t ret = 0;
+
+	hdcp_info("HDCP flag clear\n");
+	ret = exynos_smc(SMC_DRM_HDCP_AUTH_INFO, DP_HDCP22_DISABLE, 0,0);
+	dplink_clear_irqflag_all();
+}
+
 int hdcp_dplink_is_auth_state(void)
 {
 	return 0;
