@@ -18,7 +18,6 @@
 #if defined(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION)
 #include <linux/smc.h>
 #endif
-#include <linux/exynos_iovmm.h>
 
 #include "decon.h"
 #include "dsim.h"
@@ -768,7 +767,6 @@ void dpu_dump_afbc_info(void)
 	}
 }
 
-#if defined(CONFIG_ION_EXYNOS)
 static int dpu_dump_buffer_data(struct dpp_device *dpp)
 {
 	int i;
@@ -840,4 +838,3 @@ int dpu_sysmmu_fault_handler(struct iommu_domain *domain,
 
 	return 0;
 }
-#endif
