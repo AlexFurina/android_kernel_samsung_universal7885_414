@@ -55,7 +55,16 @@ struct dwc3_otg {
 
 	struct regulator	*vbus_reg;
 
+	int			*ldo_num;
+	int			ldos;
+	int			ldo_manual_control;
+	struct regulator	*ldo12;
+	struct regulator	*ldo13;
+	struct regulator	*ldo14;
+
 	struct dwc3_ext_otg_ops *ext_otg_ops;
+	struct mutex lock;
+	u32 combo_phy_control;
 #if defined(CONFIG_TYPEC)
 	struct intf_typec	*typec;
 #endif
