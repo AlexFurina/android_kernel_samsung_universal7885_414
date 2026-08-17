@@ -29,11 +29,7 @@
 #if defined(CONFIG_EXYNOS_ITMON)
 #include <soc/samsung/exynos-itmon.h>
 #endif
-#if defined(CONFIG_ION_EXYNOS)
-#include <linux/exynos_ion.h>
-#include <linux/ion.h>
 #include <linux/exynos_iovmm.h>
-#endif
 #ifdef CONFIG_SEC_ABC
 #include <linux/sti/abc_common.h>
 #endif
@@ -59,7 +55,6 @@
 #define MAX_DECON_CNT		3
 #define SUCCESS_EXYNOS_SMC	0
 
-extern struct ion_device *ion_exynos;
 extern struct decon_device *decon_drvdata[MAX_DECON_CNT];
 extern int decon_log_level;
 extern int dpu_bts_log_level;
@@ -521,7 +516,6 @@ struct decon_window_regs {
 };
 
 struct decon_dma_buf_data {
-	struct ion_handle		*ion_handle;
 	struct dma_buf			*dma_buf;
 	struct dma_buf_attachment	*attachment;
 	struct sg_table			*sg_table;
@@ -980,7 +974,7 @@ struct decon_debug {
 #endif
 	struct dpu_afbc_info prev_afbc_info;
 	struct dpu_afbc_info cur_afbc_info;
-	struct ion_handle *handle[MAX_DECON_WIN][MAX_PLANE_CNT];
+	struct dma_buf *dmabuf[MAX_DECON_WIN][MAX_PLANE_CNT];
 	int prev_vgf_win_id[2];
 };
 
@@ -1098,8 +1092,6 @@ struct decon_device {
 	struct mutex lock;
 	struct mutex pm_lock;
 	spinlock_t slock;
-
-	struct ion_client *ion_client;
 
 	struct sync_timeline *timeline;
 	int timeline_max;
