@@ -61,10 +61,13 @@ extern int dsim_log_level;
 #define MIPI_WR_TIMEOUT			msecs_to_jiffies(50)
 #define MIPI_RD_TIMEOUT			msecs_to_jiffies(100)
 
+#define exynos_ss_printk(...)
+
 #define dsim_err(fmt, ...)							\
 	do {									\
 		if (dsim_log_level >= 3) {					\
 			pr_err(pr_fmt(fmt), ##__VA_ARGS__);			\
+			exynos_ss_printk(fmt, ##__VA_ARGS__);			\
 		}								\
 	} while (0)
 
@@ -72,6 +75,7 @@ extern int dsim_log_level;
 	do {									\
 		if (dsim_log_level >= 4) {					\
 			pr_warn(pr_fmt(fmt), ##__VA_ARGS__);			\
+			exynos_ss_printk(fmt, ##__VA_ARGS__);			\
 		}								\
 	} while (0)
 
