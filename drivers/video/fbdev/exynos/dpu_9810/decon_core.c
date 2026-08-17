@@ -404,7 +404,9 @@ static void decon_free_unused_buf(struct decon_device *decon,
 	if (dma->dma_buf)
 		dma_buf_put(dma->dma_buf);
 	if (decon->ion_client && dma->ion_handle)
+#if 0
 		ion_free(decon->ion_client, dma->ion_handle);
+#endif
 
 	memset(dma, 0, sizeof(struct decon_dma_buf_data));
 }
@@ -425,7 +427,9 @@ static void decon_free_dma_buf(struct decon_device *decon,
 
 	dma_buf_detach(dma->dma_buf, dma->attachment);
 	dma_buf_put(dma->dma_buf);
+#if 0
 	ion_free(decon->ion_client, dma->ion_handle);
+#endif
 	memset(dma, 0, sizeof(struct decon_dma_buf_data));
 #endif
 }
@@ -3319,7 +3323,9 @@ static int decon_fb_alloc_memory(struct decon_device *decon, struct decon_win *w
 err_map:
 	dma_buf_put(buf);
 err_share_dma_buf:
+#if 0
 	ion_free(decon->ion_client, handle);
+#endif
 	return -ENOMEM;
 #endif
 }
@@ -3333,7 +3339,9 @@ static int decon_fb_test_alloc_memory(struct decon_device *decon, u32 size)
 	struct dsim_device *dsim;
 	struct device *dev;
 	dma_addr_t map_dma;
+#if 0
 	struct ion_handle *handle;
+#endif
 	struct dma_buf *buf;
 	void *vaddr;
 	unsigned int ret;
@@ -3346,6 +3354,7 @@ static int decon_fb_test_alloc_memory(struct decon_device *decon, u32 size)
 
 	dev_info(decon->dev, "want %u bytes for window[%d]\n", size, win->idx);
 
+#if 0
 	handle = ion_alloc(decon->ion_client, (size_t)size, 0,
 					EXYNOS_ION_HEAP_SYSTEM_MASK, 0);
 	if (IS_ERR(handle)) {
@@ -3360,10 +3369,21 @@ static int decon_fb_test_alloc_memory(struct decon_device *decon, u32 size)
 	}
 
 	vaddr = ion_map_kernel(decon->ion_client, handle);
+#endif
+
+	buf = ion_alloc_dmabuf("ion_system_heap", (size_t)size, 0);
+	if (IS_ERR(buf)) {
+		dev_err(decon->dev, "ion_share_dma_buf() failed\n");
+		goto err_share_dma_buf;
+	}
+
+	vaddr = dma_buf_vmap(buf);
 
 	memset(vaddr, 0x00, size);
 
 	fbi->screen_base = vaddr;
+
+	fbi->screen_base = NULL;
 
 	if (decon->dt.out_type == DECON_OUT_DP) {
 		displayport = v4l2_get_subdevdata(decon->out_sd[0]);
@@ -3372,7 +3392,11 @@ static int decon_fb_test_alloc_memory(struct decon_device *decon, u32 size)
 		dsim = v4l2_get_subdevdata(decon->out_sd[0]);
 		dev = dsim->dev;
 	}
+#if 0
 	ret = decon_map_ion_handle(decon, dev, &win->fb_buf_data, handle,
+			buf, win->idx);
+#endif
+	ret = decon_map_ion_handle(decon, dev, &win->fb_buf_data,
 			buf, win->idx);
 	if (!ret)
 		goto err_map;
@@ -3390,7 +3414,9 @@ static int decon_fb_test_alloc_memory(struct decon_device *decon, u32 size)
 err_map:
 	dma_buf_put(buf);
 err_share_dma_buf:
+#if 0
 	ion_free(decon->ion_client, handle);
+#endif
 	return -ENOMEM;
 }
 #endif
