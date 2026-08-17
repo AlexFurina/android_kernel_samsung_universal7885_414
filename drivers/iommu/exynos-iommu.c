@@ -112,8 +112,8 @@ void exynos_sysmmu_tlb_invalidate(struct iommu_domain *iommu_domain,
 			struct sysmmu_drvdata *drvdata = dev_get_drvdata(list->sysmmu);
 
 			spin_lock(&drvdata->lock);
-			if (!is_runtime_active_or_enabled(drvdata) ||
-					!is_sysmmu_active(drvdata)) {
+			if (!is_sysmmu_active(drvdata) ||
+					!is_sysmmu_runtime_active(drvdata)) {
 				spin_unlock(&drvdata->lock);
 				dev_dbg(drvdata->sysmmu,
 					"Skip TLB invalidation %#zx@%#x\n",
@@ -197,7 +197,14 @@ static irqreturn_t exynos_sysmmu_irq(int irq, void *dev_id)
 
 static int sysmmu_get_hw_info(struct sysmmu_drvdata *data)
 {
+	int ret;
 	struct tlb_props *tlb_props = &data->tlb_props;
+
+	ret = pm_runtime_get_sync(data->sysmmu);
+	if (ret < 0) {
+		dev_err(data->sysmmu, "Failed to runtime pm get(%d)\n", ret);
+		return ret;
+	}
 
 	data->version = __sysmmu_get_hw_version(data);
 
@@ -209,6 +216,8 @@ static int sysmmu_get_hw_info(struct sysmmu_drvdata *data)
 		tlb_props->flags |= TLB_TYPE_WAY;
 	else if (__sysmmu_get_capa_type(data) == 0)
 		tlb_props->flags |= TLB_TYPE_PORT;
+
+	pm_runtime_put(data->sysmmu);
 
 	return 0;
 }
@@ -463,12 +472,6 @@ static int __init sysmmu_parse_dt(struct device *sysmmu,
 	if (of_property_read_bool(sysmmu->of_node, "sysmmu,no-suspend"))
 		dev_pm_syscore_device(sysmmu, true);
 
-	if (of_property_read_bool(sysmmu->of_node, "sysmmu,hold-rpm-on-boot"))
-		drvdata->hold_rpm_on_boot = true;
-
-	if (of_property_read_bool(sysmmu->of_node, "sysmmu,no-rpm-control"))
-		drvdata->no_rpm_control = SYSMMU_STATE_DISABLED;
-
 	if (IS_TLB_WAY_TYPE(drvdata)) {
 		ret = sysmmu_parse_tlb_way_dt(sysmmu, drvdata);
 		if (ret)
@@ -482,7 +485,6 @@ static int __init sysmmu_parse_dt(struct device *sysmmu,
 	return ret;
 }
 
-static struct iommu_ops exynos_iommu_ops;
 static int __init exynos_sysmmu_probe(struct platform_device *pdev)
 {
 	int irq, ret;
@@ -535,6 +537,8 @@ static int __init exynos_sysmmu_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, data);
 
+	pm_runtime_enable(dev);
+
 	ret = exynos_iommu_init_event_log(SYSMMU_DRVDATA_TO_LOG(data),
 				SYSMMU_LOG_LEN);
 	if (!ret)
@@ -561,24 +565,6 @@ static int __init exynos_sysmmu_probe(struct platform_device *pdev)
 		data->next = sysmmu_drvdata_list->next;
 		sysmmu_drvdata_list->next = data;
 	}
-
-	iommu_device_set_ops(&data->iommu, &exynos_iommu_ops);
-	iommu_device_set_fwnode(&data->iommu, &dev->of_node->fwnode);
-
-	ret = iommu_device_register(&data->iommu);
-	if (ret) {
-		dev_err(dev, "Failed to register device\n");
-		return ret;
-	}
-
-	pm_runtime_enable(dev);
-
-	if (data->hold_rpm_on_boot)
-		pm_runtime_get_sync(dev);
-
-	if (data->sysmmu->of_node->name &&
-			!strcmp(data->sysmmu->of_node->name, "sysmmu_abox"))
-		data->is_abox = true;
 
 	dev_info(data->sysmmu, "is probed. Version %d.%d.%d\n",
 			MMU_MAJ_VER(data->version),
@@ -682,43 +668,10 @@ static int sysmmu_enable_from_master(struct device *master,
 			}
 			break;
 		}
-		if (drvdata->hold_rpm_on_boot) {
-			pm_runtime_put(drvdata->sysmmu);
-			drvdata->hold_rpm_on_boot = false;
-		}
 	}
 	spin_unlock_irqrestore(&owner->lock, flags);
 
 	return ret;
-}
-
-void exynos_sysmmu_control(struct device *master, bool enable)
-{
-	unsigned long flags;
-	struct exynos_iommu_owner *owner = master->archdata.iommu;
-	struct sysmmu_list_data *list;
-	struct sysmmu_drvdata *drvdata;
-
-	BUG_ON(!has_sysmmu(master));
-
-	spin_lock_irqsave(&owner->lock, flags);
-	list_for_each_entry(list, &owner->sysmmu_list, node) {
-		drvdata = dev_get_drvdata(list->sysmmu);
-		spin_lock(&drvdata->lock);
-		if (!drvdata->no_rpm_control) {
-			spin_unlock(&drvdata->lock);
-			continue;
-		}
-		if (enable) {
-			__sysmmu_enable_nocount(drvdata);
-			drvdata->no_rpm_control = SYSMMU_STATE_ENABLED;
-		} else {
-			__sysmmu_disable_nocount(drvdata);
-			drvdata->no_rpm_control = SYSMMU_STATE_DISABLED;
-		}
-		spin_unlock(&drvdata->lock);
-	}
-	spin_unlock_irqrestore(&owner->lock, flags);
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -744,7 +697,7 @@ static int exynos_sysmmu_resume(struct device *dev)
 	struct sysmmu_drvdata *drvdata = dev_get_drvdata(dev);
 
 	spin_lock_irqsave(&drvdata->lock, flags);
-	if (drvdata->is_suspended && !drvdata->no_rpm_control) {
+	if (drvdata->is_suspended) {
 		__sysmmu_enable_nocount(drvdata);
 		drvdata->is_suspended = false;
 	}
@@ -754,37 +707,7 @@ static int exynos_sysmmu_resume(struct device *dev)
 }
 #endif
 
-int exynos_iommu_runtime_suspend(struct device *sysmmu)
-{
-	unsigned long flags;
-	struct sysmmu_drvdata *drvdata = dev_get_drvdata(sysmmu);
-
-	SYSMMU_EVENT_LOG_POWEROFF(SYSMMU_DRVDATA_TO_LOG(drvdata));
-	spin_lock_irqsave(&drvdata->lock, flags);
-	if (put_sysmmu_runtime_active(drvdata) && is_sysmmu_active(drvdata))
-		__sysmmu_disable_nocount(drvdata);
-	spin_unlock_irqrestore(&drvdata->lock, flags);
-
-	return 0;
-}
-
-int exynos_iommu_runtime_resume(struct device *sysmmu)
-{
-	unsigned long flags;
-	struct sysmmu_drvdata *drvdata = dev_get_drvdata(sysmmu);
-
-	SYSMMU_EVENT_LOG_POWERON(SYSMMU_DRVDATA_TO_LOG(drvdata));
-	spin_lock_irqsave(&drvdata->lock, flags);
-	if (get_sysmmu_runtime_active(drvdata) && is_sysmmu_active(drvdata))
-		__sysmmu_enable_nocount(drvdata);
-	spin_unlock_irqrestore(&drvdata->lock, flags);
-
-	return 0;
-}
-
 static const struct dev_pm_ops sysmmu_pm_ops = {
-	SET_RUNTIME_PM_OPS(exynos_iommu_runtime_suspend,
-				exynos_iommu_runtime_resume, NULL)
 	SET_LATE_SYSTEM_SLEEP_PM_OPS(exynos_sysmmu_suspend, exynos_sysmmu_resume)
 };
 
@@ -1272,14 +1195,6 @@ static int exynos_iommu_of_xlate(struct device *master,
 	list_data->sysmmu = sysmmu;
 
 	/*
-	 * Use device link to make relationship between SysMMU and master.
-	 * SysMMU device is supplier, and master device is consumer.
-	 * This relationship guarantees that supplier is enabled before
-	 * consumer, and it is disabled after consumer.
-	 */
-	device_link_add(master, sysmmu, DL_FLAG_PM_RUNTIME);
-
-	/*
 	 * System MMUs are attached in the order of the presence
 	 * in device tree
 	 */
@@ -1321,7 +1236,7 @@ void exynos_sysmmu_show_status(struct device *master)
 
 		spin_lock_irqsave(&drvdata->lock, flags);
 		if (!is_sysmmu_active(drvdata) ||
-				!is_runtime_active_or_enabled(drvdata)) {
+				!is_sysmmu_runtime_active(drvdata)) {
 			dev_info(drvdata->sysmmu,
 				"%s: SysMMU is not active\n", __func__);
 			spin_unlock_irqrestore(&drvdata->lock, flags);
@@ -1469,16 +1384,76 @@ static int __init exynos_iommu_create_domain(void)
 	return 0;
 }
 
+int exynos_iommu_runtime_suspend(struct device *master)
+{
+	int ret;
+	struct exynos_iommu_owner *owner;
+	struct sysmmu_list_data *list;
+
+	ret = pm_generic_runtime_suspend(master);
+	if (!has_sysmmu(master) || ret)
+		return ret;
+
+	owner = master->archdata.iommu;
+	list_for_each_entry(list, &owner->sysmmu_list, node) {
+		unsigned long flags;
+		struct sysmmu_drvdata *drvdata;
+
+		drvdata = dev_get_drvdata(list->sysmmu);
+
+		SYSMMU_EVENT_LOG_POWEROFF(SYSMMU_DRVDATA_TO_LOG(drvdata));
+		spin_lock_irqsave(&drvdata->lock, flags);
+		if (put_sysmmu_runtime_active(drvdata) && is_sysmmu_active(drvdata))
+			__sysmmu_disable_nocount(drvdata);
+		spin_unlock_irqrestore(&drvdata->lock, flags);
+	}
+
+	return ret;
+}
+
+int exynos_iommu_runtime_resume(struct device *master)
+{
+	struct exynos_iommu_owner *owner;
+	struct sysmmu_list_data *list;
+
+	if (!has_sysmmu(master))
+		return pm_generic_runtime_resume(master);
+
+	owner = master->archdata.iommu;
+	list_for_each_entry(list, &owner->sysmmu_list, node) {
+		unsigned long flags;
+		struct sysmmu_drvdata *drvdata;
+
+		drvdata = dev_get_drvdata(list->sysmmu);
+
+		SYSMMU_EVENT_LOG_POWERON(SYSMMU_DRVDATA_TO_LOG(drvdata));
+
+		spin_lock_irqsave(&drvdata->lock, flags);
+		if (get_sysmmu_runtime_active(drvdata) && is_sysmmu_active(drvdata))
+			__sysmmu_enable_nocount(drvdata);
+		spin_unlock_irqrestore(&drvdata->lock, flags);
+	}
+
+	return pm_generic_runtime_resume(master);
+}
+
+static const struct dev_pm_ops exynos_iommu_dev_pm_ops = {
+	.runtime_suspend = exynos_iommu_runtime_suspend,
+	.runtime_resume = exynos_iommu_runtime_resume,
+	USE_PLATFORM_PM_SLEEP_OPS
+};
+
+static void set_exynos_iommu_pm_ops(struct bus_type *bus)
+{
+	bus->pm = &exynos_iommu_dev_pm_ops;
+}
+
 static int __init exynos_iommu_init(void)
 {
-	struct device_node *np;
 	int ret;
 
-	np = of_find_matching_node(NULL, sysmmu_of_match);
-	if (!np)
+	if (lv2table_kmem_cache)
 		return 0;
-
-	of_node_put(np);
 
 	lv2table_kmem_cache = kmem_cache_create("exynos-iommu-lv2table",
 				LV2TABLE_SIZE, LV2TABLE_SIZE, 0, NULL);
@@ -1509,6 +1484,8 @@ static int __init exynos_iommu_init(void)
 		goto err_create_domain;
 	}
 
+	set_exynos_iommu_pm_ops(&platform_bus_type);
+
 	return 0;
 
 err_create_domain:
@@ -1519,9 +1496,23 @@ err_reg_driver:
 	kmem_cache_destroy(lv2table_kmem_cache);
 	return ret;
 }
-subsys_initcall_sync(exynos_iommu_init);
 
-IOMMU_OF_DECLARE(exynos_iommu_of, "samsung,exynos-sysmmu", NULL);
+static int __init exynos_iommu_of_setup(struct device_node *np)
+{
+	struct platform_device *pdev;
+
+	exynos_iommu_init();
+
+	pdev = of_platform_device_create(np, NULL, platform_bus_type.dev_root);
+	if (!pdev)
+		return -ENODEV;
+
+	of_iommu_set_ops(np, &exynos_iommu_ops);
+	return 0;
+}
+
+IOMMU_OF_DECLARE(exynos_iommu_of, "samsung,exynos-sysmmu",
+		 exynos_iommu_of_setup);
 
 static int mm_fault_translate(int fault)
 {
