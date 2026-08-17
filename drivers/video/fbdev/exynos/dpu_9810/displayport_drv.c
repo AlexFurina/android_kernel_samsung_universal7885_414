@@ -36,7 +36,7 @@
 #include <linux/exynos_iovmm.h>
 #endif
 
-#include "../../../drivers/phy/phy-exynos-usbdrd.h"
+#include "../../../drivers/phy/samsung/phy-exynos-usbdrd.h"
 #include "displayport.h"
 #include "decon.h"
 #include "secdp_aux_control.h"
