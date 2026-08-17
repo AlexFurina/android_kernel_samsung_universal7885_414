@@ -650,6 +650,7 @@
  * e.g. teletext or data broadcast application (MHEG, MHP, HbbTV, etc.)
  */
 #define KEY_DATA			0x277
+#define KEY_INT_CANCEL		0x2be	/* for touch event skip */
 #define KEY_ONSCREEN_KEYBOARD		0x278
 
 #define KEY_DEX_ON			0x2bd
@@ -779,6 +780,7 @@
 #define ABS_MT_DISTANCE		0x3b	/* Contact hover distance */
 #define ABS_MT_TOOL_X		0x3c	/* Center X tool position */
 #define ABS_MT_TOOL_Y		0x3d	/* Center Y tool position */
+#define ABS_MT_CUSTOM		0x3e	/* custom event */
 #define ABS_MT_PALM		0x3e	/* palm touch */
 #define ABS_MT_GRIP		0x3f	/* grip touch */
 
