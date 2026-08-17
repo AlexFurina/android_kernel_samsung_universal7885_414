@@ -40,36 +40,6 @@
 		};
 	};
 
-	firmware {
-		android {
-			compatible = "android,firmware";
-			fstab {
-				compatible = "android,fstab";
-				system {
-					compatible = "android,system";
-					dev = "/dev/block/platform/11120000.ufs/by-name/SYSTEM";
-					type = "erofs";
-					mnt_flags = "ro";
-					fsmgr_flags = "wait";
-				};
-				vendor {
-					compatible = "android,vendor";
-					dev = "/dev/block/platform/11120000.ufs/by-name/VENDOR";
-					type = "erofs";
-					mnt_flags = "ro";
-					fsmgr_flags = "wait";
-				};
-				odm {
-					compatible = "android,odm";
-					dev = "/dev/block/platform/11120000.ufs/by-name/ODM";
-					type = "erofs";
-					mnt_flags = "ro";
-					fsmgr_flags = "wait";
-				};
-			};
-		};
-	};
-
 	pinctrl@14050000 {
 		hall_irq: hall-irq {
 			samsung,pins = "gpa3-6";
