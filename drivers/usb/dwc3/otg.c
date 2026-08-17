@@ -201,6 +201,103 @@ static void dwc3_otg_drv_vbus(struct otg_fsm *fsm, int on)
 						on ? "on" : "off");
 }
 
+void dwc3_otg_ldo_control(struct otg_fsm *fsm, int on)
+{
+	struct usb_otg	*otg = fsm->otg;
+	struct dwc3_otg	*dotg = container_of(otg, struct dwc3_otg, otg);
+	struct device	*dev = dotg->dwc->dev;
+	int i, ret1, ret2, ret3;
+
+	dev_info(dev, "Turn %s LDO\n", on ? "on" : "off");
+
+	if (on) {
+		for (i = 0; i < dotg->ldos; i++)
+			s2m_ldo_set_mode(dotg->ldo_num[i], 0x3);
+
+		if (dotg->ldo_manual_control == 1) {
+			ret1 = regulator_enable(dotg->ldo12);
+			ret2 = regulator_enable(dotg->ldo13);
+			ret3 = regulator_enable(dotg->ldo14);
+			if (ret1 || ret2 || ret3) {
+				dev_err(dev, "Failed to enable USB LDOs: %d %d %d\n",
+					ret1, ret2, ret3);
+				return;
+			}
+		}
+	} else {
+		for (i = 0; i < dotg->ldos; i++)
+			s2m_ldo_set_mode(dotg->ldo_num[i], 0x1);
+
+		if (dotg->ldo_manual_control == 1) {
+			ret1 = regulator_disable(dotg->ldo12);
+			ret2 = regulator_disable(dotg->ldo13);
+			ret3 = regulator_disable(dotg->ldo14);
+			if (ret1 || ret2 || ret3) {
+				dev_err(dev, "Failed to disable USB LDOs: %d %d %d\n",
+					ret1, ret2, ret3);
+				return;
+			}
+		}
+	}
+
+	return;
+}
+/* owner 0 - USB
+    owner 1 - DP
+ */
+int dwc3_otg_phy_enable(struct otg_fsm *fsm, int owner, bool on)
+{
+	struct usb_otg	*otg = fsm->otg;
+	struct dwc3_otg	*dotg = container_of(otg, struct dwc3_otg, otg);
+	struct dwc3	*dwc = dotg->dwc;
+	struct device	*dev = dotg->dwc->dev;
+	int ret = 0;
+	u8 owner_bit = 0;
+
+	pr_info("%s\n", __func__);
+	mutex_lock(&dotg->lock);
+
+	pr_info("%s phy control=%d owner=%d (usb:0 dp:1) on=%d\n",
+			__func__, dotg->combo_phy_control, owner, on);
+
+	if (owner > 1)
+		goto out;
+
+	owner_bit = (1 << owner);
+
+	if (on) {
+		if (dotg->combo_phy_control) {
+			dotg->combo_phy_control |= owner_bit;
+			goto out;
+		} else {
+			dwc3_otg_ldo_control(fsm, 1);
+			phy_conn(dwc->usb2_generic_phy, 1);
+
+			pm_runtime_get_sync(dev);
+			ret = dwc3_core_init(dwc);
+			if (ret) {
+				pr_info("%s: failed to reinitialize core\n",
+						__func__);
+				goto err;
+			}
+			dotg->combo_phy_control |= owner_bit;
+		}
+	} else {
+		dotg->combo_phy_control &= ~(owner_bit);
+
+		if (dotg->combo_phy_control == 0) {
+			dwc3_core_exit(dwc);
+err:
+			pm_runtime_put_sync_suspend(dev);
+			dwc3_otg_ldo_control(fsm, 0);
+			phy_conn(dwc->usb2_generic_phy, 0);
+		}
+	}
+out:
+	mutex_unlock(&dotg->lock);
+	return ret;
+}
+
 static int dwc3_otg_start_host(struct otg_fsm *fsm, int on)
 {
 	struct usb_otg	*otg = fsm->otg;
