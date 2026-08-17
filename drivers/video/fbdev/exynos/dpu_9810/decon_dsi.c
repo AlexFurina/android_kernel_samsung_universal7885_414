@@ -18,6 +18,7 @@
 #include <linux/of_address.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/irq.h>
+#include <uapi/linux/sched/types.h>
 #include <media/v4l2-subdev.h>
 #if defined(CONFIG_EXYNOS_WD_DVFS)
 #include <linux/exynos-wd.h>
