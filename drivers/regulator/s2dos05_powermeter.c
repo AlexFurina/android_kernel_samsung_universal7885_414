@@ -22,6 +22,7 @@
 #define SYNC_MODE	1
 #define ASYNC_MODE	2
 
+struct device *sec_disp_pmic_dev;
 struct adc_info *adc_meter1;
 struct device *s2dos05_adc_dev;
 struct class *s2dos05_adc_class;
