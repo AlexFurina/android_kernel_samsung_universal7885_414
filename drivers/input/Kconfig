@@ -197,6 +197,13 @@ config INPUT_KEYCOMBO
 	---help---
 	  Say Y here if you want to take action when some keys are pressed;
 
+config INPUT_TOUCHSCREEN_TCLM
+	bool "touchscreen tclm"
+	depends on I2C
+	help
+	  Say Y here if you need to use tclm.
+	  If unsure, say N.
+
 comment "Input Device Drivers"
 
 source "drivers/input/keyboard/Kconfig"
