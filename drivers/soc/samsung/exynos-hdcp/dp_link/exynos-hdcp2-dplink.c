@@ -36,14 +36,10 @@ int dplink_emul_handler(int cmd)
 }
 #endif
 
-#if defined(CONFIG_EXYNOS_DISPLAYPORT)
-extern void reset_dp_hdcp_module(void);
-#else
 void reset_dp_hdcp_module(void)
 {
 	return;
 }
-#endif
 
 /* current link data */
 static struct hdcp_link_data *lk_data;
