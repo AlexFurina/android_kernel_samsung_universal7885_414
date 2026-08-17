@@ -26,7 +26,6 @@
 #include <linux/of_gpio.h>
 #include <linux/device.h>
 #include <linux/module.h>
-#include <linux/exynos-ss.h>
 #include <video/mipi_display.h>
 #include <soc/samsung/cal-if.h>
 #include <dt-bindings/clock/exynos9810.h>
