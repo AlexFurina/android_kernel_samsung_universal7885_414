@@ -8,3 +8,9 @@ if SOC_EXYNOS7885
 source "drivers/video/fbdev/exynos/dpu_7885/Kconfig"
 endif
 
+if SOC_EXYNOS9810
+
+source "drivers/video/fbdev/exynos/dpu_9810/Kconfig"
+source "drivers/video/fbdev/exynos/panel/Kconfig"
+
+endif # SOC_EXYNOS9810
