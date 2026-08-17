@@ -181,8 +181,9 @@ static int debug_log_level_get(void *data, unsigned long long *val)
 
 static int debug_log_level_set(void *data, unsigned long long val)
 {
+#if 0
 	acpm_fw_log_level((unsigned int)val);
-
+#endif
 	return 0;
 }
 

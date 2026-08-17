@@ -54,10 +54,12 @@ void acpm_ipc_set_waiting_mode(bool mode)
 	acpm_ipc->w_mode = mode;
 }
 
+#if 0
 void acpm_fw_log_level(unsigned int on)
 {
 	acpm_debug->debug_log_level = on;
 }
+#endif
 
 void acpm_ramdump(void)
 {
@@ -151,8 +153,10 @@ void acpm_log_print(void)
 
 		dbg_snapshot_acpm(time, str, val);
 
+#if 0
 		if (acpm_debug->debug_log_level == 1 || !log_level)
 			pr_info("[ACPM_FW] : %llu id:%u, %s, %x\n", time, id, str, val);
+#endif
 
 		if (acpm_debug->log_buff_len == (rear + 1))
 			rear = 0;
