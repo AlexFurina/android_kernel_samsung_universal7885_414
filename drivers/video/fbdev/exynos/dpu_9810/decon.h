@@ -947,9 +947,8 @@ struct decon_user_window {
 
 struct dpu_afbc_info {
 	dma_addr_t dma_addr[2];
+	struct dma_buf *dma_buf[2];
 	bool is_afbc[2];
-	void *v_addr[2];
-	int size[2];
 };
 
 struct decon_debug {

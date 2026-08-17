@@ -1706,7 +1706,6 @@ static void decon_save_vgf_connected_win_id(struct decon_device *decon,
 static void decon_dump_afbc_handle(struct decon_device *decon,
 		struct decon_dma_buf_data (*dma_bufs)[MAX_PLANE_CNT])
 {
-#if 0 /* TODO: This function will be modified */
 	int size;
 	int win_id = 0;
 	void *v_addr;
@@ -1719,12 +1718,10 @@ static void decon_dump_afbc_handle(struct decon_device *decon,
 			decon_err("%s: win_id(%d) is invalid\n", __func__, win_id);
 			return;
 		}
-		decon->d.handle[win_id][0] = dma_bufs[win_id][0].ion_handle;
-		decon_info("VGF0(WIN%d): handle=0x%p\n",
-				win_id, decon->d.handle[win_id][0]);
-
-		v_addr = ion_map_kernel(decon->ion_client,
-				dma_bufs[win_id][0].ion_handle);
+		decon->d.dmabuf[win_id][0] = dma_bufs[win_id][0].dma_buf;
+		decon_info("VGF0(WIN%d): dmabuf=0x%p\n",
+				win_id, decon->d.dmabuf[win_id][0]);
+		v_addr = dma_buf_vmap(dma_bufs[win_id][0].dma_buf);
 		if (IS_ERR_OR_NULL(v_addr)) {
 			decon_err("%s: failed to map afbc buffer\n", __func__);
 			return;
@@ -1742,12 +1739,10 @@ static void decon_dump_afbc_handle(struct decon_device *decon,
 			decon_err("%s: win_id(%d) is invalid\n", __func__, win_id);
 			return;
 		}
-		decon->d.handle[win_id][0] = dma_bufs[win_id][0].ion_handle;
-		decon_info("VGF1(WIN%d): handle=0x%p\n",
-				win_id, decon->d.handle[win_id][0]);
-
-		v_addr = ion_map_kernel(decon->ion_client,
-				dma_bufs[win_id][0].ion_handle);
+		decon->d.dmabuf[win_id][0] = dma_bufs[win_id][0].dma_buf;
+		decon_info("VGF1(WIN%d): dmabuf=0x%p\n",
+				win_id, decon->d.dmabuf[win_id][0]);
+		v_addr = dma_buf_vmap(dma_bufs[win_id][0].dma_buf);
 		if (IS_ERR_OR_NULL(v_addr)) {
 			decon_err("%s: failed to map afbc buffer\n", __func__);
 			return;
@@ -1761,7 +1756,6 @@ static void decon_dump_afbc_handle(struct decon_device *decon,
 	}
 
 	decon_info("%s -\n", __func__);
-#endif
 }
 
 static int __decon_update_regs(struct decon_device *decon, struct decon_reg_data *regs)
@@ -2078,36 +2072,26 @@ static void decon_update_vgf_info(struct decon_device *decon,
 
 		if (test_bit(IDMA_VGF0, &decon->cur_using_dpp)) {
 			afbc_info->is_afbc[0] = true;
-			afbc_info->dma_addr[0] =
-				regs->dma_buf_data[i][0].dma_addr;
+
 			if (regs->dma_buf_data[i][0].dma_buf == NULL)
 				continue;
-			else
-				afbc_info->size[0] =
-					regs->dma_buf_data[i][0].dma_buf->size;
 
-#if 0//defined(CONFIG_ION_EXYNOS)
-			afbc_info->v_addr[0] = ion_map_kernel(
-				decon->ion_client,
-				regs->dma_buf_data[i][0].ion_handle);
-#endif
+			afbc_info->dma_addr[0] =
+				regs->dma_buf_data[i][0].dma_addr;
+			afbc_info->dma_buf[0] =
+				regs->dma_buf_data[i][0].dma_buf;
 		}
 
 		if (test_bit(IDMA_VGF1, &decon->cur_using_dpp)) {
 			afbc_info->is_afbc[1] = true;
-			afbc_info->dma_addr[1] =
-				regs->dma_buf_data[i][0].dma_addr;
+
 			if (regs->dma_buf_data[i][0].dma_buf == NULL)
 				continue;
-			else
-				afbc_info->size[1] =
-					regs->dma_buf_data[i][0].dma_buf->size;
 
-#if 0//defined(CONFIG_ION_EXYNOS)
-			afbc_info->v_addr[1] = ion_map_kernel(
-				decon->ion_client,
-				regs->dma_buf_data[i][0].ion_handle);
-#endif
+			afbc_info->dma_addr[1] =
+				regs->dma_buf_data[i][0].dma_addr;
+			afbc_info->dma_buf[1] =
+				regs->dma_buf_data[i][0].dma_buf;
 		}
 	}
 
