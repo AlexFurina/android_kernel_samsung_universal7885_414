@@ -488,7 +488,7 @@ int decon_tui_protection(bool tui_en)
 		aclk_khz = v4l2_subdev_call(decon->out_sd[0], core, ioctl,
 				EXYNOS_DPU_GET_ACLK, NULL) / 1000U;
 		decon_info("%s:DPU_ACLK(%ld khz)\n", __func__, aclk_khz);
-#if defined(CONFIG_EXYNOS9810_BTS)
+#if defined(CONFIG_EXYNOS_BTS)
 		decon_info("MIF(%lu), INT(%lu), DISP(%lu), total bw(%u, %u)\n",
 				cal_dfs_get_rate(ACPM_DVFS_MIF),
 				cal_dfs_get_rate(ACPM_DVFS_INT),
@@ -502,7 +502,7 @@ int decon_tui_protection(bool tui_en)
 		aclk_khz = v4l2_subdev_call(decon->out_sd[0], core, ioctl,
 				EXYNOS_DPU_GET_ACLK, NULL) / 1000U;
 		decon_info("%s:DPU_ACLK(%ld khz)\n", __func__, aclk_khz);
-#if defined(CONFIG_EXYNOS9810_BTS)
+#if defined(CONFIG_EXYNOS_BTS)
 		decon_info("MIF(%lu), INT(%lu), DISP(%lu), total bw(%u, %u)\n",
 				cal_dfs_get_rate(ACPM_DVFS_MIF),
 				cal_dfs_get_rate(ACPM_DVFS_INT),
