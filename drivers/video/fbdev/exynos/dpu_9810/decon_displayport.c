@@ -19,7 +19,7 @@
 
 static void decon_displayport_underrun_info(void)
 {
-#if defined(CONFIG_EXYNOS9810_BTS)
+#if defined(CONFIG_EXYNOS_BTS)
 	struct decon_device *decon = get_decon_drvdata(2);
 
 	decon_info("decon%d: underrun MIF(%lu), INT(%lu), DISP(%lu), total bw(%u, %u)\n",
