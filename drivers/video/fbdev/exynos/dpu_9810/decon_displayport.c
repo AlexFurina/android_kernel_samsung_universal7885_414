@@ -17,7 +17,6 @@
 #include "decon.h"
 #include "displayport.h"
 
-#if !defined(CONFIG_SOC_EXYNOS9810)
 static void decon_displayport_underrun_info(void)
 {
 #if defined(CONFIG_EXYNOS9810_BTS)
@@ -32,7 +31,6 @@ static void decon_displayport_underrun_info(void)
 			decon->bts.total_bw);
 #endif
 }
-#endif
 
 static irqreturn_t decon_displayport_irq_handler(int irq, void *dev_data)
 {
