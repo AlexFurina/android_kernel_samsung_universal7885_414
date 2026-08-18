@@ -2974,7 +2974,7 @@ static void displayport_notifier_register_work(struct work_struct *work)
 #endif
 
 #ifdef DISPLAYPORT_TEST
-static ssize_t displayport_link_show(struct class *class,
+static ssize_t link_show(struct class *class,
 		struct class_attribute *attr,
 		char *buf)
 {
@@ -2983,7 +2983,7 @@ static ssize_t displayport_link_show(struct class *class,
 	return snprintf(buf, PAGE_SIZE, "%s\n", __func__);
 }
 
-static ssize_t displayport_link_store(struct class *dev,
+static ssize_t link_store(struct class *dev,
 		struct class_attribute *attr, const char *buf, size_t size)
 {
 	int mode = 0;
@@ -3040,9 +3040,9 @@ static ssize_t displayport_link_store(struct class *dev,
 	return size;
 }
 
-static CLASS_ATTR(link, 0664, displayport_link_show, displayport_link_store);
+static CLASS_ATTR_WO(link);
 
-static ssize_t displayport_test_bpc_show(struct class *class,
+static ssize_t bpc_show(struct class *class,
 		struct class_attribute *attr,
 		char *buf)
 {
@@ -3050,7 +3050,7 @@ static ssize_t displayport_test_bpc_show(struct class *class,
 
 	return snprintf(buf, PAGE_SIZE, "displayport bpc %d\n", (displayport->bpc == BPC_6)?6:8);
 }
-static ssize_t displayport_test_bpc_store(struct class *dev,
+static ssize_t bpc_store(struct class *dev,
 		struct class_attribute *attr,
 		const char *buf, size_t size)
 {
@@ -3077,9 +3077,9 @@ static ssize_t displayport_test_bpc_store(struct class *dev,
 	return size;
 }
 
-static CLASS_ATTR(bpc, 0664, displayport_test_bpc_show, displayport_test_bpc_store);
+static CLASS_ATTR_RW(bpc);
 
-static ssize_t displayport_test_range_show(struct class *class,
+static ssize_t range_show(struct class *class,
 		struct class_attribute *attr,
 		char *buf)
 {
@@ -3088,7 +3088,7 @@ static ssize_t displayport_test_range_show(struct class *class,
 	return sprintf(buf, "displayport range %s\n",
 		(displayport->dyn_range == VESA_RANGE)?"VESA_RANGE":"CEA_RANGE");
 }
-static ssize_t displayport_test_range_store(struct class *dev,
+static ssize_t range_store(struct class *dev,
 		struct class_attribute *attr,
 		const char *buf, size_t size)
 {
@@ -3115,9 +3115,9 @@ static ssize_t displayport_test_range_store(struct class *dev,
 	return size;
 }
 
-static CLASS_ATTR(range, 0664, displayport_test_range_show, displayport_test_range_store);
+static CLASS_ATTR_RW(range);
 
-static ssize_t displayport_test_edid_show(struct class *class,
+static ssize_t edid_show(struct class *class,
 		struct class_attribute *attr,
 		char *buf)
 {
@@ -3139,7 +3139,7 @@ static ssize_t displayport_test_edid_show(struct class *class,
 			videoformat_parameters[i].fps);
 }
 
-static ssize_t displayport_test_edid_store(struct class *dev,
+static ssize_t edid_store(struct class *dev,
 		struct class_attribute *attr,
 		const char *buf, size_t size)
 {
@@ -3167,9 +3167,9 @@ static ssize_t displayport_test_edid_store(struct class *dev,
 
 	return size;
 }
-static CLASS_ATTR(edid, 0664, displayport_test_edid_show, displayport_test_edid_store);
+static CLASS_ATTR_RW(edid);
 
-static ssize_t displayport_test_bist_show(struct class *class,
+static ssize_t bist_show(struct class *class,
 		struct class_attribute *attr,
 		char *buf)
 {
@@ -3180,7 +3180,7 @@ static ssize_t displayport_test_bist_show(struct class *class,
 			displayport->bist_type);
 }
 
-static ssize_t displayport_test_bist_store(struct class *dev,
+static ssize_t bist_store(struct class *dev,
 		struct class_attribute *attr,
 		const char *buf, size_t size)
 {
@@ -3227,11 +3227,11 @@ static ssize_t displayport_test_bist_store(struct class *dev,
 
 	return size;
 }
-static CLASS_ATTR(bist, 0664, displayport_test_bist_show, displayport_test_bist_store);
+static CLASS_ATTR_RW(bist);
 #endif
 
 extern u32 phy_tune_parameters[4][4][3];
-static ssize_t displayport_phy_tune_show(struct class *class,
+static ssize_t phy_tune_show(struct class *class,
 		struct class_attribute *attr, char *buf)
 {
 	char str[512] = {0, };
@@ -3254,7 +3254,7 @@ static ssize_t displayport_phy_tune_show(struct class *class,
 
 	return snprintf(buf, sizeof(str), str);
 }
-static ssize_t displayport_phy_tune_store(struct class *dev,
+static ssize_t phy_tune_store(struct class *dev,
 			struct class_attribute *attr,
 			const char *buf, size_t size)
 {
@@ -3281,9 +3281,9 @@ static ssize_t displayport_phy_tune_store(struct class *dev,
 
 	return size;
 }
-static CLASS_ATTR(phy_tune, 0664, displayport_phy_tune_show, displayport_phy_tune_store);
+static CLASS_ATTR_RW(phy_tune);
 
-static ssize_t displayport_audio_test_show(struct class *class,
+static ssize_t audio_test_show(struct class *class,
 		struct class_attribute *attr, char *buf)
 {
 	int bit = 0;
@@ -3335,7 +3335,7 @@ static ssize_t displayport_audio_test_show(struct class *class,
 	return sprintf(buf, "channel: %d, bit rate: %d, sample rate: %d\n",
 				channel, bit, sample);
 }
-static ssize_t displayport_audio_test_store(struct class *dev,
+static ssize_t audio_test_store(struct class *dev,
 			struct class_attribute *attr,
 			const char *buf, size_t size)
 {
@@ -3403,10 +3403,10 @@ static ssize_t displayport_audio_test_store(struct class *dev,
 
 	return size;
 }
-static CLASS_ATTR(audio_test, 0664, displayport_audio_test_show, displayport_audio_test_store);
+static CLASS_ATTR_RW(audio_test);
 
 static u8 edid_test_buf[257]; /* 256 + 1, 1st index is block count */
-static ssize_t displayport_edid_test_show(struct class *class,
+static ssize_t edid_test_show(struct class *class,
 		struct class_attribute *attr, char *buf)
 {
 	ssize_t size;
@@ -3426,7 +3426,7 @@ static ssize_t displayport_edid_test_show(struct class *class,
 
 	return size;
 }
-static ssize_t displayport_edid_test_store(struct class *dev,
+static ssize_t edid_test_store(struct class *dev,
 		struct class_attribute *attr, const char *buf, size_t size)
 {
 	int i;
@@ -3496,9 +3496,9 @@ static ssize_t displayport_edid_test_store(struct class *dev,
 
 	return size;
 }
-static CLASS_ATTR(edid_test, 0664, displayport_edid_test_show, displayport_edid_test_store);
+static CLASS_ATTR_RW(edid_test);
 
-static ssize_t secdp_unit_test_show(struct class *class,
+static ssize_t unit_test_show(struct class *class,
 		struct class_attribute *attr,
 		char *buf)
 {
@@ -3520,7 +3520,7 @@ static ssize_t secdp_unit_test_show(struct class *class,
 
 }
 
-static ssize_t secdp_unit_test_store(struct class *dev,
+static ssize_t unit_test_store(struct class *dev,
 		struct class_attribute *attr,
 		const char *buf, size_t size)
 {
@@ -3529,9 +3529,9 @@ static ssize_t secdp_unit_test_store(struct class *dev,
 	return size;
 }
 
-static CLASS_ATTR(unit_test, 0664, secdp_unit_test_show, secdp_unit_test_store);
+static CLASS_ATTR_RW(unit_test);
 
-static ssize_t secdp_drm_show(struct class *class, struct class_attribute *attr, char *buf)
+static ssize_t dp_drm_show(struct class *class, struct class_attribute *attr, char *buf)
 {
 	struct displayport_device *displayport = get_displayport_drvdata();
 	displayport_info("DRM state %d\n", displayport->drm_start_state);
@@ -3539,7 +3539,7 @@ static ssize_t secdp_drm_show(struct class *class, struct class_attribute *attr,
 	return sprintf(buf, "DRM state %d\n", displayport->drm_start_state);
 }
 
-static ssize_t secdp_drm_store(struct class *dev, struct class_attribute *attr, const char *buf, size_t size)
+static ssize_t dp_drm_store(struct class *dev, struct class_attribute *attr, const char *buf, size_t size)
 {
 	struct displayport_device *displayport = get_displayport_drvdata();
 	int val[3] = {0, };
@@ -3560,9 +3560,9 @@ static ssize_t secdp_drm_store(struct class *dev, struct class_attribute *attr, 
 	return size;
 }
 
-static CLASS_ATTR(dp_drm, 0664, secdp_drm_show, secdp_drm_store);
+static CLASS_ATTR_RW(dp_drm);
 
-static ssize_t displayport_dp_test_show(struct class *class,
+static ssize_t dp_test_show(struct class *class,
 		struct class_attribute *attr,
 		char *buf)
 {
@@ -3586,7 +3586,7 @@ static ssize_t displayport_dp_test_show(struct class *class,
 
 	return size;
 }
-static ssize_t displayport_dp_test_store(struct class *dev,
+static ssize_t dp_test_store(struct class *dev,
 		struct class_attribute *attr,
 		const char *buf, size_t size)
 {
@@ -3653,10 +3653,10 @@ static ssize_t displayport_dp_test_store(struct class *dev,
 
 	return size;
 }
-static CLASS_ATTR(dp_test, 0664, displayport_dp_test_show, displayport_dp_test_store);
+static CLASS_ATTR_RW(dp_test);
 
 extern int forced_resolution;
-static ssize_t displayport_forced_resolution_show(struct class *class,
+static ssize_t forced_resolution_show(struct class *class,
 		struct class_attribute *attr, char *buf)
 {
 	int ret = 0;
@@ -3671,7 +3671,7 @@ static ssize_t displayport_forced_resolution_show(struct class *class,
 	return ret;
 }
 
-static ssize_t displayport_forced_resolution_store(struct class *dev,
+static ssize_t forced_resolution_store(struct class *dev,
 		struct class_attribute *attr, const char *buf, size_t size)
 {
 	int val[4] = {0,};
@@ -3701,10 +3701,9 @@ static ssize_t displayport_forced_resolution_store(struct class *dev,
 
 	return size;
 }
-static CLASS_ATTR(forced_resolution, 0664, displayport_forced_resolution_show,
-		displayport_forced_resolution_store);
+static CLASS_ATTR_RW(forced_resolution);
 
-static ssize_t displayport_reduced_resolution_show(struct class *class,
+static ssize_t reduced_resolution_show(struct class *class,
 		struct class_attribute *attr, char *buf)
 {
 	int ret = 0;
@@ -3714,7 +3713,7 @@ static ssize_t displayport_reduced_resolution_show(struct class *class,
 	return ret;
 }
 
-static ssize_t displayport_reduced_resolution_store(struct class *dev,
+static ssize_t reduced_resolution_store(struct class *dev,
 		struct class_attribute *attr, const char *buf, size_t size)
 {
 	int val[4] = {0,};
@@ -3735,10 +3734,9 @@ static ssize_t displayport_reduced_resolution_store(struct class *dev,
 
 	return size;
 }
-static CLASS_ATTR(reduced_resolution, 0664, displayport_reduced_resolution_show,
-		displayport_reduced_resolution_store);
+static CLASS_ATTR_RW(reduced_resolution);
 
-static ssize_t displayport_dex_show(struct class *class,
+static ssize_t dex_show(struct class *class,
 		struct class_attribute *attr, char *buf)
 {
 	struct displayport_device *displayport = get_displayport_drvdata();
@@ -3752,7 +3750,7 @@ static ssize_t displayport_dex_show(struct class *class,
 	return ret;
 }
 
-static ssize_t displayport_dex_store(struct class *dev,
+static ssize_t dex_store(struct class *dev,
 		struct class_attribute *attr, const char *buf, size_t size)
 {
 	struct displayport_device *displayport = get_displayport_drvdata();
@@ -3825,9 +3823,9 @@ dex_exit:
 
 	return size;
 }
-static CLASS_ATTR(dex, 0664, displayport_dex_show, displayport_dex_store);
+static CLASS_ATTR_RW(dex);
 
-static ssize_t displayport_dex_ver_show(struct class *class,
+static ssize_t dex_ver_show(struct class *class,
 		struct class_attribute *attr, char *buf)
 {
 	int ret = 0;
@@ -3839,9 +3837,9 @@ static ssize_t displayport_dex_ver_show(struct class *class,
 	return ret;
 }
 
-static CLASS_ATTR(dex_ver, 0444, displayport_dex_ver_show, NULL);
+static CLASS_ATTR_RO(dex_ver);
 
-static ssize_t displayport_monitor_info_show(struct class *class,
+static ssize_t monitor_info_show(struct class *class,
 		struct class_attribute *attr, char *buf)
 {
 	int ret = 0;
@@ -3857,10 +3855,10 @@ static ssize_t displayport_monitor_info_show(struct class *class,
 	return ret;
 }
 
-static CLASS_ATTR(monitor_info, 0444, displayport_monitor_info_show, NULL);
+static CLASS_ATTR_RO(monitor_info);
 
 
-static ssize_t displayport_aux_sw_sel_store(struct class *dev,
+static ssize_t dp_sbu_sw_sel_store(struct class *dev,
 		struct class_attribute *attr, const char *buf, size_t size)
 {
 	struct displayport_device *displayport = get_displayport_drvdata();
@@ -3887,15 +3885,15 @@ static ssize_t displayport_aux_sw_sel_store(struct class *dev,
 
 	return size;
 }
-static CLASS_ATTR(dp_sbu_sw_sel, 0664, NULL, displayport_aux_sw_sel_store);
+static CLASS_ATTR_WO(dp_sbu_sw_sel);
 
-static ssize_t displayport_log_level_show(struct class *class,
+static ssize_t log_level_show(struct class *class,
 		struct class_attribute *attr,
 		char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, "displayport log level %1d\n", displayport_log_level);
 }
-static ssize_t displayport_log_level_store(struct class *dev,
+static ssize_t log_level_store(struct class *dev,
 		struct class_attribute *attr,
 		const char *buf, size_t size)
 {
@@ -3909,7 +3907,7 @@ static ssize_t displayport_log_level_store(struct class *dev,
 	return size;
 }
 
-static CLASS_ATTR(log_level, 0664, displayport_log_level_show, displayport_log_level_store);
+static CLASS_ATTR_RW(log_level);
 
 /* for aux control */
 static ssize_t displayport_i2c_write(void *buffer, size_t size)
