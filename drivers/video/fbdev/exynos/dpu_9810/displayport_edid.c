@@ -868,18 +868,11 @@ int edid_update(struct displayport_device *hdev)
 		goto out;
 	}
 
-#ifdef CONFIG_SEC_DISPLAYPORT_BIGDATA
-	secdp_bigdata_save_item(BD_EDID, edid);
-#endif
-
 	fb_edid_to_monspecs(edid, &specs);
 	modedb_len = specs.modedb_len;
 
 	displayport_info("mon name: %s, gamma: %u.%u\n", specs.monitor,
 			specs.gamma / 100, specs.gamma % 100);
-#ifdef CONFIG_SEC_DISPLAYPORT_BIGDATA
-	secdp_bigdata_save_item(BD_SINK_NAME, specs.monitor);
-#endif
 
 	/* find 2D preset */
 	for (i = 0; i < specs.modedb_len; i++)
