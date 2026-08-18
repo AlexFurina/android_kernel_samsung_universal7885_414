@@ -18,9 +18,6 @@
 #include <linux/irq.h>
 #include <uapi/linux/sched/types.h>
 #include <media/v4l2-subdev.h>
-#if defined(CONFIG_EXYNOS_WD_DVFS)
-#include <linux/exynos-wd.h>
-#endif
 
 #include "decon.h"
 #include "dsim.h"
@@ -28,9 +25,6 @@
 //#include "../../../../soc/samsung/pwrcal/pwrcal.h"
 //#include "../../../../soc/samsung/pwrcal/S5E8890/S5E8890-vclk.h"
 #include "../../../../../kernel/irq/internals.h"
-#ifdef CONFIG_EXYNOS_WD_DVFS
-struct task_struct *devfreq_change_task;
-#endif
 
 /* DECON irq handler for DSI interface */
 static irqreturn_t decon_irq_handler(int irq, void *dev_data)
@@ -84,23 +78,6 @@ irq_end:
 	spin_unlock(&decon->slock);
 	return IRQ_HANDLED;
 }
-
-#ifdef CONFIG_EXYNOS_WD_DVFS
-static int decon_devfreq_change_task(void *data)
-{
-	while (!kthread_should_stop()) {
-		set_current_state(TASK_INTERRUPTIBLE);
-
-		schedule();
-
-		set_current_state(TASK_RUNNING);
-
-		exynos_wd_call_chain();
-	}
-
-	return 0;
-}
-#endif
 
 #if defined(CONFIG_SOC_EXYNOS9810)
 int decon_register_irq(struct decon_device *decon)
@@ -460,10 +437,6 @@ static irqreturn_t decon_ext_irq_handler(int irq, void *dev_id)
 	wake_up_interruptible_all(&decon->vsync.wait);
 
 	spin_unlock(&decon->slock);
-#ifdef CONFIG_EXYNOS_WD_DVFS
-	if (devfreq_change_task)
-		wake_up_process(devfreq_change_task);
-#endif
 
 	return IRQ_HANDLED;
 }
@@ -500,14 +473,6 @@ int decon_register_ext_irq(struct decon_device *decon)
 			IRQF_TRIGGER_RISING, pdev->name, decon);
 
 	decon->eint_status = 1;
-
-#ifdef CONFIG_EXYNOS_WD_DVFS
-	devfreq_change_task =
-		kthread_create(decon_devfreq_change_task, NULL,
-				"devfreq_change");
-	if (IS_ERR(devfreq_change_task))
-		return PTR_ERR(devfreq_change_task);
-#endif
 
 	return ret;
 }
