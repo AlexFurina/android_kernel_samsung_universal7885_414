@@ -29,7 +29,6 @@
 #include <video/mipi_display.h>
 #include <soc/samsung/cal-if.h>
 #include <dt-bindings/clock/exynos9810.h>
-#include <linux/exynos_iovmm.h>
 
 #include "decon.h"
 #include "dsim.h"

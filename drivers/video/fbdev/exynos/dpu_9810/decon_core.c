@@ -1430,8 +1430,7 @@ static int decon_import_buffer(struct decon_device *decon, int idx,
 			dsim = v4l2_get_subdevdata(decon->out_sd[0]);
 			dev = dsim->dev;
 		}
-		buf_size = decon_map_ion_handle(decon, dev, dma_buf_data,
-				buf, idx);
+		buf_size = decon_map_ion_handle(decon, dev, dma_buf_data, buf, idx);
 		if (!buf_size) {
 			decon_err("failed to map buffer\n");
 			ret = -ENOMEM;
@@ -3283,23 +3282,6 @@ static int decon_fb_test_alloc_memory(struct decon_device *decon, u32 size)
 	fbi->fix.smem_len = size;
 
 	dev_info(decon->dev, "want %u bytes for window[%d]\n", size, win->idx);
-
-#if 0
-	handle = ion_alloc(decon->ion_client, (size_t)size, 0,
-					EXYNOS_ION_HEAP_SYSTEM_MASK, 0);
-	if (IS_ERR(handle)) {
-		dev_err(decon->dev, "failed to ion_alloc\n");
-		return -ENOMEM;
-	}
-
-	buf = ion_share_dma_buf(decon->ion_client, handle);
-	if (IS_ERR_OR_NULL(buf)) {
-		dev_err(decon->dev, "ion_share_dma_buf() failed\n");
-		goto err_share_dma_buf;
-	}
-
-	vaddr = ion_map_kernel(decon->ion_client, handle);
-#endif
 
 	buf = ion_alloc_dmabuf("ion_system_heap", (size_t)size, 0);
 	if (IS_ERR(buf)) {
