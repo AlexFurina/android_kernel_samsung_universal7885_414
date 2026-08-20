@@ -416,6 +416,140 @@ static void arm_exynos_dma_mcode_free(struct device *dev, size_t size, void *cpu
 	iounmap(cpu_addr);
 }
 
+#ifdef CONFIG_EXYNOS_PCIE_IOMMU
+#define to_pci_dev_from_dev(dev) container_of((dev), struct pci_dev, dev)
+
+extern int pcie_iommu_map(int ch_num, unsigned long iova, phys_addr_t paddr,
+		size_t size, int prot);
+extern size_t pcie_iommu_unmap(int ch_num, unsigned long iova, size_t size);
+dma_addr_t dma_pool_start;
+
+static void *__exynos_pcie_dma_alloc(struct device *dev, size_t size,
+		dma_addr_t *dma_handle, gfp_t flags,
+		unsigned long attrs)
+{
+	void *coherent_ptr;
+	int ret;
+	struct pci_dev *epdev = to_pci_dev_from_dev(dev);
+	int ch_num = 0;
+
+	if (epdev == NULL) {
+		pr_err("EP device is NULL!!!\n");
+	} else {
+#ifdef CONFIG_PCI_DOMAINS_GENERIC
+		ch_num = pci_domain_nr(epdev->bus);
+#endif
+	}
+	coherent_ptr = __dma_alloc(dev, size, dma_handle, flags, attrs);
+	if (coherent_ptr != NULL) {
+		ret = pcie_iommu_map(ch_num, *dma_handle, *dma_handle, size,
+				DMA_BIDIRECTIONAL);
+		if (ret != 0) {
+			pr_err("DMA alloc - Can't map PCIe SysMMU table!!!\n");
+			__dma_free(dev, size, coherent_ptr, *dma_handle, attrs);
+
+			return NULL;
+		}
+	}
+
+	return coherent_ptr;
+
+}
+
+static void __exynos_pcie_dma_free(struct device *dev, size_t size,
+		void *vaddr, dma_addr_t dma_handle,
+		unsigned long attrs)
+{
+	struct pci_dev *epdev = to_pci_dev_from_dev(dev);
+	int ch_num = 0;
+
+	if (epdev == NULL) {
+		pr_err("EP device is NULL!!!\n");
+	} else {
+#ifdef CONFIG_PCI_DOMAINS_GENERIC
+		ch_num = pci_domain_nr(epdev->bus);
+#endif
+	}
+
+	__dma_free(dev, size, vaddr, dma_handle, attrs);
+	pcie_iommu_unmap(ch_num, dma_handle, size);
+}
+
+static dma_addr_t __exynos_pcie_swiotlb_map_page(struct device *dev,
+		struct page *page, unsigned long offset,
+		size_t size, enum dma_data_direction dir,
+		unsigned long attrs)
+{
+	dma_addr_t dev_addr;
+	int ret;
+	int ch_num = 0;
+	struct pci_dev *epdev = to_pci_dev_from_dev(dev);
+
+	if (epdev == NULL) {
+		pr_err("EP device is NULL!!!\n");
+	} else {
+#ifdef CONFIG_PCI_DOMAINS_GENERIC
+		ch_num = pci_domain_nr(epdev->bus);
+#endif
+	}
+
+	dev_addr = __swiotlb_map_page(dev, page, offset, size, dir, attrs);
+	ret = pcie_iommu_map(ch_num, dev_addr, dev_addr, size, dir);
+	if (ret != 0) {
+		pr_err("DMA map - Can't map PCIe SysMMU table!!!\n");
+
+		return 0;
+	}
+
+	return dev_addr;
+}
+
+static void __exynos_pcie_swiotlb_unmap_page(struct device *dev,
+		dma_addr_t dev_addr,
+		size_t size, enum dma_data_direction dir,
+		unsigned long attrs)
+{
+	int ch_num = 0;
+	struct pci_dev *epdev = to_pci_dev_from_dev(dev);
+
+	if (epdev == NULL) {
+		pr_err("EP device is NULL!!!\n");
+	} else {
+#ifdef CONFIG_PCI_DOMAINS_GENERIC
+		ch_num = pci_domain_nr(epdev->bus);
+#endif
+	}
+	__swiotlb_unmap_page(dev, dev_addr, size, dir, attrs);
+	pcie_iommu_unmap(ch_num, dev_addr, size);
+}
+
+void get_atomic_pool_info(dma_addr_t *paddr, size_t *size)
+{
+	*paddr = dma_pool_start;
+	*size = gen_pool_size(atomic_pool);
+}
+EXPORT_SYMBOL(get_atomic_pool_info);
+
+struct dma_map_ops exynos_pcie_dma_ops = {
+	.alloc = __exynos_pcie_dma_alloc,
+	.free = __exynos_pcie_dma_free,
+	.mmap = __swiotlb_mmap,
+	.get_sgtable = __swiotlb_get_sgtable,
+	.map_page = __exynos_pcie_swiotlb_map_page,
+	.unmap_page = __exynos_pcie_swiotlb_unmap_page,
+	.map_sg = __swiotlb_map_sg_attrs,
+	.unmap_sg = __swiotlb_unmap_sg_attrs,
+	.sync_single_for_cpu = __swiotlb_sync_single_for_cpu,
+	.sync_single_for_device = __swiotlb_sync_single_for_device,
+	.sync_sg_for_cpu = __swiotlb_sync_sg_for_cpu,
+	.sync_sg_for_device = __swiotlb_sync_sg_for_device,
+	.dma_supported = __swiotlb_dma_supported,
+	.mapping_error = __swiotlb_dma_mapping_error,
+};
+EXPORT_SYMBOL(exynos_pcie_dma_ops);
+
+#endif
+
 static int __init atomic_pool_init(void)
 {
 	pgprot_t prot = __pgprot(PROT_NORMAL_NC);
@@ -456,6 +590,10 @@ static int __init atomic_pool_init(void)
 		gen_pool_set_algo(atomic_pool,
 				  gen_pool_first_fit_order_align,
 				  NULL);
+
+#ifdef CONFIG_EXYNOS_PCIE_IOMMU
+		dma_pool_start = page_to_phys(page);
+#endif
 
 		pr_info("DMA: preallocated %zu KiB pool for atomic allocations\n",
 			atomic_pool_size / 1024);
