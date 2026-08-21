@@ -106,7 +106,7 @@ config SUPPORT_DDI_FLASH
 
 config SUPPORT_POC_FLASH
 	depends on EXYNOS_DECON_LCD && SUPPORT_DDI_FLASH
-	tristate "Support display poc flash"
+	bool "Support display poc flash"
 	default n
 
 config SUPPORT_DIM_FLASH
@@ -131,7 +131,7 @@ config PANEL_BACKLIGHT_PAC_3_0
 
 config DISPLAY_USE_INFO
 	depends on EXYNOS_DECON_LCD
-	tristate "Support display use info logging"
+	bool "Support display use info logging"
 	default n
 
 config SELF_MOVE_3PX
