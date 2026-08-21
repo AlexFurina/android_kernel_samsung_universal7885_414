@@ -4135,6 +4135,12 @@
 			abox = <&abox>;
 		};
 
+		abox_debug: abox_debug@0 {
+			compatible = "samsung,abox-debug";
+			memory-region = <&abox_rmem>;
+			reg = <0x0 0x0 0x0>;
+		};
+
 		abox_vss: abox_vss@0 {
 			compatible = "samsung,abox-vss";
 			magic_offset = <0x600000>;

@@ -17,14 +17,34 @@
 		#size-cells = <1>;
 		ranges;
 
+		abox_rmem: abox_rmem@0xEA800000 {
+			compatible = "exynos,abox_rmem";
+			reg = <0x0 0xFB200000 0x2800000>;
+		};
+
 		modem_if {
 			compatible = "exynos,modem_if";
 			reg = <0x0 0xF0000000 0x9200000>;
 		};
 
+		cp_ram_logging {
+			compatible = "exynos,cp_ram_logging";
+			reg = <0x0 0xF9200000 0x2000000>;
+		};
+
+		zswap_debug {
+			compatible = "exynos,zswap_debug";
+			reg = <0x0 0x91300000 0x1000>;
+		};
+
+		sec_debug_magic {
+			compatible = "exynos,sec_debug_magic";
+			reg = <0x0 0x80000000 0x1000>;
+		};
+
 		seclog_mem {
 			compatible = "exynos,seclog";
-			reg = <0x0 0xc0000000 0x80000>;
+			reg = <0x0 0xC0000000 0x80000>;
 		};
 
 		ion-video_stream {
@@ -59,7 +79,7 @@
 			ion,alignment = <0x10000>;
 		};
 
-                camera {
+		camera {
 			compatible = "exynos9820-ion";
 			ion,recyclable;
 			size = <0xE400000>;
@@ -67,16 +87,16 @@
 			alignment = <0x0 0x400000>;
 			ion,protection_id = <0xa>;
 			ion,heapname = "camera_heap";
-               };
+		};
 
-               camera_contig {
+		camera_contig {
 			compatible = "exynos9820-ion";
 			size = <0x46a000>;
 			alloc-ranges = <0x0 0x40000000 0xc0000000>;
 			alignment = <0x0 0x400000>;
 			ion,protection_id = <0xc>;
 			ion,heapname = "camera_contig_heap";
-               };
+		};
 
 		debug_snapshot {
 			#address-cells = <0x2>;

@@ -241,7 +241,6 @@
 
 		battery,swelling_drop_float_voltage = <4150>;
 		battery,swelling_high_rechg_voltage = <4000>;
-		battery,swelling_low_rechg_thr = <150>;
 		battery,swelling_low_rechg_voltage = <4000>;
 		battery,wa_float_voltage = <4050>;
 
@@ -250,12 +249,9 @@
 		battery,siop_call_cc_current = <330>;
 
 		battery,siop_input_limit_current = <1200>;
-		battery,siop_input_limit_current_siop20 = <1000>;
 		battery,siop_charging_limit_current = <1000>;
 		battery,siop_hv_input_limit_current = <500>;
-		battery,siop_hv_input_limit_current_siop20 = <400>;
 		battery,siop_hv_charging_limit_current = <1000>;
-		battery,siop_hv_12v_input_limit_current_siop20 = <450>;
 
 		battery,siop_wireless_input_limit_current = <600>;
 		battery,siop_wireless_charging_limit_current = <700>;
