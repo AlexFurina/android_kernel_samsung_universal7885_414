@@ -28,14 +28,17 @@
 #include <linux/gpio.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
-#include <soc/samsung/exynos-powermode.h>
 
 #include <linux/platform_data/spi-s3c64xx.h>
 
 #include <linux/dma/dma-pl330.h>
 
+#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
+#include <soc/samsung/exynos-powermode.h>
+#endif
 #ifdef CONFIG_CPU_IDLE
 #include <soc/samsung/exynos-pm.h>
+#include <soc/samsung/exynos-cpupm.h>
 #endif
 
 #include "../pinctrl/core.h"
@@ -154,6 +157,9 @@ static LIST_HEAD(drvdata_list);
 #define USI_RESET			(0<<0)
 #define USI_HWACG_CLKREQ_ON		(1<<1)
 #define USI_HWACG_CLKSTOP_ON		(1<<2)
+
+/* MAX SIZE of COUNT_VALUE in PACKET_CNT_REG */
+#define S3C64XX_SPI_PACKET_CNT_MAX 0xffff
 
 /**
  * struct s3c64xx_spi_info - SPI Controller hardware info
@@ -641,12 +647,11 @@ static inline void enable_cs(struct s3c64xx_spi_driver_data *sdd,
 }
 
 static int wait_for_xfer(struct s3c64xx_spi_driver_data *sdd,
-				struct spi_transfer *xfer, int dma_mode, struct spi_master *master)
+				struct spi_transfer *xfer, int dma_mode)
 {
 	void __iomem *regs = sdd->regs;
 	unsigned long val;
 	int ms;
-	u32 chcfg;
 
 	/* millisecs to xfer 'len' bytes @ 'cur_speed' */
 	ms = xfer->len * 8 * 1000 / sdd->cur_speed;
@@ -662,12 +667,6 @@ static int wait_for_xfer(struct s3c64xx_spi_driver_data *sdd,
 		do {
 			status = readl(regs + S3C64XX_SPI_STATUS);
 		} while (RX_FIFO_LVL(status, sdd) < xfer->len && --val);
-
-		if (master->bus_num == 0) {
-			chcfg = readl(regs + S3C64XX_SPI_CH_CFG);
-			chcfg &= ~S3C64XX_SPI_CH_RXCH_ON;
-			writel(chcfg, regs + S3C64XX_SPI_CH_CFG);
-		}
 	}
 
 	if (!val)
@@ -843,15 +842,10 @@ static void s3c64xx_spi_config(struct s3c64xx_spi_driver_data *sdd)
 
 #define XFER_DMAADDR_INVALID DMA_BIT_MASK(36)
 
-static int s3c64xx_spi_map_mssg(struct s3c64xx_spi_driver_data *sdd,
+static int s3c64xx_spi_dma_initialize(struct s3c64xx_spi_driver_data *sdd,
 						struct spi_message *msg)
 {
-	struct s3c64xx_spi_info *sci = sdd->cntrlr_info;
-	struct device *dev = &sdd->pdev->dev;
 	struct spi_transfer *xfer;
-
-	if ((msg->is_dma_mapped) || (sci->dma_mode != DMA_MODE))
-		return 0;
 
 	/* First mark all xfer unmapped */
 	list_for_each_entry(xfer, &msg->transfers, transfer_list) {
@@ -859,66 +853,71 @@ static int s3c64xx_spi_map_mssg(struct s3c64xx_spi_driver_data *sdd,
 		xfer->tx_dma = XFER_DMAADDR_INVALID;
 	}
 
-	/* Map until end or first fail */
-	list_for_each_entry(xfer, &msg->transfers, transfer_list) {
+	return 0;
+}
 
-		if (xfer->len <= ((FIFO_LVL_MASK(sdd) >> 1) + 1))
-			continue;
+static int s3c64xx_spi_map_one_msg(struct s3c64xx_spi_driver_data *sdd,
+						struct spi_message *msg, struct spi_transfer *xfer)
+{
+	struct s3c64xx_spi_info *sci = sdd->cntrlr_info;
+	struct device *dev = &sdd->pdev->dev;
 
-		if (xfer->tx_buf != NULL) {
-			xfer->tx_dma = dma_map_single(dev,
-					(void *)xfer->tx_buf, xfer->len,
-					DMA_TO_DEVICE);
-			if (dma_mapping_error(dev, xfer->tx_dma)) {
-				dev_err(dev, "dma_map_single Tx failed\n");
-				xfer->tx_dma = XFER_DMAADDR_INVALID;
-				return -ENOMEM;
-			}
+	if ((msg->is_dma_mapped) || (sci->dma_mode != DMA_MODE))
+		return 0;
+
+	if (xfer->len <= ((FIFO_LVL_MASK(sdd) >> 1) + 1))
+		return 0;
+
+	if (xfer->tx_buf != NULL) {
+		xfer->tx_dma = dma_map_single(dev,
+				(void *)xfer->tx_buf, xfer->len,
+				DMA_TO_DEVICE);
+		if (dma_mapping_error(dev, xfer->tx_dma)) {
+			dev_err(dev, "dma_map_single Tx failed\n");
+			xfer->tx_dma = XFER_DMAADDR_INVALID;
+			return -ENOMEM;
 		}
+	}
 
-		if (xfer->rx_buf != NULL) {
-			xfer->rx_dma = dma_map_single(dev, xfer->rx_buf,
-						xfer->len, DMA_FROM_DEVICE);
-			if (dma_mapping_error(dev, xfer->rx_dma)) {
-				dev_err(dev, "dma_map_single Rx failed\n");
-				dma_unmap_single(dev, xfer->tx_dma,
-						xfer->len, DMA_TO_DEVICE);
-				xfer->tx_dma = XFER_DMAADDR_INVALID;
-				xfer->rx_dma = XFER_DMAADDR_INVALID;
-				return -ENOMEM;
-			}
+	if (xfer->rx_buf != NULL) {
+		xfer->rx_dma = dma_map_single(dev, xfer->rx_buf,
+					xfer->len, DMA_FROM_DEVICE);
+		if (dma_mapping_error(dev, xfer->rx_dma)) {
+			dev_err(dev, "dma_map_single Rx failed\n");
+			dma_unmap_single(dev, xfer->tx_dma,
+					xfer->len, DMA_TO_DEVICE);
+			xfer->tx_dma = XFER_DMAADDR_INVALID;
+			xfer->rx_dma = XFER_DMAADDR_INVALID;
+			return -ENOMEM;
 		}
 	}
 
 	return 0;
 }
 
-static void s3c64xx_spi_unmap_mssg(struct s3c64xx_spi_driver_data *sdd,
-						struct spi_message *msg)
+static void s3c64xx_spi_unmap_one_msg(struct s3c64xx_spi_driver_data *sdd,
+						struct spi_message *msg, struct spi_transfer *xfer)
 {
 	struct s3c64xx_spi_info *sci = sdd->cntrlr_info;
 	struct device *dev = &sdd->pdev->dev;
-	struct spi_transfer *xfer;
 
 	if ((msg->is_dma_mapped) || (sci->dma_mode != DMA_MODE))
 		return;
 
-	list_for_each_entry(xfer, &msg->transfers, transfer_list) {
+	if (xfer->len <= ((FIFO_LVL_MASK(sdd) >> 1) + 1))
+		return;
 
-		if (xfer->len <= ((FIFO_LVL_MASK(sdd) >> 1) + 1))
-			continue;
+	if (xfer->rx_buf != NULL
+			&& xfer->rx_dma != XFER_DMAADDR_INVALID)
+		dma_unmap_single(dev, xfer->rx_dma,
+					xfer->len, DMA_FROM_DEVICE);
 
-		if (xfer->rx_buf != NULL
-				&& xfer->rx_dma != XFER_DMAADDR_INVALID)
-			dma_unmap_single(dev, xfer->rx_dma,
-						xfer->len, DMA_FROM_DEVICE);
-
-		if (xfer->tx_buf != NULL
-				&& xfer->tx_dma != XFER_DMAADDR_INVALID)
-			dma_unmap_single(dev, xfer->tx_dma,
-						xfer->len, DMA_TO_DEVICE);
-	}
+	if (xfer->tx_buf != NULL
+			&& xfer->tx_dma != XFER_DMAADDR_INVALID)
+		dma_unmap_single(dev, xfer->tx_dma,
+					xfer->len, DMA_TO_DEVICE);
 }
+
 
 static int s3c64xx_spi_transfer_one_message(struct spi_master *master,
 					    struct spi_message *msg)
@@ -946,12 +945,8 @@ static int s3c64xx_spi_transfer_one_message(struct spi_master *master,
 		s3c64xx_spi_config(sdd);
 	}
 
-	/* Map all the transfers if needed */
-	if (s3c64xx_spi_map_mssg(sdd, msg)) {
-		dev_err(&spi->dev,
-			"Xfer: Unable to map message buffers!\n");
-		status = -ENOMEM;
-		goto out;
+	if (!(msg->is_dma_mapped) && (sci->dma_mode == DMA_MODE)){
+		s3c64xx_spi_dma_initialize(sdd, msg);
 	}
 
 	/* Configure feedback delay */
@@ -995,6 +990,27 @@ static int s3c64xx_spi_transfer_one_message(struct spi_master *master,
 			if (xfer->len > fifo_lvl)
 				xfer->len = fifo_lvl;
 		} else {
+
+			/* backup original tx, rx buf ptr & xfer length */
+			origin_tx_buf = xfer->tx_buf;
+			origin_rx_buf = xfer->rx_buf;
+			origin_len = xfer->len;
+
+			target_len = xfer->len;
+			if (xfer->len > S3C64XX_SPI_PACKET_CNT_MAX * sdd->cur_bpw / 8)
+				xfer->len = S3C64XX_SPI_PACKET_CNT_MAX * sdd->cur_bpw / 8;
+		}
+try_transfer:
+		if (sci->dma_mode == DMA_MODE) {
+
+			/* Map the transfer if needed */
+			if (s3c64xx_spi_map_one_msg(sdd, msg, xfer)) {
+				dev_err(&spi->dev,
+					"Xfer: Unable to map message buffers!\n");
+				status = -ENOMEM;
+				goto out;
+			}
+
 		/* Polling method for xfers not bigger than FIFO capacity */
 			if (xfer->len <= fifo_lvl) {
 				use_dma = 0;
@@ -1002,7 +1018,7 @@ static int s3c64xx_spi_transfer_one_message(struct spi_master *master,
 				use_dma = 1;
 			}
 		}
-try_transfer:
+
 		spin_lock_irqsave(&sdd->lock, flags);
 
 		/* Pending only which is to be done */
@@ -1023,7 +1039,7 @@ try_transfer:
 
 		spin_unlock_irqrestore(&sdd->lock, flags);
 
-		status = wait_for_xfer(sdd, xfer, use_dma, master);
+		status = wait_for_xfer(sdd, xfer, use_dma);
 
 		if (status) {
 			dev_err(&spi->dev, "I/O Error: rx-%d tx-%d res:rx-%c tx-%c len-%d\n",
@@ -1042,7 +1058,7 @@ try_transfer:
 						&& (sdd->state & RXBUSY)) {
 					s3c64xx_dma_debug(sdd, &sdd->rx_dma);
 					s3c64xx_spi_dma_stop(sdd, &sdd->rx_dma);
-			}
+				}
 			}
 
 			s3c64xx_spi_dump_reg(sdd);
@@ -1087,6 +1103,30 @@ try_transfer:
 			xfer->tx_buf = origin_tx_buf;
 			xfer->rx_buf = origin_rx_buf;
 			xfer->len = origin_len;
+		} else {
+
+			s3c64xx_spi_unmap_one_msg(sdd, msg, xfer);
+
+			target_len -= xfer->len;
+
+			if (xfer->tx_buf != NULL)
+				xfer->tx_buf += xfer->len;
+
+			if (xfer->rx_buf != NULL)
+				xfer->rx_buf += xfer->len;
+
+			if (target_len > 0) {
+				if (target_len > S3C64XX_SPI_PACKET_CNT_MAX * sdd->cur_bpw / 8)
+					xfer->len = S3C64XX_SPI_PACKET_CNT_MAX * sdd->cur_bpw / 8;
+				else
+					xfer->len = target_len;
+				goto try_transfer;
+			}
+
+			/* restore original tx, rx buf_ptr & xfer length */
+			xfer->tx_buf = origin_tx_buf;
+			xfer->rx_buf = origin_rx_buf;
+			xfer->len = origin_len;
 		}
 	}
 
@@ -1095,8 +1135,6 @@ out:
 		disable_cs(sdd, spi);
 	else
 		sdd->tgl_spi = spi;
-
-	s3c64xx_spi_unmap_mssg(sdd, msg);
 
 	msg->status = status;
 
@@ -1182,21 +1220,6 @@ static int s3c64xx_spi_setup(struct spi_device *spi)
 		dev_err(&spi->dev, "No CS for SPI(%d)\n", spi->chip_select);
 		return -ENODEV;
 	}
-
-#ifdef ENABLE_SENSORS_FPRINT_SECURE
-	if (sdd->port_id == CONFIG_SENSORS_FP_SPI_NUMBER) {
-		dev_info(&spi->dev,
-			"spi configuration for secure channel is skipped(FP)\n");
-		return 0;
-	}
-#endif
-#ifdef CONFIG_ESE_SECURE
-	if (sdd->port_id == CONFIG_ESE_SECURE_SPI_PORT) {
-		dev_info(&spi->dev,
-			"spi configuration for secure channel is skipped(eSE)\n");
-		return 0;
-	}
-#endif
 
 	if (!spi_get_ctldata(spi)) {
 		if(cs->line != 0) {
@@ -1368,15 +1391,6 @@ static void exynos_usi_init(struct s3c64xx_spi_driver_data *sdd)
 	 * Due to this feature, the USI_RESET must be cleared (set as '0')
 	 * before transaction starts.
 	 */
-#ifdef ENABLE_SENSORS_FPRINT_SECURE
-	if (sdd->port_id == CONFIG_SENSORS_FP_SPI_NUMBER)
-		return;
-#endif
-#ifdef CONFIG_ESE_SECURE
-	if (sdd->port_id == CONFIG_ESE_SECURE_SPI_PORT)
-		return;
-#endif
-
 	writel(USI_RESET, regs + USI_CON);
 }
 
@@ -1385,15 +1399,6 @@ static void s3c64xx_spi_hwinit(struct s3c64xx_spi_driver_data *sdd, int channel)
 	struct s3c64xx_spi_info *sci = sdd->cntrlr_info;
 	void __iomem *regs = sdd->regs;
 	unsigned int val;
-
-#ifdef ENABLE_SENSORS_FPRINT_SECURE
-	if (channel == CONFIG_SENSORS_FP_SPI_NUMBER)
-		return;
-#endif
-#ifdef CONFIG_ESE_SECURE
-	if (channel == CONFIG_ESE_SECURE_SPI_PORT)
-		return;
-#endif
 
 	sdd->cur_speed = 0;
 
@@ -1586,7 +1591,9 @@ static int s3c64xx_spi_probe(struct platform_device *pdev)
 	sdd->is_probed = 0;
 	sdd->ops = NULL;
 
+#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 	sdd->idle_ip_index = exynos_get_idle_ip_index(dev_name(&pdev->dev));
+#endif
 
 	if (pdev->dev.of_node) {
 		ret = of_alias_get_id(pdev->dev.of_node, "spi");
@@ -1664,8 +1671,7 @@ static int s3c64xx_spi_probe(struct platform_device *pdev)
 		goto err0;
 	}
 
-	snprintf(clk_name, sizeof(clk_name), "spi_busclk%d", sci->src_clk_nr);
-	sdd->src_clk = devm_clk_get(&pdev->dev, clk_name);
+	sdd->src_clk = devm_clk_get(&pdev->dev, "spi_busclk0");
 	if (IS_ERR(sdd->src_clk)) {
 		dev_err(&pdev->dev,
 			"Unable to acquire clock '%s'\n", clk_name);
@@ -1697,7 +1703,9 @@ static int s3c64xx_spi_probe(struct platform_device *pdev)
 		}
 	}
 #else
+#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 	exynos_update_ip_idle_status(sdd->idle_ip_index, 0);
+#endif
 
 	if (clk_prepare_enable(sdd->clk)) {
 		dev_err(&pdev->dev, "Couldn't enable clock 'spi'\n");
@@ -1748,18 +1756,11 @@ static int s3c64xx_spi_probe(struct platform_device *pdev)
 			irq, ret);
 		goto err3;
 	}
-	if (1
-#ifdef ENABLE_SENSORS_FPRINT_SECURE
-			&& (sdd->port_id != CONFIG_SENSORS_FP_SPI_NUMBER)
-#endif
-#ifdef CONFIG_ESE_SECURE
-			&& (sdd->port_id != CONFIG_ESE_SECURE_SPI_PORT)
-#endif
-	   ) {
-		writel(S3C64XX_SPI_INT_RX_OVERRUN_EN | S3C64XX_SPI_INT_RX_UNDERRUN_EN |
-			S3C64XX_SPI_INT_TX_OVERRUN_EN | S3C64XX_SPI_INT_TX_UNDERRUN_EN,
-			sdd->regs + S3C64XX_SPI_INT_EN);
-	}
+
+	writel(S3C64XX_SPI_INT_RX_OVERRUN_EN | S3C64XX_SPI_INT_RX_UNDERRUN_EN |
+	       S3C64XX_SPI_INT_TX_OVERRUN_EN | S3C64XX_SPI_INT_TX_UNDERRUN_EN,
+	       sdd->regs + S3C64XX_SPI_INT_EN);
+
 #ifdef CONFIG_PM
 	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_put_sync(&pdev->dev);
@@ -1827,7 +1828,9 @@ static int s3c64xx_spi_remove(struct platform_device *pdev)
 
 	clk_disable_unprepare(sdd->clk);
 
+#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 	exynos_update_ip_idle_status(sdd->idle_ip_index, 1);
+#endif
 
 	platform_set_drvdata(pdev, NULL);
 	spi_master_put(master);
@@ -1866,7 +1869,9 @@ static int s3c64xx_spi_runtime_suspend(struct device *dev)
 	if (__clk_get_enable_count(sdd->src_clk))
 		clk_disable_unprepare(sdd->src_clk);
 
+#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 	exynos_update_ip_idle_status(sdd->idle_ip_index, 1);
+#endif
 
 	/* Free DMA channels */
 	if (sci->dma_mode == DMA_MODE && sdd->is_probed && sdd->ops != NULL) {
@@ -1905,14 +1910,18 @@ static int s3c64xx_spi_runtime_resume(struct device *dev)
 	}
 
 	if (sci->domain == DOMAIN_TOP) {
+#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 		exynos_update_ip_idle_status(sdd->idle_ip_index, 0);
+#endif
 		clk_prepare_enable(sdd->src_clk);
 		clk_prepare_enable(sdd->clk);
 	}
 
 #if defined(CONFIG_VIDEO_EXYNOS_FIMC_IS) || defined(CONFIG_VIDEO_EXYNOS_FIMC_IS2)
 	else if (sci->domain == DOMAIN_CAM1 || sci->domain == DOMAIN_ISP) {
+#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 		exynos_update_ip_idle_status(sdd->idle_ip_index, 0);
+#endif
 		clk_prepare_enable(sdd->src_clk);
 		clk_prepare_enable(sdd->clk);
 
@@ -1945,7 +1954,9 @@ static int s3c64xx_spi_suspend_operation(struct device *dev)
 		/* Disable the clock */
 		clk_disable_unprepare(sdd->src_clk);
 		clk_disable_unprepare(sdd->clk);
+#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 		exynos_update_ip_idle_status(sdd->idle_ip_index, 1);
+#endif
 	}
 #endif
 	if (!pm_runtime_status_suspended(dev))
@@ -1968,7 +1979,9 @@ static int s3c64xx_spi_resume_operation(struct device *dev)
 
 	if (sci->domain == DOMAIN_TOP) {
 		/* Enable the clock */
+#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 		exynos_update_ip_idle_status(sdd->idle_ip_index, 0);
+#endif
 		clk_prepare_enable(sdd->src_clk);
 		clk_prepare_enable(sdd->clk);
 
@@ -1986,7 +1999,9 @@ static int s3c64xx_spi_resume_operation(struct device *dev)
 		/* Disable the clock */
 		clk_disable_unprepare(sdd->src_clk);
 		clk_disable_unprepare(sdd->clk);
+#ifdef CONFIG_ARM64_EXYNOS_CPUIDLE
 		exynos_update_ip_idle_status(sdd->idle_ip_index, 1);
+#endif
 #endif
 	}
 
