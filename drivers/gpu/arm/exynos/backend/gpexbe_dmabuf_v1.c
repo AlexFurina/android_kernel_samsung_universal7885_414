@@ -22,9 +22,9 @@
 #include <gpexbe_dmabuf.h>
 
 /* Uses */
-#include <linux/ion.h>
+#include <linux/ion_exynos.h>
 
 bool gpexbe_dmabuf_is_cached(struct dma_buf *dmabuf)
 {
-	return ion_cached_needsync_dmabuf(dmabuf);
+	return ion_cached_dmabuf(dmabuf);
 }
