@@ -35,4 +35,6 @@ struct secgpio_dvs_data {
 
 /* list of all exported SoC specific data */
 extern const struct secgpio_dvs_data exynos7885_secgpio_dvs_data;
+extern struct gpio_dvs_t exynos9810_secgpio_dvs;
+extern int exynos9810_secgpio_get_nr_gpio(void);
 #endif /* __SECGPIO_DVS_H */
