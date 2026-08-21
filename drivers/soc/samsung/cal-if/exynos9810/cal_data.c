@@ -27,6 +27,10 @@
 
 #include "../ra.h"
 
+#if defined(CONFIG_SEC_DEBUG)
+#include <soc/samsung/exynos-pm.h>
+#endif
+
 void __iomem *cmu_base;
 
 #define PLL_CON0_PLL_MMC	(0x100)
@@ -113,6 +117,19 @@ int pll_mmc_enable(int enable)
 	return ret;
 }
 
+int cal_pll_mmc_check(void)
+{
+       unsigned int reg;
+       bool ret = false;
+
+       reg = readl(cmu_base + PLL_CON1_PLL_MMC);
+
+       if (reg & (1 << SSCG_EN))
+               ret = true;
+
+       return ret;
+}
+
 int cal_pll_mmc_set_ssc(unsigned int mfr, unsigned int mrr, unsigned int ssc_on)
 {
 	unsigned int reg;
@@ -165,3 +182,79 @@ void exynos9810_cal_data_init(void)
 }
 
 void (*cal_data_init)(void) = exynos9810_cal_data_init;
+
+#if defined(CONFIG_SEC_DEBUG)
+int asv_ids_information(enum ids_info id)
+{
+	int res;
+
+	switch (id) {
+	case tg:
+		res = asv_get_table_ver();
+		break;
+	case lg:
+		res = asv_get_grp(dvfs_cpucl0);
+		break;
+	case bg:
+		res = asv_get_grp(dvfs_cpucl1);
+		break;
+	case g3dg:
+		res = asv_get_grp(dvfs_g3d);
+		break;
+	case mifg:
+		res = asv_get_grp(dvfs_mif);
+		break;
+	case bids:
+		res = asv_get_ids_info(dvfs_cpucl1);
+		break;
+	case gids:
+		res = asv_get_ids_info(dvfs_g3d);
+		break;
+	default:
+		res = 0;
+		break;
+	};
+	return res;
+}
+#endif
+
+#if defined(CONFIG_SEC_PM_DEBUG) && defined(CONFIG_DEBUG_FS)
+#include <linux/debugfs.h>
+
+#define ASV_SUMMARY_SZ	(dvfs_cp - dvfs_mif + 1)
+
+static int asv_summary_show(struct seq_file *s, void *d)
+{
+	unsigned int i;
+	const char *label[ASV_SUMMARY_SZ] = { "MIF", "INT", "CL0", "CL1", "G3D",
+		"INTCAM", "FSYS", "CAM", "DISP", "AUD", "IVA", "SCORE", "CP" };
+
+	seq_printf(s, "Table ver: %d\n", asv_get_table_ver());
+
+	for (i = 0; i < ASV_SUMMARY_SZ ; i++)
+		seq_printf(s, "%s: %d\n", label[i], asv_get_grp(dvfs_mif + i));
+
+	return 0;
+}
+
+static int asv_summary_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, asv_summary_show, inode->i_private);
+}
+
+const static struct file_operations asv_summary_fops = {
+	.open		= asv_summary_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int __init cal_data_late_init(void)
+{
+	debugfs_create_file("asv_summary", 0444, NULL, NULL, &asv_summary_fops);
+
+	return 0;
+}
+
+late_initcall(cal_data_late_init);
+#endif /* CONFIG_SEC_PM_DEBUG && CONFIG_DEBUG_FS */
