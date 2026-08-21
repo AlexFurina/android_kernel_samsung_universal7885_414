@@ -68,8 +68,6 @@
 #include <scsi/scsi_eh.h>
 #include <scsi/scsi_ioctl.h>
 
-#define CUSTOMIZE_UPIU_FLAGS
-
 #include "ufs.h"
 #include "ufshci.h"
 #include "ufs_quirks.h"
@@ -337,19 +335,18 @@ struct ufs_hba_variant_ops {
 	void	(*set_nexus_t_xfer_req)(struct ufs_hba *,
 					int, struct scsi_cmnd *);
 	void	(*set_nexus_t_task_mgmt)(struct ufs_hba *, int, u8);
-	int	(*hibern8_prepare)(struct ufs_hba *, u8, bool);
 	void    (*hibern8_notify)(struct ufs_hba *, u8, bool);
 	int     (*suspend)(struct ufs_hba *, enum ufs_pm_op);
 	int     (*resume)(struct ufs_hba *, enum ufs_pm_op);
 	void	(*dbg_register_dump)(struct ufs_hba *hba);
 	u8      (*get_unipro_result)(struct ufs_hba *hba, u32 num);
 	int	(*phy_initialization)(struct ufs_hba *);
-	int	(*crypto_engine_cfg)(struct ufs_hba *hba,
-					struct ufshcd_lrb *lrbp);
-	int	(*crypto_engine_clear)(struct ufs_hba *hba,
-					struct ufshcd_lrb *lrbp);
+	int	(*crypto_engine_cfg)(struct ufs_hba *, struct ufshcd_lrb *,
+					struct scatterlist *, int, int, int);
+	int	(*crypto_engine_clear)(struct ufs_hba *, struct ufshcd_lrb *);
+	int	(*access_control_abort)(struct ufs_hba *);
+	int	(*hibern8_prepare)(struct ufs_hba *, u8, bool);
 	int	(*crypto_sec_cfg)(struct ufs_hba *hba, bool init);
-	int	(*access_control_abort)(struct ufs_hba *hba);
 
 };
 
@@ -744,9 +741,6 @@ struct ufs_hba {
 	struct rw_semaphore clk_scaling_lock;
 	struct ufs_desc_size desc_size;
 	struct ufs_secure_log secure_log;
-	/* ITMON DEBUG */
-	void __iomem    *err_reg;
-	void __iomem    *monitor_reg;
 };
 
 /* Returns true if clocks can be gated. Otherwise false */
@@ -1051,10 +1045,13 @@ static inline u8 ufshcd_vops_get_unipro(struct ufs_hba *hba, int num)
 }
 int ufshcd_read_health_desc(struct ufs_hba *hba, u8 *buf, u32 size);
 static inline int ufshcd_vops_crypto_engine_cfg(struct ufs_hba *hba,
-					struct ufshcd_lrb *lrbp)
+					struct ufshcd_lrb *lrbp,
+					struct scatterlist *sg, int index,
+					int sector_offset, int page_index)
 {
 	if (hba->vops && hba->vops->crypto_engine_cfg)
-		return hba->vops->crypto_engine_cfg(hba, lrbp);
+		return hba->vops->crypto_engine_cfg(hba, lrbp, sg, index,
+						sector_offset, page_index);
 	return 0;
 }
 
