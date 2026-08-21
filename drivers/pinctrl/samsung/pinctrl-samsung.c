@@ -1856,6 +1856,26 @@ static struct gpio_dvs_t exynos7885_secgpio_dvs = {
 	.skip_grps = "gpb",
 };
 
+int exynos9810_secgpio_get_nr_gpio(void)
+{
+	int i, j;
+	int nr_gpio = 0;
+
+	for (i = 0; i < ARRAY_SIZE(exynos9810_pin_ctrl); i++) {
+		for (j = 0; j < exynos9810_pin_ctrl[i].nr_banks; j++)
+			nr_gpio += exynos9810_pin_ctrl[i].pin_banks[j].nr_pins;
+	}
+
+	return nr_gpio;
+}
+
+struct gpio_dvs_t exynos9810_secgpio_dvs = {
+	.result = &gpiomap_result,
+	.check_gpio_status = check_gpio_status,
+	.get_nr_gpio = exynos9810_secgpio_get_nr_gpio,
+	.skip_grps = "gpb gph gpt", /* AUDIO, CHUB, VTS */
+};
+
 const struct secgpio_dvs_data exynos7885_secgpio_dvs_data __initconst = {
 	.gpio_dvs = &exynos7885_secgpio_dvs,
 	.get_nr_gpio = exynos7885_secgpio_get_nr_gpio,
