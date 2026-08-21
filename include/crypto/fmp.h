@@ -303,7 +303,7 @@ enum smu_command {
 int exynos_fmp_sec_cfg(int fmp_id, int smu_id, bool init);
 int exynos_fmp_smu_abort(int id);
 int exynos_fmp_crypt_cfg(struct bio *bio, void *table_base,
-		u32 page_idx, u32 sector_unit, bool cmdq_enabled);
+		u32 page_idx, u32 sector_unit);
 int exynos_fmp_crypt_clear(struct bio *bio, void *table_addr);
 #else
 #define exynos_fmp_sec_cfg(a, b, c) (0)
