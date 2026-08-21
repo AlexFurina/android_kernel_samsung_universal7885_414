@@ -18,12 +18,12 @@
  * http://www.gnu.org/licenses/gpl-2.0.html.
  */
 
-#include <linux/exynos-ss.h>
+#include <linux/debug-snapshot.h>
 #include <gpexbe_debug.h>
 
 void gpexbe_debug_dbg_snapshot_thermal(int frequency)
 {
-	exynos_ss_thermal(NULL, 0, "GPU", frequency);
+	dbg_snapshot_thermal(NULL, 0, "GPU", frequency);
 }
 
 void gpexbe_debug_dbg_snapshot_freq_in(int freq_before, int freq_after)
