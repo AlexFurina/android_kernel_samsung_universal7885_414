@@ -731,8 +731,9 @@ struct ufs_hba {
 	struct ufs_clk_scaling clk_scaling;
 	bool is_sys_suspended;
 
+	struct device_attribute manufacturer_id_attr;
 	char unique_number[UFS_UN_MAX_DIGITS];
-	
+	u16 manufacturer_id;
 	struct ufs_monitor monitor;
 
 	enum bkops_status urgent_bkops_lvl;
