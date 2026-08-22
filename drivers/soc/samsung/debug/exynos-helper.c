@@ -529,6 +529,13 @@ static void exynos_start_watchdog(void *val)
 
 static void exynos_expire_watchdog(void *val)
 {
+#ifdef CONFIG_S3C2410_WATCHDOG
+#ifdef CONFIG_SEC_DEBUG
+	__s3c2410wdt_set_emergency_reset(100, (unsigned long)val);
+#else
+	s3c2410wdt_set_emergency_reset(100);
+#endif
+#endif
 }
 
 static void exynos_stop_watchdog(void *val)
