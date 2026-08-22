@@ -167,8 +167,8 @@
 	initial7: initial-state {
 		PIN_IN(gpc0-4, DOWN);	/* NC */
 		PIN_IN(gpc0-5, DOWN);	/* NC */
-		PIN_IN(gpc0-6, DOWN);	/* NC */
-		PIN_IN(gpc0-7, DOWN);	/* NC */
+	//	PIN_IN(gpc0-6, DOWN);	/* NC */
+	//	PIN_IN(gpc0-7, DOWN);	/* NC */
 
 		PIN_IN(gpc1-7, DOWN);	/* NC */
 
