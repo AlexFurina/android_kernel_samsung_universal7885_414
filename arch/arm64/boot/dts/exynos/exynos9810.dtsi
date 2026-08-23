@@ -203,7 +203,7 @@
 	};
 
 	chosen: chosen {
-	        bootargs = "";
+		bootargs = "";
 		linux,initrd-start = <0x84000000>;
 		linux,initrd-end = <0x841FFFFF>;
 	};
