@@ -16,6 +16,10 @@
 #include <dt-bindings/interrupt-controller/exynos9810.h>
 
 / {
+	aliases {
+		fmp0 = &fmp_0;
+        };
+
 	/* tbase */
 	tee {
 		compatible = "samsung,exynos-tee";
@@ -31,5 +35,9 @@
 	ufs-srpmb {
 		compatible = "samsung,ufs-srpmb";
 		interrupts = <0 460 0>;
+	};
+
+	fmp_0: fmp {
+		compatible = "samsung,exynos-fmp";
 	};
 };
