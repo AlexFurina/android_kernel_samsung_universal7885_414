@@ -28,9 +28,6 @@
 		/* MFC version */
 		ip_ver = <17>;
 
-		/* Default 10bit format for decoding (1: P010, 0: 8+2) */
-		P010_decoding = <0>;
-
 		clock_rate = <400000000>;
 		min_rate = <100000>;
 		enc_ts_delta = <1 2167304>;
