@@ -1,0 +1,108 @@
+/*
+ * SAMSUNG EXYNOS9810 SoC device tree source
+ *
+ * Copyright (c) 2017 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * SAMSUNG EXYNOS9810 SoC device nodes are listed in this file.
+ * EXYNOS9810 based board files can include this file and provide
+ * values for board specfic bindings.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/ {
+		ems {
+			/* Ontime Migration */
+			ontime {
+				/* little cores */
+				coregroup0 {
+					lower-boundary = <0>;
+					upper-boundary = <42>;
+					lower-boundary-s = <0>;
+					upper-boundary-s = <30>;
+					coverage-ratio = <100>;
+				};
+				/* big cores */
+				coregroup1 {
+					lower-boundary = <7>;
+					upper-boundary = <100>;
+					lower-boundary-s = <10>;
+					upper-boundary-s = <100>;
+					coverage-ratio = <80>;
+				};
+			};
+
+			/* Load Balance Trigger */
+			#define DEFAULT_RATIO	80
+			lbt {
+				overutil-level0 {
+					cpus =	"0-3",
+						"4-7";
+					ratio =	<25>,
+						<30>;
+				};
+				overutil-level1 {
+					cpus =	"0-7";
+					ratio =	<DEFAULT_RATIO>;
+				};
+			};
+
+			/* FRT Migration */
+			frt {
+				/* little cores */
+				coregroup0 {
+					coverage-ratio = <30>;
+					active-ratio = <25>;
+				};
+				/* big cores */
+				coregroup1 {
+					coverage-ratio = <30>;
+					active-ratio = <5>;
+				};
+			};
+
+			part {
+				/* little cores */
+				coregroup0 {
+					active-ratio-limit = <43>;
+					active-ratio-boost = <42>;
+				};
+				/* big cores */
+				coregroup1 {
+					active-ratio-limit = <30>;
+					active-ratio-boost = <0>;
+				};
+			};
+
+			prefer-perf-service {
+				prefer-perf0 {
+					boost = <1>;
+					light-task-threshold = <10>;
+					light-task-threshold-s = <6>;
+					prefer-cpus = "4-7", "0-3";
+					light-prefer-cpus = "0-3";
+				};
+			};
+		};
+
+	esg {
+		domain@0 {
+			device_type = "esgov-pol0";
+			shared-cpus = "0-3";
+			pm_qos-min-class = <3>;
+			pm_qos-max-class = <4>;
+			step = <10>;
+		};
+
+		domain@1 {
+			device_type = "esgov-pol6";
+			shared-cpus = "4-7";
+			pm_qos-min-class = <5>;
+			pm_qos-max-class = <6>;
+			step = <12>;
+	 };
+   };
+};
