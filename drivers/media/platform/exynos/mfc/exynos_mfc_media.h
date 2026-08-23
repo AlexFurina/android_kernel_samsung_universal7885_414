@@ -141,7 +141,11 @@ enum v4l2_mpeg_video_hevc_hierarchical_coding_type {
 					(V4L2_CID_MPEG_MFC_BASE + 27)
 #define V4L2_CID_MPEG_MFC51_VIDEO_CRC_DATA_2BIT_CHROMA	\
 					(V4L2_CID_MPEG_MFC_BASE + 28)
+#define V4L2_CID_MPEG_VIDEO_PRIORITY			\
+					(V4L2_CID_MPEG_MFC_BASE + 36)
 
+#define V4L2_CID_MPEG_VIDEO_DROP_CONTROL			\
+					(V4L2_CID_MPEG_MFC_BASE + 41)
 #define V4L2_CID_MPEG_VIDEO_H264_MVC_VIEW_ID			\
 					(V4L2_CID_MPEG_MFC_BASE + 42)
 #define V4L2_CID_MPEG_MFC51_VIDEO_FRAME_STATUS			\
@@ -261,8 +265,6 @@ enum v4l2_mpeg_video_hevc_hierarchical_coding_type {
 					(V4L2_CID_MPEG_MFC_BASE + 107)
 #define V4L2_CID_MPEG_MFC_CONFIG_QP_ENABLE             \
 					(V4L2_CID_MPEG_MFC_BASE + 108)
-#define V4L2_CID_MPEG_MFC_HDR_USER_SHARED_HANDLE	\
-					(V4L2_CID_MPEG_MFC_BASE + 109)
 
 /* CIDs for HEVC encoding. Number gaps are for compatibility */
 
@@ -410,8 +412,6 @@ enum v4l2_mpeg_video_hevc_hierarchical_coding_type {
 					(V4L2_CID_MPEG_MFC_BASE + 181)
 #define V4L2_CID_MPEG_VIDEO_VP9_PROFILE				\
 					(V4L2_CID_MPEG_MFC_BASE + 182)
-#define V4L2_CID_MPEG_VIDEO_VP9_LEVEL				\
-					(V4L2_CID_MPEG_MFC_BASE + 183)
 
 /* CIDs for new common interface */
 #define V4L2_CID_MPEG_VIDEO_ROI_CONTROL				\
@@ -432,10 +432,6 @@ enum v4l2_mpeg_video_hevc_hierarchical_coding_type {
 					(V4L2_CID_MPEG_MFC_BASE + 197)
 #define V4L2_CID_MPEG_VIDEO_RATIO_OF_INTRA			\
 					(V4L2_CID_MPEG_MFC_BASE + 198)
-#define V4L2_CID_MPEG_VIDEO_HIERARCHICAL_BITRATE_CTRL		\
-					(V4L2_CID_MPEG_MFC_BASE + 199)
-#define V4L2_CID_MPEG_VIDEO_DECODING_ORDER			\
-					(V4L2_CID_MPEG_MFC_BASE + 200)
 
 /* QP BOUND interface */
 #define V4L2_CID_MPEG_VIDEO_H264_MAX_QP_P			\
