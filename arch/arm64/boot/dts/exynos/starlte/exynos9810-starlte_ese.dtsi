@@ -1,0 +1,57 @@
+/*
+ * SAMSUNG EXYNOS9810 board device tree source
+ *
+ * Copyright (c) 2017 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/ {
+	pinctrl@10830000 {
+		spi7_bus_suspend: spi7-bus-suspend {
+			samsung,pins = "gpp4-2", "gpp4-1", "gpp4-0";
+			samsung,pin-function = <0>;	/* INPUT */
+			samsung,pin-pud = <1>;		/* DOWN */
+			samsung,pin-drv = <0>;
+		};
+		spi7_cs_suspend: spi7-cs-suspend {
+			samsung,pins = "gpp4-3";
+			samsung,pin-function = <0>;	/* INPUT */
+			samsung,pin-pud = <1>;		/* DOWN */
+			samsung,pin-drv = <0>;
+		};
+	};
+
+	/* SPI USI_PERIC1_USI06_SPI */
+	spi_7: spi@108A0000 {
+		status = "okay";
+		/delete-property/ pinctrl-names;
+		/delete-property/ pinctrl-0;
+
+		ese_spi@0 {
+			compatible = "ese_p3";
+			reg = <0>;
+			spi-max-frequency = <13000000>;
+			gpio-controller;
+			#gpio-cells = <2>;
+
+			p3-vdd-1p8= "VDD_ESE_1P8";
+
+			clocks = <&clock GATE_USI06>, <&clock USI06>;
+			clock-names = "pclk", "sclk";
+			ese_p3,cs-gpio = <&gpp4 3 0>;
+
+			pinctrl-names = "ese_active", "ese_suspend";
+			pinctrl-0 = <&spi7_bus &spi7_cs>;
+			pinctrl-1 = <&spi7_bus_suspend &spi7_cs_suspend>;
+
+			controller-data {
+				samsung,spi-feedback-delay = <0>;
+				samsung,spi-chip-select-mode = <0>;
+			};
+		};
+	};
+};
