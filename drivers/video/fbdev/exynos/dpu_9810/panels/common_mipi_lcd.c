@@ -18,8 +18,8 @@
 #include "../disp_err.h"
 #include "../decon.h"
 #include "../dsim.h"
-#include "../../panel/panel.h"
-#include "../../panel/panel_drv.h"
+#include "panel.h"
+#include "panel_drv.h"
 #include "lcd_ctrl.h"
 #include "decon_lcd.h"
 

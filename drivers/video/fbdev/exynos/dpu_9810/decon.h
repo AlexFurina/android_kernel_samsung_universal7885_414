@@ -36,7 +36,7 @@
 #include <linux/sync_file.h>
 
 #ifdef CONFIG_EXYNOS_COMMON_PANEL
-#include "../panel/panel_drv.h"
+#include "./panels/panel_drv.h"
 #endif
 
 #include "regs-decon.h"

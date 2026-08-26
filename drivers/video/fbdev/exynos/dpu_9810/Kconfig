@@ -112,7 +112,6 @@ config DPU_2_0_RELEASE_FENCES
         depends on EXYNOS_DECON_9810
         default n
 
-
 config SUPPORT_DSU
 	tristate "Support Dynamic Scale Up (Multi-Resolution)"
 	depends on EXYNOS_DECON_9810
