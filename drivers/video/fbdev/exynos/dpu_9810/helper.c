@@ -25,7 +25,7 @@
 #include "./panels/lcd_ctrl.h"
 #include <video/mipi_display.h>
 #ifdef CONFIG_EXYNOS_COMMON_PANEL
-#include "../panel/panel_drv.h"
+#include "./panels/panel_drv.h"
 #endif
 
 static int __dpu_match_dev(struct device *dev, void *data)

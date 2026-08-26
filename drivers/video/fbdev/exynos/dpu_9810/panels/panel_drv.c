@@ -31,7 +31,7 @@
 #ifdef CONFIG_DISP_PMIC_SSD
 #include <linux/regulator/consumer.h>
 #endif
-#include "../dpu_9810/decon.h"
+#include "../decon.h"
 #include "panel.h"
 #include "panel_drv.h"
 #include "dpui.h"

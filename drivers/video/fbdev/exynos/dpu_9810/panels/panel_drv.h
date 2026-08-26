@@ -22,10 +22,10 @@
 #include <linux/workqueue.h>
 #include <linux/miscdevice.h>
 
-#include "../dpu_9810/disp_err.h"
-#include "../dpu_9810/dsim.h"
-#include "../dpu_9810/decon.h"
-#include "../dpu_9810/panels/decon_lcd.h"
+#include "../disp_err.h"
+#include "../dsim.h"
+#include "../decon.h"
+#include "decon_lcd.h"
 #include "panel.h"
 #include "mdnie.h"
 #include "copr.h"
