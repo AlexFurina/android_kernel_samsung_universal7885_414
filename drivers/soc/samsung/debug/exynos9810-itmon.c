@@ -687,7 +687,7 @@ static void itmon_switch_scandump(struct itmon_dev *itmon)
 #ifdef CONFIG_EXYNOS_ACPM_S2D
 static void __itmon_switch_s2d(void)
 {
-	s3c2410wdt_set_emergency_reset(3, 0);
+	s3c2410wdt_set_emergency_reset(3);
 	dbg_snapshot_spin_func();
 }
 #endif
