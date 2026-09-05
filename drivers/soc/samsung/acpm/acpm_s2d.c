@@ -79,7 +79,7 @@ int exynos_acpm_s2d_update_en(void)
 	config.cmd = cmd;
 	config.response = true;
 	config.indirection = false;
-	config.cmd[1] = exynos_ss_get_item_paddr("log_s2d");
+	config.cmd[1] = dbg_snapshot_get_item_paddr("log_s2d");
 	if (s2d_en)
 		config.cmd[2] = s2d_sel_block;
 	else
