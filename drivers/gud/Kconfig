@@ -5,6 +5,11 @@ if SOC_EXYNOS9610
 source "drivers/gud/gud-exynos9610/Kconfig"
 endif
 
+if SOC_EXYNOS9810
+source "drivers/gud/gud-exynos9810/Kconfig"
+endif
+
 if SOC_EXYNOS7885
 source "drivers/gud/gud-exynos7885/Kconfig"
 endif
+
