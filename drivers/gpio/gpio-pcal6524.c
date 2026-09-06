@@ -32,7 +32,6 @@
 #include <linux/of_gpio.h>
 #endif
 #include <linux/i2c/pcal6524.h>
-#include <linux/sec_class.h>
 
 struct pcal6524_chip {
 	struct i2c_client *client;
@@ -892,48 +891,11 @@ static int pcal6524_gpio_probe(struct i2c_client *client,
 			gc->base, gc->base + gc->ngpio - 1,
 			client->name);
 
-	pcal6524_dev = sec_device_create(dev, "expander");
-	if (IS_ERR(pcal6524_dev)) {
-		dev_err(&client->dev,
-				"Failed to create device for expander\n");
-		ret = -ENODEV;
-		goto err;
-	}
-
-	ret = sysfs_create_file(&pcal6524_dev->kobj, &dev_attr_expgpio.attr);
-	if (ret) {
-		dev_err(&client->dev,
-				"Failed to create sysfs group for expander\n");
-		goto err_destroy;
-	}
-
-	dev->dentry = debugfs_create_dir("expander", NULL);
-	if (IS_ERR_OR_NULL(dev->dentry)) {
-		dev_err(&client->dev,
-				"Failed to create debugfs dir for expander\n");
-		goto err_debug_dir;
-
-	}
-	debugfs_file = debugfs_create_file("gpio", S_IFREG | 0444,
-			dev->dentry, NULL, &expander_operations);
-	if (IS_ERR_OR_NULL(debugfs_file)) {
-		dev_err(&client->dev,
-				"Failed to create debugfs file for gpio\n");
-		goto err_debug_file;
-	}
-
 	i2c_set_clientdata(client, dev);
 	g_dev = dev;
 
 	return 0;
 
-err_debug_file:
-	debugfs_remove_recursive(dev->dentry);
-err_debug_dir:
-	sysfs_remove_file(&pcal6524_dev->kobj, &dev_attr_expgpio.attr);
-err_destroy:
-	sec_device_destroy(0);
-	return ret;
 err:
 	mutex_destroy(&dev->lock);
 	kfree(dev);
