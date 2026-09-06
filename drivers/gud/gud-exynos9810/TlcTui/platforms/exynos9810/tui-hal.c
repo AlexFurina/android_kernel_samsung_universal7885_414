@@ -27,7 +27,6 @@
 #include <linux/dma-contiguous.h>
 #include <linux/exynos_iovmm.h>
 #include <linux/ion.h>
-#include <ion_priv.h>
 #include <linux/scatterlist.h>
 #include "../../../video/fbdev/exynos/dpu_9810/decon.h"
 #include <t-base-tui.h>
@@ -60,6 +59,7 @@
 bool tui_cover_mode_on;
 extern phys_addr_t hal_tui_video_space_alloc(void);
 extern int decon_lpd_block_exit(struct decon_device *decon);
+static struct sg_table *g_sgt;
 
 #ifdef CONFIG_TRUSTED_UI_TOUCH_ENABLE
 static int tsp_irq_num = 718;	// default value
@@ -235,16 +235,10 @@ uint32_t hal_tui_alloc(struct tui_alloc_buffer_t *allocbuffer,
 	/* Set linux TUI flag */
 	trustedui_set_mask(TRUSTEDUI_MODE_TUI_SESSION);
 
-	client = exynos_ion_client_create("TUI module");
-	if (IS_ERR(client)) {
-		pr_err("failed to ion_client_create\n");
-		return ret;
-	}
-
 	for (i = 0; i < number; i++) {
 		handle[i] = ion_alloc(client, SZ_16M + SZ_1M, SZ_256K,
 				      EXYNOS_ION_HEAP_VIDEO_STREAM_MASK, 0);
-		if (IS_ERR_OR_NULL(handle[i])) {
+		if (IS_ERR_OR_NULL(g_sgt)) {
 			pr_err("[%s:%d] ION memory allocation fail.[err:%lx]\n",
 			       __func__, __LINE__, PTR_ERR(handle[i]));
 			//panic("[yurak] alloc fail panic\n");
@@ -252,7 +246,7 @@ uint32_t hal_tui_alloc(struct tui_alloc_buffer_t *allocbuffer,
 			return ret;
 		}
 		//ion_phys(client, handle[i], (unsigned long *)&phys_addr, &phy_size);
-		phys_addr = sg_phys(handle[i]->buffer->sg_table->sgl);
+		phys_addr = sg_phys(g_sgt->sgl);
 		pr_info("[%s:%d] phys_addr:%lx\n", __func__, __LINE__,
 			phys_addr);
 		allocbuffer[i].pa = (uint64_t) phys_addr;
@@ -359,12 +353,10 @@ void hal_tui_free(void)
 		if (!IS_ERR_OR_NULL(handle[i])) {
 			pr_info("[%s:%d] TUI buffer free idx:%d\n", __func__,
 				__LINE__, i);
-			ion_free(client, handle[i]);
+			dma_buf_put(handle[i]);
 			handle[i] = NULL;
 		}
 	}
-
-	ion_client_destroy(client);
 }
 
 uint32_t hal_tui_deactivate(void)
