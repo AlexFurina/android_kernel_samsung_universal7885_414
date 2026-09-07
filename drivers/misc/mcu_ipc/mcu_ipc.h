@@ -79,6 +79,11 @@ static inline struct cpumask *get_default_cpu_mask(void)
 }
 #endif
 
+struct mcu_argos_info {
+	int irq;
+	u32 affinity;
+};
+
 int argos_irq_affinity_setup_label(unsigned int irq, const char *label,
 		struct cpumask *affinity_cpu_mask,
 		struct cpumask *default_cpu_mask);
