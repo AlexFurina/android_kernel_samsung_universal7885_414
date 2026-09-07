@@ -40,6 +40,7 @@ struct shm_plat_data {
 	unsigned t_size;
 	unsigned cp_size;
 	unsigned vss_size;
+	unsigned vparam_size;
 	unsigned acpm_size;
 	unsigned ipc_off;
 	unsigned ipc_size;
@@ -63,21 +64,6 @@ struct shm_plat_data {
 } pdata;
 
 #ifdef CONFIG_CP_RAM_LOGGING
-static int memshare_open(struct inode *inode, struct file *filep)
-{
-	shm_get_cplog_region();
-	return 0;
-}
-
-static int memshare_release(struct inode *inode, struct file *filep)
-{
-	if (pdata.v_cplog) {
-		vunmap(pdata.v_cplog);
-		pdata.v_cplog = NULL;
-	}
-	return 0;
-}
-
 static ssize_t memshare_read(struct file *filep, char __user *buf,
 		size_t count, loff_t *pos)
 {
@@ -87,9 +73,16 @@ static ssize_t memshare_read(struct file *filep, char __user *buf,
 	unsigned long addr = 0;
 	int copy_size = 0;
 	int ret = 0;
+	int try_cnt = 3;
+	size_t alloc_size = SZ_1M;
 
 	if ((filep->f_flags & O_NONBLOCK) && !rd_dev->data_ready)
 		return -EAGAIN;
+
+	if (*pos < 0 || *pos >= rd_dev->cplog_size) {
+		pr_err("%s: tried to read over limit (%lld)\n", __func__, *pos);
+		return 0;
+	}
 
 	data_left = rd_dev->cplog_size - *pos;
 	addr = rd_dev->p_cplog_addr + *pos;
@@ -102,13 +95,21 @@ static ssize_t memshare_read(struct file *filep, char __user *buf,
 		goto ramdump_done;
 	}
 
-	copy_size = min(count, (size_t)SZ_1M);
-	copy_size = min((unsigned long)copy_size, data_left);
-	device_mem = shm_get_cplog_region() + *pos;
+	while (try_cnt--) {
+		copy_size = min(count, (size_t)alloc_size);
+		copy_size = min((unsigned long)copy_size, data_left);
+		device_mem = shm_request_region(pdata.p_cplog_addr + *pos,
+				copy_size);
+
+		if (device_mem)
+			break;
+
+		alloc_size /= 2;
+	}
 
 	if (device_mem == NULL) {
-		pr_err("%s(%s): Unable to ioremap: addr %lx, size %d\n", __func__,
-				pdata.name, addr, copy_size);
+		pr_err("%s(%s): Unable to ioremap: addr %lx, size %d\n",
+				__func__, pdata.name, addr, copy_size);
 		ret = -ENOMEM;
 		goto ramdump_done;
 	}
@@ -117,6 +118,7 @@ static ssize_t memshare_read(struct file *filep, char __user *buf,
 		pr_err("%s(%s): Couldn't copy all data to user.", __func__,
 				rd_dev->name);
 		ret = -EFAULT;
+		vunmap(device_mem);
 		goto ramdump_done;
 	}
 
@@ -124,6 +126,8 @@ static ssize_t memshare_read(struct file *filep, char __user *buf,
 
 	pr_debug("%s(%s): Read %d bytes from address %lx.", __func__,
 			pdata.name, copy_size, addr);
+	
+	vunmap(device_mem);
 
 	return copy_size;
 
@@ -133,8 +137,6 @@ ramdump_done:
 }
 
 static const struct file_operations memshare_file_ops = {
-	.open = memshare_open,
-	.release = memshare_release,
 	.read = memshare_read
 };
 
@@ -222,9 +224,25 @@ unsigned shm_get_zmb_size(void)
 	return pdata.zmb_size;
 }
 
+unsigned shm_get_vss_base(void)
+{
+	return shm_get_phys_base() + shm_get_cp_size();
+}
+
 unsigned shm_get_vss_size(void)
 {
 	return pdata.vss_size;
+}
+
+unsigned shm_get_vparam_base(void)
+{
+	return shm_get_phys_base() + shm_get_cp_size() + shm_get_vss_size() +
+			shm_get_ipc_rgn_size() +shm_get_zmb_size();
+}
+
+unsigned shm_get_vparam_size(void)
+{
+	return pdata.vparam_size;
 }
 
 unsigned shm_get_acpm_size(void)
@@ -375,21 +393,6 @@ void __iomem *shm_get_vss_region(void)
 	return pdata.v_vss;
 }
 
-#define VSS_MAGIC_OFFSET 0x500000
-void clean_vss_magic_code(void)
-{
-	u8* vss_base;
-	u32 __iomem * vss_magic;
-
-	pr_err("%s: set vss magic code as 0\n", __func__);
-
-	vss_base = (u8*)shm_get_vss_region();
-	vss_magic = (u32 __iomem *)(vss_base + VSS_MAGIC_OFFSET);
-
-	/* set VSS magic code as 0*/
-	iowrite32(0, vss_magic);
-}
-
 void __iomem *shm_get_acpm_region(void)
 {
 	if (!pdata.v_acpm)
@@ -460,7 +463,7 @@ static int __init modem_if_reserved_mem_setup(struct reserved_mem *remem)
    pdata.p_addr = remem->base;
    pdata.t_size = remem->size;
 
-   pr_err("%s: memory reserved: paddr=%lx, t_size=%u\n",
+   pr_err("%s: memory reserved: paddr=%lu, t_size=%u\n",
         __func__, pdata.p_addr, pdata.t_size);
 
    return 0;
@@ -473,7 +476,7 @@ static int __init modem_if_reserved_cplog_setup(struct reserved_mem *remem)
    pdata.p_cplog_addr = remem->base;
    pdata.cplog_size = remem->size;
 
-   pr_err("%s: cplog memory reserved: paddr=%lx, t_size=%u\n",
+   pr_err("%s: cplog memory reserved: paddr=%lu, t_size=%u\n",
         __func__, pdata.p_cplog_addr, pdata.cplog_size);
 
    return 0;
@@ -599,6 +602,10 @@ static int shm_probe(struct platform_device *pdev)
 					pdata.vss_size = cp_mem_map.sExtBin[i].ext_bin_size;
 					dev_err(dev, "VSS: 0x%08X: 0x%08X\n",
 							cp_mem_map.sExtBin[i].ext_bin_addr, pdata.vss_size);
+				} else if (strncmp((const char *)ptr, "VPA", 3) == 0) {
+					pdata.vparam_size = cp_mem_map.sExtBin[i].ext_bin_size;
+					dev_err(dev, "VSS PARAM: 0x%08X: 0x%08X\n",
+							cp_mem_map.sExtBin[i].ext_bin_addr, pdata.vparam_size);
 				} else if (strncmp((const char *)ptr, "ZMC", 3) == 0) {
 					pdata.zmb_off = cp_mem_map.sExtBin[i].ext_bin_addr;
 					pdata.zmb_size = cp_mem_map.sExtBin[i].ext_bin_size;
@@ -626,6 +633,22 @@ static int shm_probe(struct platform_device *pdev)
 			dev_err(dev, "failed to get property, ipc_size\n");
 			return -EINVAL;
 		}
+
+#ifdef CONFIG_SEC_SIPC_MODEM_IF
+		ret = of_property_read_u32(dev->of_node, "shmem,zmb_offset",
+				&pdata.zmb_off);
+		if (ret) {
+			dev_err(dev, "failed to get property, zmb_offset\n");
+			return -EINVAL;
+		}
+
+		ret = of_property_read_u32(dev->of_node, "shmem,zmb_size",
+				&pdata.zmb_size);
+		if (ret) {
+			dev_err(dev, "failed to get property, zmb_size\n");
+			return -EINVAL;
+		}
+#endif
 
 		ret = of_property_read_u32(dev->of_node, "shmem,cp_size",
 				&pdata.cp_size);
