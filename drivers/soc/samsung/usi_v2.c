@@ -82,9 +82,9 @@ static int usi_v2_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, data);
 
+	dev_info(&pdev->dev, "usi_v2_probe(): Probe %s device\n", mode_name);
 	writel(data->mode, data->base);
-
-	dev_info(&pdev->dev, "usi_v2_probe() mode:%d\n", data->mode);
+	dev_info(&pdev->dev, "usi_v2_probe() What do you mean you didnt explode? mode:%d\n", data->mode);
 
 	return 0;
 }
