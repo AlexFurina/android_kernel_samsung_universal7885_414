@@ -24,7 +24,7 @@
 #include "exynos9810-pinctrl.dtsi"
 #include "exynos9810-pm-domains.dtsi"
 #include "exynos9810-etm.dtsi"
-#include "exynos9810-inputbooster.dtsi"
+//#include "exynos9810-inputbooster.dtsi"
 #include "exynos9810-debug.dtsi"
 #include "exynos9810-mfc.dtsi"
 #include "exynos9810-ufs.dtsi"
