@@ -60,26 +60,23 @@
 
 enum bit_debug_flags {
 	DEBUG_FLAG_FMT,
-	DEBUG_FLAG_MISC,
 	DEBUG_FLAG_RFS,
 	DEBUG_FLAG_PS,
 	DEBUG_FLAG_BOOT,
 	DEBUG_FLAG_DUMP,
 	DEBUG_FLAG_CSVT,
-	DEBUG_FLAG_LOG,
-	DEBUG_FLAG_ALL,
+	DEBUG_FLAG_LOG
 };
 
-#define DEBUG_FLAG_DEFAULT    (1 << DEBUG_FLAG_FMT | 1 << DEBUG_FLAG_MISC)
 #ifdef DEBUG_MODEM_IF_PS_DATA
-static unsigned long dflags = (DEBUG_FLAG_DEFAULT | 1 << DEBUG_FLAG_RFS | 1 << DEBUG_FLAG_PS);
+static unsigned long dflags = (1 << DEBUG_FLAG_FMT | 1 << DEBUG_FLAG_RFS | 1 << DEBUG_FLAG_PS);
 #else
-static unsigned long dflags = (DEBUG_FLAG_DEFAULT);
+static unsigned long dflags = (1 << DEBUG_FLAG_FMT);
 #endif
 module_param(dflags, ulong, S_IRUGO | S_IWUSR | S_IWGRP);
 MODULE_PARM_DESC(dflags, "modem_v1 debug flags");
 
-static unsigned long wakeup_dflags = (DEBUG_FLAG_DEFAULT | 1 << DEBUG_FLAG_RFS | 1 << DEBUG_FLAG_PS);
+static unsigned long wakeup_dflags = (1 << DEBUG_FLAG_FMT | 1 << DEBUG_FLAG_RFS | 1 << DEBUG_FLAG_PS);
 module_param(wakeup_dflags, ulong, S_IRUGO | S_IWUSR | S_IWGRP);
 MODULE_PARM_DESC(wakeup_dflags, "modem_v1 wakeup debug flags");
 
@@ -307,25 +304,22 @@ static inline bool log_enabled(u8 ch)
 {
 	unsigned long flags = get_log_flags();
 
-	if (test_bit(DEBUG_FLAG_ALL, &flags))
-		return 1;
-	if (sipc_ps_ch(ch))
-		return test_bit(DEBUG_FLAG_PS, &flags);
 	if (sipc5_fmt_ch(ch))
 		return test_bit(DEBUG_FLAG_FMT, &flags);
-	if (sipc_log_ch(ch))
-		return test_bit(DEBUG_FLAG_LOG, &flags);
-	if (sipc5_rfs_ch(ch))
-		return test_bit(DEBUG_FLAG_RFS, &flags);
-	if (sipc_csd_ch(ch))
-		return test_bit(DEBUG_FLAG_CSVT, &flags);
-	if (sipc5_misc_ch(ch))
-		return test_bit(DEBUG_FLAG_MISC, &flags);
-	if (sipc5_boot_ch(ch))
+	else if (sipc5_boot_ch(ch))
 		return test_bit(DEBUG_FLAG_BOOT, &flags);
-	if (sipc5_dump_ch(ch))
+	else if (sipc5_dump_ch(ch))
 		return test_bit(DEBUG_FLAG_DUMP, &flags);
-	return 0;
+	else if (sipc5_rfs_ch(ch))
+		return test_bit(DEBUG_FLAG_RFS, &flags);
+	else if (sipc_csd_ch(ch))
+		return test_bit(DEBUG_FLAG_CSVT, &flags);
+	else if (sipc_log_ch(ch))
+		return test_bit(DEBUG_FLAG_LOG, &flags);
+	else if (sipc_ps_ch(ch))
+		return test_bit(DEBUG_FLAG_PS, &flags);
+	else
+		return false;
 }
 
 /* print ipc packet */
@@ -533,7 +527,7 @@ void stop_net_ifaces(struct link_device *ld)
 	unsigned long flags;
 	spin_lock_irqsave(&ld->netif_lock, flags);
 
-	if (!atomic_read(&ld->netif_stopped)) {
+	if (!atomic_read(&ld->netif_stopped) > 0) {
 		if (ld->msd)
 			netif_tx_flowctl(ld->msd, true);
 
@@ -1062,10 +1056,7 @@ int mif_request_irq(struct modem_irq *irq, irq_handler_t isr, void *data)
 		return ret;
 	}
 
-	enable_irq_wake(irq->num);
 	irq->active = true;
-	irq->registered = true;
-
 	mif_info("%s(#%d) handler registered (flags:0x%08lX)\n",
 		irq->name, irq->num, irq->flags);
 
@@ -1076,9 +1067,6 @@ void mif_enable_irq(struct modem_irq *irq)
 {
 	unsigned long flags;
 
-	if (irq->registered == false)
-		return;
-
 	spin_lock_irqsave(&irq->lock, flags);
 
 	if (irq->active) {
@@ -1088,7 +1076,6 @@ void mif_enable_irq(struct modem_irq *irq)
 	}
 
 	enable_irq(irq->num);
-	enable_irq_wake(irq->num);
 
 	irq->active = true;
 
@@ -1103,9 +1090,6 @@ void mif_disable_irq(struct modem_irq *irq)
 {
 	unsigned long flags;
 
-	if (irq->registered == false)
-		return;
-
 	spin_lock_irqsave(&irq->lock, flags);
 
 	if (!irq->active) {
@@ -1115,7 +1099,6 @@ void mif_disable_irq(struct modem_irq *irq)
 	}
 
 	disable_irq_nosync(irq->num);
-	disable_irq_wake(irq->num);
 
 	irq->active = false;
 
@@ -1124,33 +1107,6 @@ void mif_disable_irq(struct modem_irq *irq)
 
 exit:
 	spin_unlock_irqrestore(&irq->lock, flags);
-}
-
-void mif_disable_irq_sync(struct modem_irq *irq)
-{
-	if (irq->registered == false)
-		return;
-
-	spin_lock(&irq->lock);
-
-	if (!irq->active) {
-		spin_unlock(&irq->lock);
-		mif_err("%s(#%d) is not active <%pf>\n",
-				irq->name, irq->num, CALLER);
-		return;
-	}
-
-	spin_unlock(&irq->lock);
-
-	disable_irq(irq->num);
-	enable_irq_wake(irq->num);
-
-	spin_lock(&irq->lock);
-	irq->active = false;
-	spin_unlock(&irq->lock);
-
-	mif_info("%s(#%d) is disabled <%pf>\n",
-		irq->name, irq->num, CALLER);
 }
 
 struct file *mif_open_file(const char *path)

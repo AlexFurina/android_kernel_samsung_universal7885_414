@@ -74,6 +74,8 @@ enum legacy_ipc_map {
 	MAX_SIPC_MAP,
 };
 
+#define MAX_SIPC5_DEVICES	(IPC_RAW + 1)	/* FMT, RAW */
+
 #define MAX_SIPC_CHANNELS	256	/* 2 ^ 8		*/
 #define MAX_LINK_CHANNELS	32	/* up to 32 channels	*/
 
@@ -270,7 +272,8 @@ enum iodev_attr_bit {
 	ATTR_NO_CHECK_MAXQ,     /* no need to check rxq overflow condition */
 	ATTR_DUALSIM,		/* support Dual SIM */
 	ATTR_OPTION_REGION,	/* region & operator info */
-	ATTR_ZEROCOPY,		/* suppoert Zerocopy : 0x1 << 12*/
+	ATTR_ZEROCOPY,		/* support Zerocopy : 0x1 << 12*/
+	ATTR_SMAPPER,		/* support zerocopty with SMAPPER */
 };
 #define IODEV_ATTR(b)	(0x1 << b)
 
@@ -365,6 +368,7 @@ struct modem_mbox {
 	unsigned int int_ap2cp_wakeup;
 	unsigned int int_ap2cp_status;
 	unsigned int int_ap2cp_uart_noti;
+	unsigned int int_ap2cp_smapper;
 
 	unsigned int irq_cp2ap_msg;
 	unsigned int irq_cp2ap_active;
@@ -372,6 +376,7 @@ struct modem_mbox {
 	unsigned int irq_cp2ap_status;
 	unsigned int irq_cp2ap_wakelock;
 	unsigned int irq_cp2ap_rat_mode;
+	unsigned int irq_cp2ap_smapper;
 
 	/* Performance request */
 	unsigned int mbx_ap2cp_perf_req;
@@ -393,6 +398,8 @@ struct modem_mbox {
 	unsigned int sbi_lte_active_pos;
 	unsigned int sbi_cp_status_mask;
 	unsigned int sbi_cp_status_pos;
+	unsigned int sbi_cp_smapper_mask;
+	unsigned int sbi_cp_smapper_pos;
 	unsigned int sbi_cp2ap_wakelock_mask;
 	unsigned int sbi_cp2ap_wakelock_pos;
 	unsigned int sbi_cp2ap_rat_mode_mask;
@@ -402,6 +409,8 @@ struct modem_mbox {
 	unsigned int sbi_pda_active_pos;
 	unsigned int sbi_ap_status_mask;
 	unsigned int sbi_ap_status_pos;
+	unsigned int sbi_ap2cp_wakelock_mask;
+	unsigned int sbi_ap2cp_wakelock_pos;
 
 	unsigned int sbi_ap2cp_kerneltime_sec_mask;
 	unsigned int sbi_ap2cp_kerneltime_sec_pos;
@@ -477,10 +486,6 @@ struct modem_data {
 	/* MIF buffer information */
 	unsigned int buff_offset;
 	unsigned int buff_size;
-
-	/* buff pool 2nd information */
-	unsigned long int bufpool_2nd_base;
-	unsigned int bufpool_2nd_size;
 #endif
 
 	/* Switch with 2 links in a modem */
@@ -496,6 +501,9 @@ struct modem_data {
 
 	/* SIPC version */
 	enum sipc_ver ipc_version;
+
+	/* the number of real IPC devices -> (IPC_RAW + 1) or (IPC_RFS + 1) */
+	unsigned int max_ipc_dev;
 
 	/* Information of IO devices */
 	unsigned int num_iodevs;
@@ -520,7 +528,6 @@ struct modem_irq {
 	char name[MAX_NAME_LEN];
 	unsigned long flags;
 	bool active;
-	bool registered;
 };
 
 #define MODEM_BOOT_DEV_SPI "spi_boot_link"
@@ -543,39 +550,31 @@ struct modem_boot_spi {
 #define mif_dt_read_enum(np, prop, dest) \
 	do { \
 		u32 val; \
-		if (of_property_read_u32(np, prop, &val)) { \
-			mif_err("%s is not defined\n", prop); \
+		if (of_property_read_u32(np, prop, &val)) \
 			return -EINVAL; \
-		} \
 		dest = (__typeof__(dest))(val); \
 	} while (0)
 
 #define mif_dt_read_bool(np, prop, dest) \
 	do { \
 		u32 val; \
-		if (of_property_read_u32(np, prop, &val)) { \
-			mif_err("%s is not defined\n", prop); \
+		if (of_property_read_u32(np, prop, &val)) \
 			return -EINVAL; \
-		} \
 		dest = val ? true : false; \
 	} while (0)
 
 #define mif_dt_read_string(np, prop, dest) \
 	do { \
 		if (of_property_read_string(np, prop, \
-				(const char **)&dest)) { \
-			mif_err("%s is not defined\n", prop); \
+				(const char **)&dest)) \
 			return -EINVAL; \
-		} \
 	} while (0)
 
 #define mif_dt_read_u32(np, prop, dest) \
 	do { \
 		u32 val; \
-		if (of_property_read_u32(np, prop, &val)) { \
-			mif_err("%s is not defined\n", prop); \
+		if (of_property_read_u32(np, prop, &val)) \
 			return -EINVAL; \
-		} \
 		dest = val; \
 	} while (0)
 
@@ -591,14 +590,14 @@ struct modem_boot_spi {
 #define FUNC	(__func__)
 #define CALLER	(__builtin_return_address(0))
 
+#define mif_err_limited(fmt, ...) \
+	printk_ratelimited(KERN_ERR LOG_TAG "%s: " pr_fmt(fmt), __func__, ##__VA_ARGS__)
 #define mif_err(fmt, ...) \
 	pr_err(LOG_TAG "%s: " pr_fmt(fmt), __func__, ##__VA_ARGS__)
 #define mif_debug(fmt, ...) \
 	pr_debug(LOG_TAG "%s: " pr_fmt(fmt), __func__, ##__VA_ARGS__)
 #define mif_info(fmt, ...) \
 	pr_info(LOG_TAG "%s: " pr_fmt(fmt), __func__, ##__VA_ARGS__)
-#define mif_err_limited(fmt, ...) \
-	net_ratelimited_function(mif_err, fmt, ##__VA_ARGS__)
 #define mif_trace(fmt, ...) \
 	printk(KERN_DEBUG "mif: %s: %d: called(%pF): " fmt, \
 		__func__, __LINE__, __builtin_return_address(0), ##__VA_ARGS__)

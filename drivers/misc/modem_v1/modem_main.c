@@ -288,6 +288,9 @@ static int parse_dt_common_pdata(struct device_node *np,
 
 	mif_dt_read_u32(np, "mif,num_iodevs", pdata->num_iodevs);
 
+	mif_dt_read_u32(np, "mif,buff_offset", pdata->buff_offset);
+	mif_dt_read_u32(np, "mif,buff_size", pdata->buff_size);
+
 	return 0;
 }
 
@@ -465,65 +468,69 @@ static int parse_dt_mbox_pdata(struct device *dev, struct device_node *np,
 	if (pdata->link_types != LINKTYPE(LINKDEV_SHMEM))
 		return ret;
 
-	mbox = (struct modem_mbox *)devm_kzalloc(dev, sizeof(struct modem_mbox), GFP_KERNEL);
+	mbox = devm_kzalloc(dev, sizeof(struct modem_mbox), GFP_KERNEL);
 	if (!mbox) {
 		mif_err("mbox: failed to alloc memory\n");
 		return -ENOMEM;
 	}
 	pdata->mbx = mbox;
 
-	mif_dt_read_u32(np, "mif,int_ap2cp_msg", mbox->int_ap2cp_msg);
-	mif_dt_read_u32(np, "mif,int_ap2cp_wakeup", mbox->int_ap2cp_wakeup);
-	mif_dt_read_u32(np, "mif,int_ap2cp_status", mbox->int_ap2cp_status);
-	mif_dt_read_u32(np, "mif,int_ap2cp_active", mbox->int_ap2cp_active);
-	mif_dt_read_u32(np, "mif,int_ap2cp_uart_noti", mbox->int_ap2cp_uart_noti);
+	mif_dt_read_u32 (np, "mif,int_ap2cp_msg", mbox->int_ap2cp_msg);
+	mif_dt_read_u32 (np, "mif,int_ap2cp_wakeup", mbox->int_ap2cp_wakeup);
+	mif_dt_read_u32 (np, "mif,int_ap2cp_status", mbox->int_ap2cp_status);
+	mif_dt_read_u32 (np, "mif,int_ap2cp_active", mbox->int_ap2cp_active);
+	mif_dt_read_u32_noerr (np, "mif,int_ap2cp_smapper", mbox->int_ap2cp_smapper);
 
-	mif_dt_read_u32(np, "mif,irq_cp2ap_msg", mbox->irq_cp2ap_msg);
-	mif_dt_read_u32(np, "mif,irq_cp2ap_status", mbox->irq_cp2ap_status);
-	mif_dt_read_u32(np, "mif,irq_cp2ap_perf_req_cpu",
+	mif_dt_read_u32 (np, "mif,irq_cp2ap_msg", mbox->irq_cp2ap_msg);
+	mif_dt_read_u32 (np, "mif,irq_cp2ap_status", mbox->irq_cp2ap_status);
+	mif_dt_read_u32 (np, "mif,irq_cp2ap_perf_req_cpu",
 		mbox->irq_cp2ap_perf_req_cpu);
-	mif_dt_read_u32(np, "mif,irq_cp2ap_perf_req_mif",
+	mif_dt_read_u32 (np, "mif,irq_cp2ap_perf_req_mif",
 		mbox->irq_cp2ap_perf_req_mif);
 	mif_dt_read_u32 (np, "mif,irq_cp2ap_perf_req_int",
 		mbox->irq_cp2ap_perf_req_int);
-	mif_dt_read_u32(np, "mif,irq_cp2ap_active", mbox->irq_cp2ap_active);
-	mif_dt_read_u32(np, "mif,irq_cp2ap_wakelock", mbox->irq_cp2ap_wakelock);
+	mif_dt_read_u32 (np, "mif,irq_cp2ap_active", mbox->irq_cp2ap_active);
+	mif_dt_read_u32 (np, "mif,irq_cp2ap_wakelock", mbox->irq_cp2ap_wakelock);
+	mif_dt_read_u32 (np, "mif,irq_cp2ap_ratmode", mbox->irq_cp2ap_rat_mode);
+	mif_dt_read_u32 (np, "mif,irq_cp2ap_smapper", mbox->irq_cp2ap_smapper);
 
-	mif_dt_read_u32(np, "mbx_ap2cp_msg", mbox->mbx_ap2cp_msg);
-	mif_dt_read_u32(np, "mbx_cp2ap_msg", mbox->mbx_cp2ap_msg);
-	mif_dt_read_u32(np, "mbx_cp2ap_united_status", mbox->mbx_cp2ap_status);
-	mif_dt_read_u32(np, "mbx_ap2cp_united_status", mbox->mbx_ap2cp_status);
-	mif_dt_read_u32(np, "mbx_cp2ap_dvfsreq_cpu", mbox->mbx_cp2ap_perf_req_cpu);
-	mif_dt_read_u32(np, "mbx_cp2ap_dvfsreq_mif", mbox->mbx_cp2ap_perf_req_mif);
-	mif_dt_read_u32(np, "mbx_cp2ap_dvfsreq_int", mbox->mbx_cp2ap_perf_req_int);
-	mif_dt_read_u32(np, "mbx_ap2cp_kerneltime", mbox->mbx_ap2cp_kerneltime);
+	mif_dt_read_u32 (np, "mbx_ap2cp_msg", mbox->mbx_ap2cp_msg);
+	mif_dt_read_u32 (np, "mbx_cp2ap_msg", mbox->mbx_cp2ap_msg);
+	mif_dt_read_u32 (np, "mbx_cp2ap_united_status", mbox->mbx_cp2ap_status);
+	mif_dt_read_u32 (np, "mbx_ap2cp_united_status", mbox->mbx_ap2cp_status);
+	mif_dt_read_u32 (np, "mbx_cp2ap_dvfsreq_cpu", mbox->mbx_cp2ap_perf_req_cpu);
+	mif_dt_read_u32 (np, "mbx_cp2ap_dvfsreq_mif", mbox->mbx_cp2ap_perf_req_mif);
+	mif_dt_read_u32 (np, "mbx_cp2ap_dvfsreq_int", mbox->mbx_cp2ap_perf_req_int);
+	mif_dt_read_u32 (np, "mbx_ap2cp_kerneltime", mbox->mbx_ap2cp_kerneltime);
 
 	/* Status Bit Info */
-	mif_dt_read_u32(np, "sbi_lte_active_mask", mbox->sbi_lte_active_mask);
-	mif_dt_read_u32(np, "sbi_lte_active_pos", mbox->sbi_lte_active_pos);
-	mif_dt_read_u32(np, "sbi_cp_status_mask", mbox->sbi_cp_status_mask);
-	mif_dt_read_u32(np, "sbi_cp_status_pos", mbox->sbi_cp_status_pos);
-	mif_dt_read_u32(np, "sbi_cp_rat_mode_mask", mbox->sbi_cp2ap_rat_mode_mask);
-	mif_dt_read_u32(np, "sbi_cp_rat_mode_pos", mbox->sbi_cp2ap_rat_mode_pos);
-	mif_dt_read_u32(np, "sbi_cp2ap_wakelock_mask", mbox->sbi_cp2ap_wakelock_mask);
-	mif_dt_read_u32(np, "sbi_cp2ap_wakelock_pos", mbox->sbi_cp2ap_wakelock_pos);
-	mif_dt_read_u32(np, "sbi_pda_active_mask", mbox->sbi_pda_active_mask);
-	mif_dt_read_u32(np, "sbi_pda_active_pos", mbox->sbi_pda_active_pos);
-	mif_dt_read_u32(np, "sbi_ap_status_mask", mbox->sbi_ap_status_mask);
-	mif_dt_read_u32(np, "sbi_ap_status_pos", mbox->sbi_ap_status_pos);
-	mif_dt_read_u32(np, "sbi_crash_type_mask", mbox->sbi_crash_type_mask);
-	mif_dt_read_u32(np, "sbi_crash_type_pos", mbox->sbi_crash_type_pos);
+	mif_dt_read_u32 (np, "sbi_lte_active_mask", mbox->sbi_lte_active_mask);
+	mif_dt_read_u32 (np, "sbi_lte_active_pos", mbox->sbi_lte_active_pos);
+	mif_dt_read_u32 (np, "sbi_cp_status_mask", mbox->sbi_cp_status_mask);
+	mif_dt_read_u32 (np, "sbi_cp_status_pos", mbox->sbi_cp_status_pos);
+	mif_dt_read_u32_noerr (np, "sbi_cp_smapper_mask", mbox->sbi_cp_smapper_mask);
+	mif_dt_read_u32_noerr (np, "sbi_cp_smapper_pos", mbox->sbi_cp_smapper_pos);
+	mif_dt_read_u32 (np, "sbi_cp_rat_mode_mask", mbox->sbi_cp2ap_rat_mode_mask);
+	mif_dt_read_u32 (np, "sbi_cp_rat_mode_pos", mbox->sbi_cp2ap_rat_mode_pos);
+	mif_dt_read_u32 (np, "sbi_cp2ap_wakelock_mask", mbox->sbi_cp2ap_wakelock_mask);
+	mif_dt_read_u32 (np, "sbi_cp2ap_wakelock_pos", mbox->sbi_cp2ap_wakelock_pos);
+	mif_dt_read_u32 (np, "sbi_pda_active_mask", mbox->sbi_pda_active_mask);
+	mif_dt_read_u32 (np, "sbi_pda_active_pos", mbox->sbi_pda_active_pos);
+	mif_dt_read_u32 (np, "sbi_ap_status_mask", mbox->sbi_ap_status_mask);
+	mif_dt_read_u32 (np, "sbi_ap_status_pos", mbox->sbi_ap_status_pos);
+	mif_dt_read_u32_noerr (np, "sbi_ap2cp_wakelock_mask", mbox->sbi_ap2cp_wakelock_mask);
+	mif_dt_read_u32_noerr (np, "sbi_ap2cp_wakelock_pos", mbox->sbi_ap2cp_wakelock_pos);
+	mif_dt_read_u32 (np, "sbi_crash_type_mask", mbox->sbi_crash_type_mask);
+	mif_dt_read_u32 (np, "sbi_crash_type_pos", mbox->sbi_crash_type_pos);
 
-	mif_dt_read_u32(np, "sbi_ap2cp_kerneltime_sec_mask",
+	mif_dt_read_u32 (np, "sbi_ap2cp_kerneltime_sec_mask",
 			mbox->sbi_ap2cp_kerneltime_sec_mask);
-	mif_dt_read_u32(np, "sbi_ap2cp_kerneltime_sec_pos",
+	mif_dt_read_u32 (np, "sbi_ap2cp_kerneltime_sec_pos",
 			mbox->sbi_ap2cp_kerneltime_sec_pos);
-	mif_dt_read_u32(np, "sbi_ap2cp_kerneltime_usec_mask",
+	mif_dt_read_u32 (np, "sbi_ap2cp_kerneltime_usec_mask",
 			mbox->sbi_ap2cp_kerneltime_usec_mask);
-	mif_dt_read_u32(np, "sbi_ap2cp_kerneltime_usec_pos",
+	mif_dt_read_u32 (np, "sbi_ap2cp_kerneltime_usec_pos",
 			mbox->sbi_ap2cp_kerneltime_usec_pos);
-	mif_dt_read_u32(np, "sbi_uart_noti_mask", mbox->sbi_uart_noti_mask);
-	mif_dt_read_u32(np, "sbi_uart_noti_pos", mbox->sbi_uart_noti_pos);
 
 	return ret;
 }
@@ -557,7 +564,6 @@ static int parse_dt_iodevs_pdata(struct device *dev, struct device_node *np,
 		/* mif_dt_read_string(child, "iod,app", iod->app); */
 		mif_dt_read_u32_noerr(child, "iod,max_tx_size",
 				iod->ul_buffer_size);
-
 		if (iod->attrs & IODEV_ATTR(ATTR_SBD_IPC)) {
 			mif_dt_read_u32(child, "iod,ul_num_buffers",
 					iod->ul_num_buffers);
@@ -879,8 +885,6 @@ static void modem_shutdown(struct platform_device *pdev)
 
 	mc->ops.modem_shutdown(mc);
 	mc->phone_state = STATE_OFFLINE;
-
-	clean_vss_magic_code();
 
 	mif_err("%s\n", mc->name);
 }

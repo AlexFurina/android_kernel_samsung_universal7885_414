@@ -155,7 +155,7 @@ struct __packed shmem_4mb_phys_map {
 #ifdef GROUP_MEM_IPC_DEVICE
 
 struct mem_ipc_device {
-	enum legacy_ipc_map id;
+	enum dev_format id;
 	char name[16];
 
 	struct circ_queue txq;
@@ -335,7 +335,7 @@ struct mem_link_device {
 	struct resource *syscp_info;
 
 	/**
-	 * Actual logical IPC devices (for IPC_MAP_FMT, IPC_MAP_NORM_RAW...)
+	 * Actual logical IPC devices (for IPC_FMT and IPC_RAW)
 	 */
 	struct mem_ipc_device ipc_dev[MAX_SIPC_MAP];
 
@@ -365,6 +365,9 @@ struct mem_link_device {
 	unsigned int sbi_cp_status_mask;
 	unsigned int sbi_cp_status_pos;
 
+	unsigned int sbi_cp_smapper_mask;
+	unsigned int sbi_cp_smapper_pos;
+
 	unsigned int mbx_perf_req;
 	unsigned int mbx_perf_req_cpu;
 	unsigned int mbx_perf_req_mif;
@@ -377,6 +380,8 @@ struct mem_link_device {
 	struct work_struct pm_qos_work_cpu;
 	struct work_struct pm_qos_work_mif;
 	struct work_struct pm_qos_work_int;
+
+	unsigned int irq_smapper;
 
 	struct freq_table cl0_table;
 	struct freq_table cl1_table;
@@ -416,7 +421,6 @@ struct mem_link_device {
 
 	struct hrtimer tx_timer;
 	struct hrtimer sbd_tx_timer;
-	struct hrtimer sbd_print_timer;
 
 	struct work_struct page_reclaim_work;
 
@@ -498,6 +502,16 @@ struct mem_link_device {
 	unsigned int memcpy_packet_count;
 	unsigned int zeromemcpy_packet_count;
 
+	atomic_t forced_cp_crash;
+	struct timer_list crash_ack_timer;
+
+	spinlock_t state_lock;
+	enum link_state state;
+
+	struct pktlog_data *pktlog;
+
+	struct crash_reason crash_reason;
+
 #ifdef CONFIG_LINK_DEVICE_NAPI
 	struct net_device dummy_net;
 	struct napi_struct mld_napi;
@@ -509,18 +523,6 @@ struct mem_link_device {
 #ifdef CONFIG_MODEM_IF_NET_GRO
 	struct timespec flush_time;
 #endif
-
-	atomic_t forced_cp_crash;
-	struct timer_list crash_ack_timer;
-
-	spinlock_t state_lock;
-	enum link_state state;
-
-	struct pktlog_data *pktlog;
-
-	struct crash_reason crash_reason;
-
-	struct notifier_block reboot_nb;
 };
 
 #define to_mem_link_device(ld) \
@@ -738,16 +740,16 @@ static inline enum dev_format dev_id(enum sipc_ch_id ch)
 	return sipc5_fmt_ch(ch) ? IPC_FMT : IPC_RAW;
 }
 
-static inline enum legacy_ipc_map get_mmap_idx(enum sipc_ch_id ch,
+static inline enum dev_format get_mmap_idx(enum sipc_ch_id ch,
 		struct sk_buff *skb)
 {
 	if (sipc5_fmt_ch(ch))
 		return IPC_MAP_FMT;
 #ifdef CONFIG_MODEM_IF_LEGACY_QOS
-		return (skb->queue_mapping == 1) ?
-			IPC_MAP_HPRIO_RAW : IPC_MAP_NORM_RAW;
+	return (skb->queue_mapping == 1) ?
+		IPC_MAP_HPRIO_RAW : IPC_MAP_NORM_RAW;
 #else
-		return IPC_MAP_NORM_RAW;
+	return IPC_MAP_NORM_RAW;
 #endif
 }
 
@@ -945,7 +947,5 @@ void iosm_event_bh(struct mem_link_device *mld, u16 cmd);
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 extern int is_rndis_use(void);
 #endif
-
-extern void pass_skb_to_net(struct mem_link_device *mld, struct sk_buff *skb);
 
 #endif

@@ -25,15 +25,12 @@
 #include <linux/smc.h>
 #include <linux/modem_notifier.h>
 #include <soc/samsung/pmu-cp.h>
-#include <soc/samsung/exynos-pmu.h>
 
 #include "modem_prj.h"
 #include "modem_utils.h"
 #include "link_device_memory.h"
 
 #include <soc/samsung/cal-if.h>
-#include <soc/samsung/exynos-modem-ctrl.h>
-#include <linux/mcu_ipc.h>
 
 #ifdef CONFIG_EXYNOS_BUSMONITOR
 #include <linux/exynos-busmon.h>
@@ -147,7 +144,7 @@ static void cp_active_handler(void *arg)
 		mif_err("new_state = %s\n", cp_state_str(new_state));
 
 		if (old_state == STATE_ONLINE)
-			modem_notify_event(MODEM_EVENT_RESET);
+			modem_notify_event(MODEM_EVENT_EXIT);
 
 		list_for_each_entry(iod, &mc->modem_state_notify_list, list) {
 			if (iod && atomic_read(&iod->opened) > 0)
@@ -313,7 +310,6 @@ static int init_mailbox_regs(struct modem_ctl *mc)
 static int ss310ap_on(struct modem_ctl *mc)
 {
 	int ret;
-	struct io_device *iod;
 	int cp_active = mbox_extract_value(MCU_CP, mc->mbx_cp_status,
 						mc->sbi_lte_active_mask, mc->sbi_lte_active_pos);
 	int cp_status = mbox_extract_value(MCU_CP, mc->mbx_cp_status,
@@ -361,13 +357,8 @@ static int ss310ap_on(struct modem_ctl *mc)
 			cal_cp_reset_release();
 		} else {
 			mif_err("CP first Init!\n");
-			exynos_pmu_shared_reg_enable();
 			cal_cp_init();
 		}
-
-		list_for_each_entry(iod, &mc->modem_state_notify_list, list)
-			iod->modem_state_changed(iod, STATE_BOOTING);
-		exynos_pmu_shared_reg_disable();
 #else
 		if (exynos_get_cp_power_status() > 0) {
 			mif_err("CP aleady Power on, Just start!\n");
@@ -397,7 +388,10 @@ static int ss310ap_off(struct modem_ctl *mc)
 
 	mbox_set_interrupt(MCU_CP, mc->int_cp_wakeup);
 	msleep(5);
-#ifndef CONFIG_CP_PMUCAL
+#ifdef CONFIG_CP_PMUCAL
+	cal_cp_enable_dump_pc_no_pg();
+	cal_cp_reset_assert();
+#else
 	exynos_set_cp_power_onoff(CP_POWER_OFF);
 #endif
 
@@ -435,7 +429,10 @@ static int ss310ap_shutdown(struct modem_ctl *mc)
 exit:
 	mbox_set_interrupt(MCU_CP, mc->int_cp_wakeup);
 	msleep(5);
-#ifndef CONFIG_CP_PMUCAL
+#ifdef CONFIG_CP_PMUCAL
+	cal_cp_enable_dump_pc_no_pg();
+	cal_cp_reset_assert();
+#else
 	exynos_set_cp_power_onoff(CP_POWER_OFF);
 #endif
 	mif_err("---\n");
@@ -445,13 +442,7 @@ exit:
 static int ss310ap_reset(struct modem_ctl *mc)
 {
 	void __iomem *base = shm_get_ipc_region();
-	struct link_device *ld = get_current_link(mc->iod);
-	struct mem_link_device *mld = to_mem_link_device(ld);
-
 	mif_err("+++\n");
-
-	if (hrtimer_active(&mld->sbd_print_timer))
-		hrtimer_cancel(&mld->sbd_print_timer);
 
 	/* mc->phone_state = STATE_OFFLINE; */
 	if (mc->phone_state == STATE_OFFLINE)
@@ -478,9 +469,8 @@ static int ss310ap_reset(struct modem_ctl *mc)
 #endif
 		mbox_set_interrupt(MCU_CP, mc->int_cp_wakeup);
 		msleep(5);
-		exynos_enable_cp_dump_pc();
 #ifdef CONFIG_CP_PMUCAL
-		exynos_pmu_shared_reg_enable();
+		cal_cp_enable_dump_pc_no_pg();
 		cal_cp_reset_assert();
 #ifdef CONFIG_SOC_EXYNOS9810
 		cal_cp_reset_release();
@@ -511,9 +501,6 @@ static int ss310ap_boot_on(struct modem_ctl *mc)
 			iod->modem_state_changed(iod, STATE_BOOTING);
 	}
 
-	/* notify current modem state */
-	modem_notify_event(MODEM_EVENT_BOOTING);
-
 	while (mbox_extract_value(MCU_CP, mc->mbx_cp_status,
 				mc->sbi_cp_status_mask, mc->sbi_cp_status_pos) == 0) {
 		if (--cnt > 0)
@@ -540,8 +527,9 @@ static int ss310ap_boot_off(struct modem_ctl *mc)
 	int err = 0;
 	mif_info("+++\n");
 
-	exynos_disable_cp_dump_pc();
-
+#ifdef CONFIG_CP_PMUCAL
+	cal_cp_disable_dump_pc_no_pg();
+#endif
 	reinit_completion(&mc->init_cmpl);
 	remain = wait_for_completion_timeout(&mc->init_cmpl, MIF_INIT_TIMEOUT);
 	if (remain == 0) {
@@ -610,46 +598,6 @@ int ss310ap_send_panic_noti_ext(void)
 }
 EXPORT_SYMBOL(ss310ap_send_panic_noti_ext);
 
-#ifdef CONFIG_CP_UART_NOTI
-void send_uart_noti_to_modem(int val)
-{
-	unsigned int __maybe_unused tmp = 0;
-	if (g_mc) {
-		mif_err("Send Uart noti to modem(%d) AP : 0 / CP : 1\n", val);
-
-#ifdef CONFIG_PMU_UART_SWITCH
-		if (val == MODEM_CTRL_UART_CP) {
-			mif_info("SEL_TXD_GPIO_0 to CP UART TXD\n");
-			exynos_pmu_update(EXYNOS_PMU_UART_IO_SHARE_CTRL, 0x3 << 24, 1 << 24);	/* CP UART TXD */
-			exynos_pmu_update(EXYNOS_PMU_UART_IO_SHARE_CTRL, 0x3 << 16, 0x0 << 16);	/* SEL_RXD_AP_UART => disable */
-			exynos_pmu_update(EXYNOS_PMU_UART_IO_SHARE_CTRL, 0x3 << 12, 0x2 << 12);	/* SEL_RXD_CP_UART => GPIO #0 path */
-		} else {
-			mif_info("SEL_TXD_GPIO_0 to AP UART TXD\n");
-			exynos_pmu_update(EXYNOS_PMU_UART_IO_SHARE_CTRL, 0x3 << 24, 0 << 24); /* AP UART TXD */
-			exynos_pmu_update(EXYNOS_PMU_UART_IO_SHARE_CTRL, 0x3 << 16, 0x2 << 16);	/* SEL_RXD_AP_UART => GPIO #0 path */
-			exynos_pmu_update(EXYNOS_PMU_UART_IO_SHARE_CTRL, 0x3 << 12, 0x0 << 12);	/* SEL_RXD_CP_UART => disable */
-		}
-
-		exynos_pmu_read(EXYNOS_PMU_UART_IO_SHARE_CTRL, &tmp);
-		mif_info("EXYNOS_PMU_UART_IO_SHARE_CTRL: 0x%08x\n", tmp);
-#endif
-		mbox_update_value(MCU_CP, g_mc->mbx_ap_status, val,
-				g_mc->sbi_uart_noti_mask, g_mc->sbi_uart_noti_pos);
-		if (val == MODEM_CTRL_UART_CP)
-			mbox_set_interrupt(MCU_CP, g_mc->int_uart_noti);
-	} else {
-		mif_err("g_mc is NULL!\n");
-	}
-}
-EXPORT_SYMBOL(send_uart_noti_to_modem);
-#else
-void send_uart_noti_to_modem(int val)
-{
-	return;
-}
-EXPORT_SYMBOL(send_uart_noti_to_modem);
-#endif
-
 static int ss310ap_dump_start(struct modem_ctl *mc)
 {
 	int err;
@@ -684,14 +632,12 @@ static int ss310ap_dump_start(struct modem_ctl *mc)
 		mif_err("__raw_readl(AP2CP_CFG): 0x%08x\n", __raw_readl(AP2CP_CFG));
 		mif_err("CP_CPU will work right now!!!\n");
 		devm_iounmap(mc->dev, AP2CP_CFG);
-	} else {
+	} else
 #ifdef CONFIG_CP_PMUCAL
 		cal_cp_reset_release();
-		exynos_pmu_shared_reg_disable();
 #else
 		exynos_cp_release();
 #endif
-	}
 
 	mbox_update_value(MCU_CP, mc->mbx_ap_status, 1,
 			mc->sbi_ap_status_mask, mc->sbi_ap_status_pos);
@@ -817,7 +763,9 @@ int ss310ap_init_modemctl_device(struct modem_ctl *mc, struct modem_data *pdata)
 	/*
 	** Register CP_WDT interrupt handler
 	*/
+
 	irq_num = platform_get_irq(pdev, 1);
+
 	mif_init_irq(&mc->irq_cp_wdt, irq_num, "cp_wdt", flags);
 
 	ret = mif_request_irq(&mc->irq_cp_wdt, cp_wdt_handler, mc);
