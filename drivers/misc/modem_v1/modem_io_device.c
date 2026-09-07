@@ -23,15 +23,15 @@
 #include <linux/etherdevice.h>
 #include <linux/device.h>
 #include <linux/module.h>
+#include <soc/samsung/pmu-cp.h>
+#include <trace/events/napi.h>
 #include <net/ip.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
-#include <linux/time.h>
-#include <linux/timer.h>
-#include <soc/samsung/pmu-cp.h>
 
 #include "modem_prj.h"
 #include "modem_utils.h"
+#include "modem_klat.h"
 
 static u8 sipc5_build_config(struct io_device *iod, struct link_device *ld,
 			     unsigned int count);
@@ -301,12 +301,13 @@ static int rx_raw_misc(struct sk_buff *skb)
 static int check_gro_support(struct sk_buff *skb)
 {
 	switch (skb->data[0] & 0xF0) {
-	case 0x40:
-		return (ip_hdr(skb)->protocol == IPPROTO_TCP);
+		case 0x40:
+			return (ip_hdr(skb)->protocol == IPPROTO_TCP);
 
-	case 0x60:
-		return (ipv6_hdr(skb)->nexthdr == IPPROTO_TCP);
+		case 0x60:
+			return (ipv6_hdr(skb)->nexthdr == IPPROTO_TCP);
 	}
+
 	return 0;
 }
 #else
@@ -371,10 +372,14 @@ static int rx_multi_pdp(struct sk_buff *skb)
 	skb_reset_network_header(skb);
 	skb_reset_mac_header(skb);
 
+	/* klat */
+	klat_rx(skb, skbpriv(skb)->sipc_ch - SIPC_CH_ID_PDP_0);
+
 	if (check_gro_support(skb)) {
 		ret = napi_gro_receive(napi_get_current(), skb);
 		if (ret == GRO_DROP) {
-			ndev->stats.rx_dropped++;
+			mif_err_limited("%s: %s<-%s: ERR! napi_gro_receive\n",
+					ld->name, iod->name, iod->mc->name);
 		}
 
 		if (ld->gro_flush)
@@ -390,7 +395,8 @@ static int rx_multi_pdp(struct sk_buff *skb)
 #endif /* CONFIG_LINK_DEVICE_NAPI */
 
 		if (ret != NET_RX_SUCCESS) {
-			ndev->stats.rx_dropped++;
+			mif_err_limited("%s: %s<-%s: ERR! netif_rx\n",
+					ld->name, iod->name, iod->mc->name);
 		}
 	}
 	return len;
@@ -500,10 +506,8 @@ exit:
 	if (state == STATE_CRASH_RESET
 	    || state == STATE_CRASH_EXIT
 	    || state == STATE_NV_REBUILDING
-	    || state == STATE_CRASH_WATCHDOG) {
-		if (atomic_read(&iod->opened) > 0)
-			wake_up(&iod->wq);
-	}
+	    || state == STATE_CRASH_WATCHDOG)
+		wake_up(&iod->wq);
 }
 
 static void io_dev_sim_state_changed(struct io_device *iod, bool sim_online)
@@ -761,7 +765,7 @@ static long misc_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	case IOCTL_MODEM_FORCE_CRASH_EXIT:
 		if (mc->ops.modem_force_crash_exit) {
 			if (arg)
- 				ld->crash_type = arg;
+				ld->crash_type = arg;
 			mif_err("%s: IOCTL_MODEM_FORCE_CRASH_EXIT (%d)\n",
 				iod->name, ld->crash_type);
 			return mc->ops.modem_force_crash_exit(mc);
@@ -967,7 +971,8 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	if (iod->format <= IPC_RFS && iod->id == 0)
 		return -EINVAL;
 
-	if (unlikely(!cp_online(mc)) && sipc5_ipc_ch(iod->id)) {
+	if (unlikely(!cp_online(mc)) &&
+			(sipc5_ipc_ch(iod->id) || sipc5_dm_ch(iod->id))) {
 		mif_debug("%s: ERR! %s->state == %s\n",
 			iod->name, mc->name, mc_state(mc));
 		return -EPERM;
@@ -1116,7 +1121,7 @@ static ssize_t misc_read(struct file *filp, char *buf, size_t count,
 		skb_pull(skb, copied);
 		skb_queue_head(rxq, skb);
 	} else {
-		dev_consume_skb_any(skb);
+		dev_kfree_skb_any(skb);
 	}
 
 	return copied;
@@ -1289,19 +1294,12 @@ static int vnet_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 	ret = ld->send(ld, iod, skb_new);
 	if (unlikely(ret < 0)) {
-		static DEFINE_RATELIMIT_STATE(_rs, HZ, 100);
-
 		if (ret != -EBUSY) {
 			mif_err_limited("%s->%s: ERR! %s->send fail:%d "
 					"(tx_bytes:%d len:%d)\n",
 					iod->name, mc->name, ld->name, ret,
 					tx_bytes, count);
-			goto drop;
 		}
-
-		/* do 100-retry for every 1sec */
-		if (__ratelimit(&_rs))
-			goto retry;
 		goto drop;
 	}
 
@@ -1318,7 +1316,7 @@ static int vnet_xmit(struct sk_buff *skb, struct net_device *ndev)
 	($skb_new will be freed by the link device.)
 	*/
 	if (skb_new != skb)
-		dev_consume_skb_any(skb);
+		dev_kfree_skb_any(skb);
 
 	return NETDEV_TX_OK;
 
@@ -1328,7 +1326,7 @@ retry:
 	because @skb will be reused by NET_TX.
 	*/
 	if (skb_new && skb_new != skb)
-		dev_consume_skb_any(skb_new);
+		dev_kfree_skb_any(skb_new);
 
 	return NETDEV_TX_BUSY;
 
@@ -1341,18 +1339,16 @@ drop:
 	If @skb has been expanded to $skb_new, $skb_new must also be freed here.
 	*/
 	if (skb_new != skb)
-		dev_consume_skb_any(skb_new);
+		dev_kfree_skb_any(skb_new);
 
 	return NETDEV_TX_OK;
 }
 
-#if defined(CONFIG_MODEM_IF_LEGACY_QOS) || defined(CONFIG_MODEM_IF_QOS)
 static u16 vnet_select_queue(struct net_device *dev, struct sk_buff *skb,
 		void *accel_priv, select_queue_fallback_t fallback)
 {
 	return (skb && skb->priomark == RAW_HPRIO) ? 1 : 0;
 }
-#endif
 
 static int dummy_net_open(struct net_device *ndev)
 {
@@ -1367,9 +1363,7 @@ static struct net_device_ops vnet_ops = {
 	.ndo_open = vnet_open,
 	.ndo_stop = vnet_stop,
 	.ndo_start_xmit = vnet_xmit,
-#if defined(CONFIG_MODEM_IF_LEGACY_QOS) || defined(CONFIG_MODEM_IF_QOS)
 	.ndo_select_queue = vnet_select_queue,
-#endif
 };
 
 static void vnet_setup(struct net_device *ndev)

@@ -120,11 +120,7 @@ int sbd_check_tx_flow_ctrl(struct sbd_ring_buffer *rb)
 
 void txq_stop(struct mem_link_device *mld, struct mem_ipc_device *dev)
 {
-#ifdef CONFIG_MODEM_IF_LEGACY_QOS
-	if (dev->id == IPC_MAP_HPRIO_RAW && atomic_read(&dev->txq.busy) == 0) {
-#else
-	if (dev->id == IPC_MAP_NORM_RAW && atomic_read(&dev->txq.busy) == 0) {
-#endif
+	if (dev->id == IPC_RAW && atomic_read(&dev->txq.busy) == 0) {
 		struct link_device *ld = &mld->link_dev;
 		if (!test_bit(TXQ_STOP_MASK, &ld->tx_flowctrl_mask)) {
 			unsigned long flags;
@@ -150,11 +146,7 @@ void tx_flowctrl_suspend(struct mem_link_device *mld)
 
 	if (!test_bit(TX_SUSPEND_MASK, &ld->tx_flowctrl_mask)) {
 		unsigned long flags;
-#ifdef CONFIG_MODEM_IF_LEGACY_QOS
-		struct mem_ipc_device *dev = mld->dev[IPC_MAP_HPRIO_RAW];
-#else
-		struct mem_ipc_device *dev = mld->dev[IPC_MAP_NORM_RAW];
-#endif
+		struct mem_ipc_device *dev = mld->dev[IPC_RAW];
 
 		spin_lock_irqsave(&dev->txq.lock, flags);
 
@@ -170,11 +162,7 @@ void tx_flowctrl_suspend(struct mem_link_device *mld)
 
 void txq_start(struct mem_link_device *mld, struct mem_ipc_device *dev)
 {
-#ifdef CONFIG_MODEM_IF_LEGACY_QOS
-	if (dev->id == IPC_MAP_HPRIO_RAW && atomic_read(&dev->txq.busy) > 0) {
-#else
-	if (dev->id == IPC_MAP_NORM_RAW && atomic_read(&dev->txq.busy) > 0) {
-#endif
+	if (dev->id == IPC_RAW && atomic_read(&dev->txq.busy) > 0) {
 		struct link_device *ld = &mld->link_dev;
 		if (test_bit(TXQ_STOP_MASK, &ld->tx_flowctrl_mask)) {
 			unsigned long flags;
@@ -201,11 +189,7 @@ void tx_flowctrl_resume(struct mem_link_device *mld)
 
 	if (test_bit(TX_SUSPEND_MASK, &ld->tx_flowctrl_mask)) {
 		unsigned long flags;
-#ifdef CONFIG_MODEM_IF_LEGACY_QOS
-		struct mem_ipc_device *dev = mld->dev[IPC_MAP_HPRIO_RAW];
-#else
-		struct mem_ipc_device *dev = mld->dev[IPC_MAP_NORM_RAW];
-#endif
+		struct mem_ipc_device *dev = mld->dev[IPC_RAW];
 
 		spin_lock_irqsave(&dev->txq.lock, flags);
 

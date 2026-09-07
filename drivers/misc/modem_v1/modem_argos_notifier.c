@@ -62,19 +62,19 @@ unsigned int big_clat_rps = 0x20;
 module_param(big_clat_rps, uint, S_IRUGO | S_IWUSR | S_IWGRP);
 MODULE_PARM_DESC(big_clat_rps, "rps_cpus for v4-rmnetx: BIG(both up)");
 
-unsigned int mif_rps_thresh = 10000; // not use big core
+unsigned int mif_rps_thresh = 200;
 module_param(mif_rps_thresh, uint, S_IRUGO | S_IWUSR | S_IWGRP);
 MODULE_PARM_DESC(mif_rps_thresh, "threshold speed");
 
-int mif_gro_flush_thresh[] = {20, 50, -1};
-long mif_gro_flush_time[] = {0, 10000, 100000};
+int mif_gro_flush_thresh[] = {100, 200, -1};
+long mif_gro_flush_time[] = {10000, 50000, 100000};
 
 static int mif_store_rps_map(struct netdev_rx_queue *queue, char *buf, size_t len)
 {
 	struct rps_map *old_map, *map;
 	cpumask_var_t mask;
 	int err, cpu, i;
-	static DEFINE_MUTEX(rps_map_mutex);
+	static DEFINE_SPINLOCK(rps_map_lock);
 
 	if (!alloc_cpumask_var(&mask, GFP_KERNEL)) {
 		mif_err("failed to alloc_cpumask\n");
@@ -113,9 +113,9 @@ static int mif_store_rps_map(struct netdev_rx_queue *queue, char *buf, size_t le
 		return -EINVAL;
 	}
 
-	mutex_lock(&rps_map_mutex);
+	spin_lock(&rps_map_lock);
 	old_map = rcu_dereference_protected(queue->rps_map,
-		mutex_is_locked(&rps_map_mutex));
+		lockdep_is_held(&rps_map_lock));
 	rcu_assign_pointer(queue->rps_map, map);
 
 	if (map)
@@ -123,7 +123,7 @@ static int mif_store_rps_map(struct netdev_rx_queue *queue, char *buf, size_t le
 	if (old_map)
 		static_key_slow_dec(&rps_needed);
 
-	mutex_unlock(&rps_map_mutex);
+	spin_unlock(&rps_map_lock);
 
 	if (old_map)
 		kfree_rcu(old_map, rcu);
@@ -180,15 +180,13 @@ extern long gro_flush_time;
 static void mif_argos_notifier_gro_flushtime(unsigned long speed)
 {
 	int loop;
-	long prev_gro_flush_time = gro_flush_time;
 
 	for (loop = 0; mif_gro_flush_thresh[loop] != -1; loop++)
 		if (speed < mif_gro_flush_thresh[loop])
 			break;
 	gro_flush_time = mif_gro_flush_time[loop];
 
-	if (prev_gro_flush_time != gro_flush_time)
-		mif_info("Speed: %luMbps, GRO flush time: %ld\n", speed, gro_flush_time);
+	mif_info("Speed: %luMbps, GRO flush time: %ld\n", speed, gro_flush_time);
 }
 #else
 static inline void mif_argos_notifier_gro_flushtime(unsigned long speed) {}
@@ -303,3 +301,4 @@ exit:
 	kfree(argos_nf);
 	return ret;
 }
+

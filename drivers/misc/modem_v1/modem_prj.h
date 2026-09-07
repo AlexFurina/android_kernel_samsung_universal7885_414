@@ -69,8 +69,8 @@
 #endif
 
 /*
- * IOCTL commands
- */
+IOCTL commands
+*/
 #define IOCTL_MODEM_ON			_IO('o', 0x19)
 #define IOCTL_MODEM_OFF			_IO('o', 0x20)
 #define IOCTL_MODEM_RESET		_IO('o', 0x21)
@@ -283,7 +283,7 @@ enum iod_rx_state {
 	MAX_IOD_RX_STATE
 };
 
-static const char * const rx_state_string[] = {
+static const char const *rx_state_string[] = {
 	[IOD_RX_ON_STANDBY]	= "RX_ON_STANDBY",
 	[IOD_RX_HEADER]		= "RX_HEADER",
 	[IOD_RX_PAYLOAD]	= "RX_PAYLOAD",
@@ -651,7 +651,6 @@ struct modem_ctl {
 	unsigned int gpio_perf_req;
 	unsigned int irq_perf_req;
 
-#ifdef CONFIG_LINK_DEVICE_HSIC
 	/* for USB/HSIC PM */
 	unsigned int gpio_host_wakeup;
 	unsigned int irq_host_wakeup;
@@ -665,7 +664,6 @@ struct modem_ctl {
 
 	unsigned int gpio_sim_detect;
 	unsigned int irq_sim_detect;
-#endif
 
 #ifdef CONFIG_LINK_DEVICE_SHMEM
 	unsigned int mbx_pda_active;
@@ -731,8 +729,6 @@ struct modem_ctl {
 	void (*gpio_revers_bias_clear)(void);
 	void (*gpio_revers_bias_restore)(void);
 	void (*modem_complete)(struct modem_ctl *mc);
-	
-	int receive_first_ipc;
 };
 
 static inline bool cp_offline(struct modem_ctl *mc)
@@ -782,9 +778,9 @@ void sipc5_deinit_io_device(struct io_device *iod);
 extern struct net init_net;
 extern int sec_argos_register_notifier(struct notifier_block *n, char *label);
 extern int sec_argos_unregister_notifier(struct notifier_block *n, char *label);
+
 int mif_init_argos_notifier(void);
 #else
 static inline int mif_init_argos_notifier(void) { return 0; }
 #endif
-
 #endif

@@ -7,21 +7,21 @@ menuconfig SEC_SIPC_MODEM_IF
 if SEC_SIPC_MODEM_IF
 
 config SEC_MODEM_SS310AP
-	bool "Exynos7885 and SS310 feature"
+	bool "Exynos8895 and SS310 feature"
 	select UMTS_MODEM_SS310AP
 	select LINK_DEVICE_SHMEM
 	select CP_SECURE_BOOT
-	select HW_REV_DETECT
-	select CP_ETDAC_OTP_WA
-	select LINK_DEVICE_NAPI
-	select MODEM_IF_NET_GRO
-	select MODEM_IF_QOS
 	select CP_RAM_LOGGING
+	select KLAT
 	default y
 
 config CP_ZEROCOPY
 	bool "Support zero memory copy"
 	default y
+
+config CP_SMAPPER
+	bool "Support SMAPPER"
+	default n
 
 menu "Configuration Description"
 config BOOT_DEVICE_SPI
@@ -102,30 +102,8 @@ config CP_RAM_LOGGING
 	bool "Support CP ram logging feature"
 	default n
 
-config CP_UART_NOTI
-	bool "Support CP Uart Noti API"
-	default n
-
 config HW_REV_DETECT
 	bool "Support HW REV Detect"
-	default n
-
-config PMU_UART_SWITCH
-	bool "Support AP <-> CP Uart switch by PMU"
-	depends on CP_UART_NOTI
-	default n
-
-config CP_ETDAC_OTP_WA
-	bool "Support CP ET-DAC OTP"
-	default n
-
-config FREE_CP_RSVD_MEMORY
-	bool "Free CP reserved memory after CP goes to sleep for Wifi model"
-	default n
-
-config MODEM_IF_LEGACY_QOS
-	bool "Implement QoS for legacy"
-	depends on LINK_DEVICE_SHMEM
 	default n
 
 config MODEM_IF_QOS
@@ -141,5 +119,9 @@ config MODEM_IF_NET_GRO
 	default n
 	---help---
 	 This enables GRO(Generic Receive Offload) feature
+
+config KLAT
+	bool "kernel CLAT"
+	default n
 endmenu
 endif

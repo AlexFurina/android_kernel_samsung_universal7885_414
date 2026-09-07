@@ -12,6 +12,8 @@
 #ifndef MCU_IPC_H
 #define MCU_IPC_H
 
+#include <linux/types.h>
+
 #define MCU_IPC_INT0    (0)
 #define MCU_IPC_INT1    (1)
 #define MCU_IPC_INT2    (2)
