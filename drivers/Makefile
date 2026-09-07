@@ -196,6 +196,9 @@ obj-$(CONFIG_SWITCH)     	+= switch/
 # Vibrator
 obj-y                           += vibrator/
 
+# Motor
+obj-y                           += motor/
+
 # CCIC
 obj-y	+= ccic/
 
