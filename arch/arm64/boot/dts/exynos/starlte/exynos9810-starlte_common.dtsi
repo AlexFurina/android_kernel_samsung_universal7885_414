@@ -276,7 +276,7 @@
 	/* USI_00 */
 	usi_0: usi@10411004 {
 		usi_v2_mode = "spi";
-		status = "okay";
+		status = "delete";
 	};
 
 	/* USI_01 */
@@ -312,7 +312,7 @@
 	/* USI_06 */
 	usi_6: usi@1081101C {
 		usi_v2_mode = "spi";
-		status = "okay";
+		status = "delete";
 	};
 
 	/* USI_07 */
