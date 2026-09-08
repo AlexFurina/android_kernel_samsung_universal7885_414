@@ -1,0 +1,8 @@
+config PINCTRL_MADERA
+	bool
+	select PINMUX
+	select GENERIC_PINCONF
+	default y if MFD_MADERA=y
+
+config PINCTRL_CS47L92
+	bool
