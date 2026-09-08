@@ -100,6 +100,7 @@ static void exynos_pd_power_off_pre(struct exynos_pm_domain *pd)
 	if(cal_pd_status(pd->cal_pdid) && pd->bcm)
 		bcm_pd_sync(pd->bcm, false);
 #endif
+#if 0
 	if (pd->need_smc) {
 		ret = exynos_tz_peri_save(pd->need_smc);
 		if (ret)
@@ -108,6 +109,7 @@ static void exynos_pd_power_off_pre(struct exynos_pm_domain *pd)
 	}
 	if (!strcmp(pd->name, "pd-dispaud"))
 		abox_poweroff();
+#endif
 }
 
 static void exynos_pd_power_off_post(struct exynos_pm_domain *pd)
