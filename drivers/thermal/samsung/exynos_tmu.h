@@ -34,9 +34,8 @@ enum soc_type {
 	SOC_ARCH_EXYNOS8890 = 1,
 	SOC_ARCH_EXYNOS8895 = 2,
 	SOC_ARCH_EXYNOS7872,
-	SOC_ARCH_EXYNOS7885,
 	SOC_ARCH_EXYNOS9810,
-	SOC_ARCH_EXYNOS9610,
+	SOC_ARCH_EXYNOS9820,
 };
 
 /**
@@ -123,8 +122,6 @@ struct exynos_tmu_data {
 	int hotplug_in_threshold;
 	int hotplug_out_threshold;
 	int limited_frequency;
-	int limited_threshold;
-	int limited_threshold_release;
 	struct exynos_tmu_platform_data *pdata;
 	void __iomem *base;
 	int irq;
@@ -145,7 +142,6 @@ struct exynos_tmu_data {
 	char tmu_name[THERMAL_NAME_LENGTH + 1];
 	struct device_node *np;
 	int balance_offset;
-	struct mutex hotplug_lock;
 
 	int (*tmu_initialize)(struct platform_device *pdev);
 	void (*tmu_control)(struct platform_device *pdev, bool on);
