@@ -21,6 +21,7 @@
 #include <linux/proc_fs.h>
 #include <linux/delay.h>
 #include <linux/regmap.h>
+#include <linux/wakelock.h>
 
 #include <asm-generic/delay.h>
 
@@ -104,7 +105,7 @@ static int vts_platform_trigger(struct snd_pcm_substream *substream, int cmd)
 	struct snd_soc_platform *platform = rtd->platform;
 	struct device *dev = platform->dev;
 	struct vts_platform_data *data = dev_get_drvdata(dev);
-	u32 values[3];
+	u32 values[3] = {0,0,0};
 	int result = 0;
 
 	dev_info(dev, "%s ++ CMD: %d\n", __func__, cmd);
@@ -160,15 +161,29 @@ static int vts_platform_open(struct snd_pcm_substream *substream)
 	struct snd_soc_platform *platform = rtd->platform;
 	struct device *dev = platform->dev;
 	struct vts_platform_data *data = dev_get_drvdata(dev);
+	int result = 0;
 
 	dev_info(dev, "%s\n", __func__);
 
-	snd_soc_set_runtime_hwparams(substream, &vts_platform_hardware);
-	if (data->type == PLATFORM_VTS_NORMAL_RECORD) {
-		vts_set_dmicctrl(data->vts_data->pdev,true);
+	if (data->vts_data->voicecall_enabled) {
+		dev_warn(dev, "%s VTS SRAM is Used for CP call\n",
+					__func__);
+		return -EBUSY;
 	}
 
-	return 0;
+	pm_runtime_get_sync(dev);
+	snd_soc_set_runtime_hwparams(substream, &vts_platform_hardware);
+	if (data->type == PLATFORM_VTS_NORMAL_RECORD) {
+		dev_info(dev, "%s open --\n", __func__);
+		result = vts_set_dmicctrl(data->vts_data->pdev,
+					VTS_MICCONF_FOR_RECORD, true);
+		if (result < 0) {
+			dev_err(dev, "%s: MIC control configuration failed\n", __func__);
+			pm_runtime_put_sync(dev);
+		}
+	}
+
+	return result;
 }
 
 static int vts_platform_close(struct snd_pcm_substream *substream)
@@ -177,13 +192,27 @@ static int vts_platform_close(struct snd_pcm_substream *substream)
 	struct snd_soc_platform *platform = rtd->platform;
 	struct device *dev = platform->dev;
 	struct vts_platform_data *data = dev_get_drvdata(dev);
+	int result = 0;
 
 	dev_info(dev, "%s\n", __func__);
-	if (data->type == PLATFORM_VTS_NORMAL_RECORD) {
-		vts_set_dmicctrl(data->vts_data->pdev,false);
+
+	if (data->vts_data->voicecall_enabled) {
+		dev_warn(dev, "%s VTS SRAM is Used for CP call\n",
+					__func__);
+		pm_runtime_get_sync(dev);
+		return -EBUSY;
 	}
 
-	return 0;
+	if (data->type == PLATFORM_VTS_NORMAL_RECORD) {
+		dev_info(dev, "%s close --\n", __func__);
+		result = vts_set_dmicctrl(data->vts_data->pdev,
+					VTS_MICCONF_FOR_RECORD, false);
+		if (result < 0)
+			dev_warn(dev, "%s: MIC control configuration failed\n", __func__);
+	}
+
+	pm_runtime_put_sync(dev);
+	return result;
 }
 
 static int vts_platform_mmap(struct snd_pcm_substream *substream,
@@ -270,13 +299,13 @@ static int samsung_vts_dma_probe(struct platform_device *pdev)
 	data->vts_data = platform_get_drvdata(data->pdev_vts);
 
 	result = of_property_read_u32_index(np, "id", 0, &data->id);
-	if (IS_ERR_VALUE(result)) {
+	if (result < 0) {
 		dev_err(dev, "id property reading fail\n");
 		return result;
 	}
 
 	result = of_property_read_string(np, "type", &type);
-	if (IS_ERR_VALUE(result)) {
+	if (result < 0) {
 		dev_err(dev, "type property reading fail\n");
 		return result;
 	}
