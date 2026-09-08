@@ -12,14 +12,15 @@
 #include <sound/samsung/abox.h>
 #include <sound/sounddev_abox.h>
 
-#include <linux/dma-buf.h>
-#include <uapi/linux/dma-buf.h>
-#include <linux/exynos_ion.h>
 #if defined(CONFIG_VIDEOBUF2_CMA_PHYS)
 #include <media/videobuf2-cma-phys.h>
 #elif defined(CONFIG_VIDEOBUF2_ION)
 #include <media/videobuf2-ion.h>
 #endif
+
+#include <linux/dma-buf.h>
+#include <linux/dma-buf-container.h>
+#include <linux/ion_exynos.h>
 
 #include "../../../../drivers/iommu/exynos-iommu.h"
 #include "../../../../drivers/staging/android/uapi/ion.h"
@@ -76,7 +77,8 @@ int abox_ion_alloc(struct abox_platform_data *data,
 	struct device *dev = &data->pdev->dev;
 	struct device *dev_abox = &data->abox_data->pdev->dev;
 
-	int heapflags = EXYNOS_ION_HEAP_SYSTEM_MASK;
+	/* const char *heapname = "crypto_heap"; */
+	const char *heapname = "ion_system_heap";
 	int ret = 0;
 
 	if (!buf)
@@ -84,22 +86,10 @@ int abox_ion_alloc(struct abox_platform_data *data,
 
 	size = PAGE_ALIGN(size);
 
-	buf->client = data->abox_data->client;
-	buf->alignment = SZ_4K;
-	buf->flags = ION_FLAG_SYNC_FORCE;
-
-	buf->handle = ion_alloc(buf->client, size, buf->alignment,
-				heapflags, buf->flags);
-	if (IS_ERR(buf->handle)) {
+	buf->dma_buf = ion_alloc_dmabuf(heapname, size, ION_FLAG_SYNC_FORCE);
+	if (IS_ERR(buf->dma_buf)) {
 		ret = -ENOMEM;
 		goto error_alloc;
-	}
-
-	/* ion_share_dma_buf will call dam_buf_get */
-	buf->dma_buf = ion_share_dma_buf(buf->client, buf->handle);
-	if (IS_ERR(buf->dma_buf)) {
-		ret = PTR_ERR(buf->dma_buf);
-		goto error_share;
 	}
 
 	buf->attachment = dma_buf_attach(buf->dma_buf, dev_abox);
@@ -116,7 +106,8 @@ int abox_ion_alloc(struct abox_platform_data *data,
 	}
 
 	if (!buf->kva)
-		buf->kva = ion_map_kernel(buf->client, buf->handle);
+		buf->kva = dma_buf_vmap(buf->dma_buf);
+
 	if (IS_ERR_OR_NULL(buf->kva)) {
 		ret = -ENOMEM;
 		goto error_dma_buf_vmap;
@@ -150,7 +141,7 @@ int abox_ion_alloc(struct abox_platform_data *data,
 	return ret;
 
 error_iommu_map_sg:
-	ion_unmap_kernel(buf->client, buf->handle);
+	dma_buf_vunmap(buf->dma_buf, buf->kva);
 error_dma_buf_vmap:
 	dma_buf_unmap_attachment(buf->attachment, buf->cookie.sgt,
 				DMA_BIDIRECTIONAL);
@@ -158,8 +149,6 @@ error_map_dmabuf:
 	dma_buf_detach(buf->dma_buf, buf->attachment);
 error_attach:
 	dma_buf_put(buf->dma_buf);
-error_share:
-	ion_free(buf->client, buf->handle);
 error_alloc:
 
 	dev_err(dev, "%s: Error occured while allocating\n", __func__);
@@ -180,7 +169,7 @@ int abox_ion_free(struct abox_platform_data *data)
 		dev_err(dev, "Failed to iommu_unmap: %d\n", ret);
 
 	if (data->ion_buf.kva) {
-		ion_unmap_kernel(data->ion_buf.client,
+		dma_buf_vunmap(data->ion_buf.dma_buf,
 				data->ion_buf.handle);
 
 		if (data->mmap_fd_state == true)

@@ -5932,6 +5932,7 @@ static DEVICE_ATTR_RO(calliope_version);
 static DEVICE_ATTR_WO(calliope_debug);
 static DEVICE_ATTR_WO(calliope_cmd);
 
+#if 0
 static int ion_mem_probe(struct abox_data *data)
 {
 	struct device *dev_abox = &data->pdev->dev;
@@ -5940,6 +5941,7 @@ static int ion_mem_probe(struct abox_data *data)
 
 	return 0;
 }
+#endif
 
 static int samsung_abox_probe(struct platform_device *pdev)
 {
@@ -5961,9 +5963,11 @@ static int samsung_abox_probe(struct platform_device *pdev)
 	data->pdev = pdev;
 	p_abox_data = data;
 
+#if 0
 	ret = ion_mem_probe(data);
 	if (ret < 0)
 		dev_err(dev, "ion_ctx_probe err (%d)\n", ret);
+#endif
 
 	abox_probe_quirks(data, np);
 	init_waitqueue_head(&data->ipc_wait_queue);
