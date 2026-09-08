@@ -17,21 +17,48 @@
 
 #include "abox.h"
 
-#define VSS_MAGIC_OFFSET (0x600000)
+static unsigned int VSS_MAGIC_OFFSET = 0x500000;
+static const int E9810_INT_FREQ = 178000;
+static const int E9810_INT_FREQ_SPK = 400000;
+static const unsigned int E9810_INT_ID = ABOX_CPU_GEAR_CALL_KERNEL;
+
+int abox_vss_notify_call(struct device *dev, struct abox_data *data, int en)
+{
+	int ret = 0;
+
+	dev_info(dev, "%s(%d)\n", __func__, en);
+
+	if (en) {
+		if (IS_ENABLED(CONFIG_SOC_EXYNOS9810)) {
+			if (data->sound_type == SOUND_TYPE_SPEAKER)
+				ret = abox_request_int_freq(dev, data,
+						E9810_INT_ID,
+						E9810_INT_FREQ_SPK);
+			else
+				ret = abox_request_int_freq(dev, data,
+						E9810_INT_ID,
+						E9810_INT_FREQ);
+		}
+	} else {
+		if (IS_ENABLED(CONFIG_SOC_EXYNOS9810))
+			ret = abox_request_int_freq(dev, data, E9810_INT_ID, 0);
+	}
+
+	return ret;
+}
 
 static int samsung_abox_vss_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
+	struct device_node *np = dev->of_node;
+	void __iomem *magic_addr;
 
-	if (IS_ENABLED(CONFIG_SHM_IPC)) {
-		void __iomem *magic_addr = phys_to_virt(shm_get_phys_base() +
-				shm_get_cp_size() + VSS_MAGIC_OFFSET);
+	dev_dbg(dev, "%s\n", __func__);
 
-		dev_dbg(dev, "%s\n", __func__);
-		writel(0, magic_addr);
-	} else
-		dev_info(dev, "%s(shm is disabled)\n", __func__);
-
+	of_property_read_u32(np, "magic_offset", &VSS_MAGIC_OFFSET);
+	dev_info(dev, "magic_offset = 0x%08X\n", VSS_MAGIC_OFFSET);
+	magic_addr = phys_to_virt(shm_get_vss_base() + VSS_MAGIC_OFFSET);
+	writel(0, magic_addr);
 	return 0;
 }
 

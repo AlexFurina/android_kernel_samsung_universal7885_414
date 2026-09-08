@@ -39,9 +39,8 @@ static int abox_failsafe_start(struct device *dev, struct abox_data *data)
 	if (atomic_read(&abox_failsafe_reported)) {
 		if (abox_failsafe_service)
 			pm_runtime_put(dev);
-		dev_dbg(dev, "%s\n", __func__);
+		dev_info(dev, "%s\n", __func__);
 		abox_clear_cpu_gear_requests(dev, data);
-		pm_runtime_put(dev);
 	}
 
 	return ret;
@@ -54,7 +53,7 @@ static int abox_failsafe_end(struct device *dev)
 	dev_dbg(dev, "%s\n", __func__);
 
 	if (atomic_cmpxchg(&abox_failsafe_reported, 1, 0)) {
-		dev_dbg(dev, "%s\n", __func__);
+		dev_info(dev, "%s\n", __func__);
 		abox_failsafe_abox_data->failsafe = false;
 	}
 
@@ -78,7 +77,7 @@ DECLARE_WORK(abox_failsafe_report_work, abox_failsafe_report_work_func);
 #ifdef SMART_FAILSAFE
 void abox_failsafe_report(struct device *dev)
 {
-	dev_info(dev, "%s\n", __func__);
+	dev_dbg(dev, "%s\n", __func__);
 
 	abox_failsafe_dev = dev;
 	abox_failsafe_reset_count++;
@@ -104,7 +103,7 @@ void abox_failsafe_report(struct device *dev)
 #endif
 void abox_failsafe_report_reset(struct device *dev)
 {
-	dev_info(dev, "%s\n", __func__);
+	dev_dbg(dev, "%s\n", __func__);
 
 	abox_failsafe_end(dev);
 }

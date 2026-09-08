@@ -17,7 +17,6 @@
 enum abox_dbg_dump_src {
 	ABOX_DBG_DUMP_KERNEL,
 	ABOX_DBG_DUMP_FIRMWARE,
-	ABOX_DBG_DUMP_VSS,
 	ABOX_DBG_DUMP_COUNT,
 };
 
@@ -82,6 +81,15 @@ extern void abox_dbg_dump_mem(struct device *dev, struct abox_data *data,
  */
 extern void abox_dbg_dump_gpr_mem(struct device *dev, struct abox_data *data,
 		enum abox_dbg_dump_src src, const char *reason);
+
+/**
+ * dump gpr and memory except DRAM
+ * @param[in]	dev		pointer to device which invokes this API
+ * @param[in]	data		pointer to abox_data structure
+ * @param[in]	reason		reason description
+ */
+extern void abox_dbg_dump_simple(struct device *dev, struct abox_data *data,
+		const char *reason);
 
 /**
  * Push status of the abox

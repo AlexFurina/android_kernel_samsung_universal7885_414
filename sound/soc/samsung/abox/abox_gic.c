@@ -1,6 +1,6 @@
 /* sound/soc/samsung/abox/abox_gic.c
  *
- * ALSA SoC - Samsung ABOX driver
+ * ALSA SoC Audio Layer - Samsung ABOX GIC driver
  *
  * Copyright (c) 2016 Samsung Electronics Co. Ltd.
  *
@@ -124,7 +124,6 @@ static irqreturn_t abox_gic_irq_handler(int irq, void *dev_id)
 	return ret;
 }
 
-
 void abox_gic_init_gic(struct device *dev)
 {
 	struct abox_gic_data *data = dev_get_drvdata(dev);
@@ -136,10 +135,6 @@ void abox_gic_init_gic(struct device *dev)
 #ifdef GIC_IS_SECURE_FREE
 	writel(0x000000FF, data->gicc_base + GIC_CPU_PRIMASK);
 	writel(0x3, data->gicd_base + GIC_DIST_CTRL);
-
-	for (i = 0; i < 40; i++) {
-		writel(0x10101010, data->gicd_base + GIC_DIST_PRI + (i * 4));
-	}
 #else
 	arg = SMC_REG_ID_SFR_W(data->gicc_base_phys + GIC_CPU_PRIMASK);
 	ret = exynos_smc(SMC_CMD_REG, arg, 0x000000FF, 0);
@@ -167,24 +162,6 @@ void abox_gic_init_gic(struct device *dev)
 	writel(0x3, data->gicc_base + GIC_CPU_CTRL);
 }
 EXPORT_SYMBOL(abox_gic_init_gic);
-
-void abox_gicd_enable(struct device *dev, bool en)
-{
-	struct abox_gic_data *data = dev_get_drvdata(dev);
-
-	if (en) {
-		writel(0x1, data->gicd_base + 0x0);
-		writel(0x0, data->gicd_base + 0x80);
-		writel(0x0, data->gicd_base + 0x84);
-		writel(0x0, data->gicd_base + 0x88);
-		writel(0x0, data->gicd_base + 0x8c);
-		writel(0xc, data->gicd_base + 104);
-	} else {
-		writel(0x0, data->gicd_base + 0x0);
-		writel(0xc, data->gicd_base + 184);
-	}
-}
-EXPORT_SYMBOL(abox_gicd_enable);
 
 int abox_gic_enable_irq(struct device *dev)
 {

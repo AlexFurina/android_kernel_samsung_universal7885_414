@@ -3,12 +3,12 @@
  * ALSA SoC Audio Layer - Samsung Abox Effect driver
  *
  * Copyright (c) 2016 Samsung Electronics Co. Ltd.
-  *
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-//#define DEBUG
+/* #define DEBUG */
 
 #include <sound/soc.h>
 #include <sound/tlv.h>
@@ -131,13 +131,16 @@ static const struct snd_kcontrol_new abox_effect_controls[] = {
 	DECLARE_ABOX_CTL_EQ_SWITCH("NXP BDL data", NXPBDL),
 	DECLARE_ABOX_CTL_EQ_SWITCH("NXP RVB ctx data", NXPRVB_CTX),
 	DECLARE_ABOX_CTL_EQ_SWITCH("NXP RVB param data", NXPRVB_PARAM),
+	DECLARE_ABOX_CTL_EQ_SWITCH("SB rotation", SB),
+	DECLARE_ABOX_CTL_EQ_SWITCH("UPSCALER", UPSCALER),
 };
 
 #define ABOX_EFFECT_ACCESSIABLE_REG(name, reg) \
 		(reg >= name##_BASE && reg <= name##_BASE + PARAM_OFFSET + \
 		(name##_MAX_COUNT * sizeof(u32)))
 
-static bool abox_effect_accessible_reg(struct device *dev, unsigned int reg) {
+static bool abox_effect_accessible_reg(struct device *dev, unsigned int reg)
+{
 	return ABOX_EFFECT_ACCESSIABLE_REG(SA, reg)			||
 			ABOX_EFFECT_ACCESSIABLE_REG(MYSOUND, reg)	||
 			ABOX_EFFECT_ACCESSIABLE_REG(VSP, reg)		||
@@ -148,12 +151,15 @@ static bool abox_effect_accessible_reg(struct device *dev, unsigned int reg) {
 			ABOX_EFFECT_ACCESSIABLE_REG(ELPE, reg)		||
 			ABOX_EFFECT_ACCESSIABLE_REG(NXPBDL, reg)	||
 			ABOX_EFFECT_ACCESSIABLE_REG(NXPRVB_CTX, reg)	||
-			ABOX_EFFECT_ACCESSIABLE_REG(NXPRVB_PARAM, reg);
+			ABOX_EFFECT_ACCESSIABLE_REG(NXPRVB_PARAM, reg)	||
+			ABOX_EFFECT_ACCESSIABLE_REG(SB, reg)		||
+			ABOX_EFFECT_ACCESSIABLE_REG(UPSCALER, reg);
 }
 
 #define ABOX_EFFECT_VOLATILE_REG(name, reg) (reg == name##_BASE)
 
-static bool abox_effect_volatile_reg(struct device *dev, unsigned int reg) {
+static bool abox_effect_volatile_reg(struct device *dev, unsigned int reg)
+{
 	return ABOX_EFFECT_VOLATILE_REG(SA, reg)			||
 			ABOX_EFFECT_VOLATILE_REG(MYSOUND, reg)		||
 			ABOX_EFFECT_VOLATILE_REG(VSP, reg)		||
@@ -164,27 +170,22 @@ static bool abox_effect_volatile_reg(struct device *dev, unsigned int reg) {
 			ABOX_EFFECT_VOLATILE_REG(ELPE, reg)		||
 			ABOX_EFFECT_VOLATILE_REG(NXPBDL, reg)		||
 			ABOX_EFFECT_VOLATILE_REG(NXPRVB_CTX, reg)	||
-			ABOX_EFFECT_VOLATILE_REG(NXPRVB_PARAM, reg);
+			ABOX_EFFECT_VOLATILE_REG(NXPRVB_PARAM, reg)	||
+			ABOX_EFFECT_VOLATILE_REG(SB, reg)		||
+			ABOX_EFFECT_VOLATILE_REG(UPSCALER, reg);
 }
 
 static const struct regmap_config abox_effect_regmap_config = {
 	.reg_bits		= 32,
 	.val_bits		= 32,
 	.reg_stride		= 4,
-	.max_register		= ABOX_MAX_REGISTERS,
+	.max_register		= ABOX_EFFECT_MAX_REGISTERS,
 	.writeable_reg		= abox_effect_accessible_reg,
 	.readable_reg		= abox_effect_accessible_reg,
 	.volatile_reg		= abox_effect_volatile_reg,
 	.cache_type		= REGCACHE_FLAT,
 };
-/*
-static struct regmap * abox_effect_get_regmap(struct device *dev)
-{
-	struct abox_effect_data *data = dev_get_drvdata(dev);
 
-	return data->regmap;
-}
-*/
 static const struct snd_soc_component_driver abox_effect = {
 	.controls		= abox_effect_controls,
 	.num_controls		= ARRAY_SIZE(abox_effect_controls),
@@ -275,7 +276,7 @@ static int samsung_abox_effect_probe(struct platform_device *pdev)
 	}
 
 	pm_runtime_enable(dev);
-	pm_runtime_set_autosuspend_delay(dev, 100);
+	pm_runtime_set_autosuspend_delay(dev, 1000);
 	pm_runtime_use_autosuspend(dev);
 
 	return devm_snd_soc_register_component(&pdev->dev, &abox_effect, NULL,
