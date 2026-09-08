@@ -649,6 +649,18 @@ config SND_SOC_MAX98512
 	help
 	MAX98512 driver
 
+config SND_SOC_MAXIM_DSM
+	bool "Support MAXIM DSM"
+	depends on SND_SOC_MAX98506 || SND_SOC_MAX98512
+	help
+	MAXIM DSM driver
+
+config SND_SOC_MAXIM_DSM_CAL
+	tristate "Support MAXIM DSM Calibration"
+	depends on SND_SOC_MAXIM_DSM
+	help
+	MAX985xx Calibration Driver
+
 config SND_SOC_MAX98927
 	tristate "Maxim Integrated MAX98927 Speaker Amplifier"
 	depends on I2C
