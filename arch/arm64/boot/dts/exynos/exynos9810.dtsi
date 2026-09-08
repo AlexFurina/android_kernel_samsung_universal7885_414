@@ -2168,9 +2168,9 @@
 		mailbox = <&mailbox_vts>;
 		#sound-dai-cells = <1>;
 		interrupt-parent = <&mailbox_vts>;
-		interrupts = <16>, <17>, <18>, <19>, <20>, <21>;
+		interrupts = <10>, <11>, <12>, <13>, <14>, <15>, <16>, <17>, <18>, <19>;
 		interrupt-names = "error", "boot_completed", "ipc_received", "voice_triggered",
-				"trigger_period_elapsed", "record_period_elapsed";
+				"trigger_period_elapsed", "record_period_elapsed", "debuglog_bufzero", "debuglog_bufone", "audio_dump", "log_dump";
 	};
 
 	vts_dma0: vts_dma0 {
