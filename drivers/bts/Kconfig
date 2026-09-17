@@ -47,4 +47,14 @@ config EXYNOS9610_BTS
 	  setting BTS and DVFS to manage bus traffic. Default setting
 	  is different to chipset because of the hardware change and DVFS
 	  status.
+
+config EXYNOS9810_BTS
+	bool "Bus traffic shaper support"
+	default y
+	depends on SOC_EXYNOS9810
+	help
+	  With this configuration bts driver will be enabled which is for
+	  setting BTS and DVFS to manage bus traffic. Default setting
+	  is different to chipset because of the hardware change and DVFS
+	  status.
 endif
