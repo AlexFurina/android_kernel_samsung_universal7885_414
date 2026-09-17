@@ -29,7 +29,7 @@
 
 static struct acpm_ipc_info *acpm_ipc;
 static struct workqueue_struct *debug_logging_wq;
-//static struct workqueue_struct *update_log_wq;
+static struct workqueue_struct *update_log_wq;
 static struct acpm_debug_info *acpm_debug;
 static bool is_acpm_stop_log = false;
 static bool acpm_stop_log_req = false;
@@ -38,7 +38,6 @@ void __iomem *acpm_srambase;
 struct regulator_ss_info regulator_ss[REGULATOR_SS_MAX];
 char reg_map[0x100] = {0};
 bool is_set_regmap = false;
-u32 acpm_reg_id = REGULATOR_INFO_ID;
 
 void acpm_ipc_set_waiting_mode(bool mode)
 {
@@ -50,40 +49,6 @@ void acpm_fw_log_level(unsigned int on)
 	acpm_debug->debug_log_level = on;
 }
 
-u32 acpm_get_mifdn_count(void)
-{
-	return acpm_initdata->mifdn_count;
-}
-
-/*void acpm_get_inform(void)
-{
-	int i;
-	u32 user;
-	u32 time, start, end;
-	u32 hour, min, sec;
-
-	for (i = 0; i < 6; i++) {
-		user = acpm_initdata->inform0[i];
-		time = acpm_initdata->inform1[i];
-		start = acpm_initdata->inform2[i];
-		end = acpm_initdata->inform3[i];
-		hour = ((time & (0xff << 24)) >> 24) & 0x3f;
-		min = ((time & (0xff << 16)) >> 16) & 0x7f;
-		sec = ((time & (0xff << 8)) >> 8) & 0x7f;
-		if (user)
-			pr_info("\t%s: mifuser: 0x%x, time: %d:%d:%d, latency: %d[usec]\n",
-					"EXYNOS-PM", user, hour, min, sec, (start - end) * 41 / 1000);
-	}
-
-	for (i = 0; i < 6; i++) {
-		acpm_initdata->inform_head = 0;
-		acpm_initdata->inform0[i] = 0;
-		acpm_initdata->inform1[i] = 0;
-		acpm_initdata->inform2[i] = 0;
-		acpm_initdata->inform3[i] = 0;
-	}
-}
-*/
 void acpm_ramdump(void)
 {
 #ifdef CONFIG_DEBUG_SNAPSHOT_ACPM
@@ -106,7 +71,7 @@ void timestamp_write(void)
 		acpm_debug->timestamps[tmp_index] = sched_clock();
 
 		__raw_writel(tmp_index, acpm_debug->time_index);
-		//exynos_acpm_timer_clear();
+		exynos_acpm_timer_clear();
 
 		spin_unlock(&acpm_debug->lock);
 	}
@@ -135,7 +100,7 @@ void set_reg_map(void)
 		if (reg_map[idx] != 0)
 			pr_err("duplicated set_reg_map [%d] reg_map %x\n", i, reg_map[idx]);
 
-		reg_map[idx] = i + 1;
+		reg_map[idx] = i;
 	}
 }
 
@@ -148,7 +113,7 @@ unsigned int get_reg_id(unsigned int addr)
 
 	id = reg_map[addr & 0xff];
 	if (id != 0)
-		return id - 1;
+		return id;
 
 	return NO_SS_RANGE;
 }
@@ -190,10 +155,10 @@ void acpm_log_print(void)
 		 * index: [26:22]
 		 * apm systick count: [15:0]
 		 */
-		id = (log_header & (0x7 << LOG_ID_SHIFT)) >> LOG_ID_SHIFT;
+		id = (log_header & (0xF << LOG_ID_SHIFT)) >> LOG_ID_SHIFT;
 		log_level = (log_header & (0x1 << LOG_LEVEL)) >> LOG_LEVEL;
 		index = (log_header & (0x1f << LOG_TIME_INDEX)) >> LOG_TIME_INDEX;
-		count = log_header & 0x7fffff;
+		count = log_header & 0xffff;
 
 		/* string length: log_buff_size - header(4) - integer_data(4) */
 		memcpy_align_4(str, acpm_debug->log_buff_base + (acpm_debug->log_buff_size * rear) + 4,
@@ -208,7 +173,7 @@ void acpm_log_print(void)
 		time += count * APM_PERITIMER_NS_PERIOD;
 
 		/* addr : [19:8], val : [7:0]*/
-		if (id == acpm_reg_id) {
+		if (id == REGULATOR_INFO_ID) {
 			if (is_set_regmap == false)
 				set_reg_map();
 
@@ -250,6 +215,11 @@ void acpm_log_print(void)
 void acpm_stop_log(void)
 {
 	acpm_stop_log_req = true;
+}
+
+static void acpm_update_log(struct work_struct *work)
+{
+	acpm_log_print();
 }
 
 static void acpm_debug_logging(struct work_struct *work)
@@ -573,22 +543,6 @@ int acpm_ipc_send_data_sync(unsigned int channel_id, struct ipc_config *cfg)
 	return ret;
 }
 
-/* EXYNOS9610 PMU_DBGCORE */
-//#define PMU_DBGCORE_INTR			(0x434)
-
-/* PMU_DBGCORE BIT FIELD */
-//#define INTR_ACK				(1 << 31)
-
-/*void exynos9610_disable_pmu_dbg_intr(void)
-{
-	u32 reg;
-*/
-	/* PMU_DBGCORE ack */
-/*	exynos_pmu_read(PMU_DBGCORE_INTR, &reg);
-	reg |= INTR_ACK;
-	exynos_pmu_write(PMU_DBGCORE_INTR, reg);
-}*/
-
 int acpm_ipc_send_data(unsigned int channel_id, struct ipc_config *cfg)
 {
 	unsigned int front;
@@ -685,26 +639,26 @@ retry:
 				return 0;
 			pr_err("%s Timeout error! now = %llu, timeout = %llu\n",
 					__func__, now, timeout);
-			pr_err("[ACPM] status:0x%x, 0x%x\n",
+			pr_err("[ACPM] int_status:0x%x, ch_id: 0x%x\n",
 					__raw_readl(acpm_ipc->intr + INTSR1),
 					1 << channel->id);
-			pr_err("[ACPM] queue, rear:%u, front:%u\n",
+			pr_err("[ACPM] queue, rx_rear:%u, rx_front:%u\n",
 					__raw_readl(channel->rx_ch.rear),
 					__raw_readl(channel->rx_ch.front));
+			pr_err("[ACPM] queue, tx_rear:%u, tx_front:%u\n",
+					__raw_readl(channel->tx_ch.rear),
+					__raw_readl(channel->tx_ch.front));
 
 			acpm_debug->debug_log_level = 1;
 			acpm_log_print();
 			acpm_debug->debug_log_level = 0;
 			acpm_ramdump();
 
-			/* To prevent WARM reset stuck, HOST-AP set ACK bit */
-			//exynos9610_disable_pmu_dbg_intr();
-
 			BUG_ON(timeout_flag);
 			return -ETIMEDOUT;
 		}
-		acpm_log_print();
-		//queue_work(update_log_wq, &acpm_debug->update_log_work);
+
+		queue_work(update_log_wq, &acpm_debug->update_log_work);
 	}
 
 	return 0;
@@ -766,9 +720,6 @@ static void log_buffer_init(struct device *dev, struct device_node *node)
 			virt_to_phys(acpm_debug->dump_dram_base));
 
 	spin_lock_init(&acpm_debug->lock);
-
-	if (acpm_initdata->regulator_id)
-		acpm_reg_id = acpm_initdata->regulator_id;
 }
 
 static int channel_init(void)
@@ -879,8 +830,8 @@ static int acpm_ipc_probe(struct platform_device *pdev)
 
 	channel_init();
 
-	//update_log_wq = create_freezable_workqueue("acpm_update_log");
-	//INIT_WORK(&acpm_debug->update_log_work, acpm_update_log);
+	update_log_wq = create_freezable_workqueue("acpm_update_log");
+	INIT_WORK(&acpm_debug->update_log_work, acpm_update_log);
 
 	if (acpm_debug->period) {
 		debug_logging_wq = create_freezable_workqueue("acpm_debug_logging");

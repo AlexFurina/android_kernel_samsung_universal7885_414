@@ -67,10 +67,14 @@ struct acpm_debug_info {
 	void __iomem *dump_dram_base;
 	unsigned int debug_log_level;
 	struct delayed_work periodic_work;
-	//struct work_struct update_log_work;
+	struct work_struct update_log_work;
 
 	spinlock_t lock;
 };
+
+#define LOG_ID_SHIFT				(28)
+#define LOG_LEVEL				(27)
+#define LOG_TIME_INDEX				(22)
 
 struct regulator_ss_info {
 	char name[7];
@@ -79,10 +83,6 @@ struct regulator_ss_info {
 	unsigned int linear_min_sel;
 	unsigned int vsel_reg;
 };
-
-#define LOG_ID_SHIFT				(29)
-#define LOG_LEVEL				(28)
-#define LOG_TIME_INDEX				(23)
 
 #define BUSY_WAIT				(0)
 #define SLEEP_WAIT				(1)
@@ -101,8 +101,8 @@ struct regulator_ss_info {
 #define SR2					0x0088
 #define SR3					0x008C
 
-#define IPC_TIMEOUT				(150000000)
-#define APM_PERITIMER_NS_PERIOD			(1000/26)
+#define IPC_TIMEOUT				(15000000)
+#define APM_PERITIMER_NS_PERIOD			(10416)
 
 #define UNTIL_EQUAL(arg0, arg1, flag)			\
 do {							\
@@ -123,7 +123,7 @@ do {							\
 	(flag) = t_flag;				\
 } while(0)
 
-#define REGULATOR_INFO_ID	1
+#define REGULATOR_INFO_ID	8
 #define REGULATOR_SS_MAX	128
 #define NO_SS_RANGE		(REGULATOR_SS_MAX + 100)
 #define NO_SET_REGMAP		(REGULATOR_SS_MAX + 99)
@@ -133,7 +133,6 @@ extern void timestamp_write(void);
 extern void acpm_ramdump(void);
 extern void acpm_fw_log_level(unsigned int on);
 extern void acpm_ipc_set_waiting_mode(bool mode);
-extern u32 acpm_get_mifdn_count(void);
 
 extern struct regulator_ss_info *get_regulator_ss(int n);
 
