@@ -34,9 +34,7 @@ enum soc_type {
 	SOC_ARCH_EXYNOS8890 = 1,
 	SOC_ARCH_EXYNOS8895 = 2,
 	SOC_ARCH_EXYNOS7872,
-	SOC_ARCH_EXYNOS7885,
 	SOC_ARCH_EXYNOS9810,
-	SOC_ARCH_EXYNOS9610,
 };
 
 /**
@@ -69,6 +67,7 @@ struct exynos_tmu_platform_data {
 	enum soc_type type;
 	u32 sensor_type;
 	u32 cal_type;
+	u32 cal_mode;
 };
 
 enum sensing_type {
@@ -84,6 +83,30 @@ static const char * const sensing_method[] = {
 	[MAX] = "max",
 	[MIN] = "min",
 	[BALANCE] = "balance",
+};
+
+enum thermal_zone_name {
+	MNGS_QUAD = 0,
+	APOLLO,
+	GPU,
+	ISP,
+	MNGS_DUAL,
+	BIG,
+	LITTLE,
+	END_ZONE_NAME,
+};
+
+/**
+ * It maps 'enum znoe_name' defined in above and is used to define zone name.
+ */
+static const char * const tz_zone_names[] = {
+	[MNGS_QUAD]= "MNGS_QUAD",
+	[APOLLO] = "APOLLO",
+	[GPU] = "GPU",
+	[ISP] = "ISP",
+	[MNGS_DUAL]= "MNGS_DUAL",
+	[BIG]="BIG",
+	[LITTLE]="LITTLE",
 };
 
 struct sensor_info {
@@ -123,8 +146,6 @@ struct exynos_tmu_data {
 	int hotplug_in_threshold;
 	int hotplug_out_threshold;
 	int limited_frequency;
-	int limited_threshold;
-	int limited_threshold_release;
 	struct exynos_tmu_platform_data *pdata;
 	void __iomem *base;
 	int irq;
@@ -145,7 +166,6 @@ struct exynos_tmu_data {
 	char tmu_name[THERMAL_NAME_LENGTH + 1];
 	struct device_node *np;
 	int balance_offset;
-	struct mutex hotplug_lock;
 
 	int (*tmu_initialize)(struct platform_device *pdev);
 	void (*tmu_control)(struct platform_device *pdev, bool on);
