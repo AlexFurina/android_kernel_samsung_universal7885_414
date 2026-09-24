@@ -20,6 +20,47 @@
 	model = "Samsung Universal7885 board based on EXYNOS7885";
 	compatible = "samsung,exynos7885", "samsung,Universal7885";
 
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <1>;
+		ranges;
+
+		debug_snapshot {
+			#address-cells = <0x2>;
+			#size-cells = <0x1>;
+
+			header {
+				compatible = "debug-snapshot,header";
+				reg = <0x0 0x91200000 0x7000>;
+			};
+
+			log_kevents {
+				compatible = "debug-snapshot,log_kevents";
+				reg = <0x0 0x91207000 0x7F9000>;
+			};
+
+			log_kernel {
+				compatible = "debug-snapshot,log_kernel";
+				reg = <0x0 0x91A00000 0x200000>;
+			};
+
+			log_platform {
+				compatible = "debug-snapshot,log_platform";
+				reg = <0x0 0x91E00000 0x400000>;
+			};
+
+			log_sfr {
+				compatible = "debug-snapshot,log_sfr";
+				reg = <0x0 0x92200000 0x400000>;
+			};
+
+			log_pstore {
+				compatible = "debug-snapshot,log_pstore";
+				reg = <0x0 0x92600000 0x8000>;
+			};
+		};
+	};
+
 	ect {
 		parameter_address = <0x90000000>;
 		parameter_size = <0x19000>;
