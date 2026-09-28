@@ -43,7 +43,7 @@
 #include <linux/ccic/ccic_notifier.h>
 #endif
 #if defined(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)
-#include <linux/usb/manager/usb_typec_manager_notifier.h>
+#include <linux/usb/typec/manager/usb_typec_manager_notifier.h>
 #endif
 
 #ifdef CONFIG_OF
