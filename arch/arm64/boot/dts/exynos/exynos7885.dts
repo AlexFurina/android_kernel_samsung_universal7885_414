@@ -60,9 +60,9 @@
 		#size-cells = <0x1>;
 		ranges;
 
-		framebuffer@0xCA000000 {
+		framebuffer@0xEC000000 {
 			compatible = "exynos,dpu_fb_handover";
-			reg = <0x0 0xca000000 0x1400000>;
+			reg = <0x0 0xec000000 0x1400000>;
 			linux,phandle = <0x42>;
 			phandle = <0x42>;
 		};
@@ -3468,7 +3468,7 @@
 	};
 
 	teegris {
-		compatible = "samsung,blowfish";
+		compatible = "samsung,teegris";
 		interrupts = <0x0 0x19e 0x0 0x0 0x19f 0x0>;
 	};
 
@@ -3580,7 +3580,7 @@
 		dpp,hold-rpm-on-boot;
 		samsung,power-domain = <0x4>;
 		memory-region = <0x42>;
-		fb_reserved = <0xca000000 0x1400000>;
+		fb_reserved = <0xec000000 0x1400000>;
 		linux,phandle = <0x3d>;
 		phandle = <0x3d>;
 	};
@@ -4798,7 +4798,8 @@
 	};
 
 	__symbols__ {
-		fb_handover = "/reserved-memory/framebuffer@0xCA000000";
+		reserved_memory = "/reserved-memory";
+		fb_handover = "/reserved-memory/framebuffer@0xEC000000";
 		gnss_reserved = "/reserved-memory/gnss_if";
 		abox_rmem = "/reserved-memory/abox_rmem@0xE9400000";
 		pinctrl_0 = "/pinctrl@11CB0000";
