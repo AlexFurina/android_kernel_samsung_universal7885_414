@@ -46,6 +46,15 @@
 
 #include <acpi/ghes.h>
 
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/sec_debug.h>
+#endif
+
+#include <soc/samsung/exynos-condbg.h>
+
+unsigned long __tlb_conflict_cnt = 0;
+static int safe_fault_in_progress = 0;
+
 struct fault_info {
 	int	(*fn)(unsigned long addr, unsigned int esr,
 		      struct pt_regs *regs);
@@ -559,6 +568,8 @@ no_context:
 	return 0;
 }
 
+#define thread_virt_addr_valid(xaddr)	pfn_valid(__pa(xaddr) >> PAGE_SHIFT)
+
 /*
  * First Level Translation Fault Handler
  *
@@ -599,7 +610,7 @@ static int do_alignment_fault(unsigned long addr, unsigned int esr,
  */
 static int do_bad(unsigned long addr, unsigned int esr, struct pt_regs *regs)
 {
-	return 1;
+	return ecd_do_bad(addr, regs);
 }
 
 /*

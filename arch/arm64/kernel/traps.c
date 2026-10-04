@@ -48,8 +48,12 @@
 #include <asm/exception.h>
 #include <asm/system_misc.h>
 #include <asm/sysreg.h>
+#include <soc/samsung/exynos-condbg.h>
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/sec_debug.h>
+#endif
 
-static const char *handler[]= {
+static const char *handler[] = {
 	"Synchronous Abort",
 	"IRQ",
 	"FIQ",
@@ -109,6 +113,16 @@ static void dump_backtrace_entry(unsigned long where)
 	print_ip_sym(where);
 }
 
+#if defined(CONFIG_SEC_DEBUG_AUTO_SUMMARY) && !defined(CONFIG_SEC_DEBUG_BRANCH_VERIFIER)
+static void dump_backtrace_entry_auto_summary(unsigned long where)
+{
+	/*
+	 * Note that 'where' can have a physical address, but it's not handled.
+	 */
+	pr_auto(ASL2, "[<%p>] %pS\n", (void *)where, (void *)where);
+}
+#endif
+
 static void __dump_instr(const char *lvl, struct pt_regs *regs)
 {
 	unsigned long addr = instruction_pointer(regs);
@@ -141,6 +155,27 @@ static void dump_instr(const char *lvl, struct pt_regs *regs)
 		__dump_instr(lvl, regs);
 	}
 }
+
+#ifdef CONFIG_SEC_DEBUG_AUTO_SUMMARY
+static bool on_valid_stack(struct task_struct *tsk, unsigned long sp, unsigned long irq_sp)
+{
+	unsigned long low = (unsigned long)task_stack_page(tsk);
+	unsigned long high = low + THREAD_SIZE;
+
+	if (low <= sp && sp < high)
+		return true;
+
+	if (irq_sp) {
+		low = irq_sp - IRQ_STACK_SIZE;
+		high = irq_sp;
+
+		if (low <= sp && sp < high)
+			return true;
+	}
+
+	return false;
+}
+#endif
 
 void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 {
@@ -209,6 +244,107 @@ void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 	put_task_stack(tsk);
 }
 
+#ifdef CONFIG_SEC_DEBUG_AUTO_SUMMARY
+static void dump_backtrace_auto_summary(struct pt_regs *regs, struct task_struct *tsk)
+{
+	struct stackframe frame;
+	unsigned long irq_stack_ptr;
+	int skip;
+#ifdef CONFIG_SEC_DEBUG_BRANCH_VERIFIER
+	struct branch_info binfo;
+#endif
+
+	pr_debug("%s(regs = %p tsk = %p)\n", __func__, regs, tsk);
+
+	if (!tsk)
+		tsk = current;
+
+	/*
+	 * Switching between stacks is valid when tracing current and in
+	 * non-preemptible context.
+	 */
+	if (tsk == current && !preemptible())
+		irq_stack_ptr = IRQ_STACK_PTR(smp_processor_id());
+	else
+		irq_stack_ptr = 0;
+
+	if (tsk == current) {
+		frame.fp = (unsigned long)__builtin_frame_address(0);
+		frame.sp = current_stack_pointer;
+		frame.pc = (unsigned long)dump_backtrace_auto_summary;
+	} else {
+		/*
+		 * task blocked in __switch_to
+		 */
+		frame.fp = thread_saved_fp(tsk);
+		frame.sp = thread_saved_sp(tsk);
+		frame.pc = thread_saved_pc(tsk);
+	}
+#ifdef CONFIG_FUNCTION_GRAPH_TRACER
+	frame.graph = tsk->curr_ret_stack;
+#endif
+#ifdef CONFIG_SEC_DEBUG_BRANCH_VERIFIER
+	frame.pc_from_irq = 0;
+	init_branch_info(&binfo);
+#endif
+
+	skip = !!regs;
+	pr_auto_once(2);
+	pr_auto(ASL2, "Call trace:\n");
+	while (1) {
+		unsigned long where = frame.pc;
+		unsigned long stack;
+		int ret;
+
+		/* skip until specified stack frame */
+		if (!skip) {
+#ifdef CONFIG_SEC_DEBUG_BRANCH_VERIFIER
+			pre_check_backtrace_auto_summary(&binfo, where, frame.fp);
+			check_backtrace_auto_summary(&binfo, where, frame.fp, frame.pc_from_irq, NULL);
+#else
+			dump_backtrace_entry_auto_summary(where);
+#endif
+		} else if (frame.fp == regs->regs[29]) {
+			skip = 0;
+			/*
+			 * Mostly, this is the case where this function is
+			 * called in panic/abort. As exception handler's
+			 * stack frame does not contain the corresponding pc
+			 * at which an exception has taken place, use regs->pc
+			 * instead.
+			 */
+#ifdef CONFIG_SEC_DEBUG_BRANCH_VERIFIER
+			check_backtrace_auto_summary(&binfo, regs->pc, frame.fp, frame.pc_from_irq, regs);
+#else
+			dump_backtrace_entry_auto_summary(regs->pc);
+#endif
+		}
+		ret = unwind_frame(tsk, &frame);
+		if (ret < 0)
+			break;
+		stack = frame.sp;
+		if (in_exception_text(where)) {
+			/*
+			 * If we switched to the irq_stack before calling this
+			 * exception handler, then the pt_regs will be on the
+			 * task stack. The easiest way to tell is if the large
+			 * pt_regs would overlap with the end of the irq_stack.
+			 */
+			if (stack < irq_stack_ptr &&
+			    (stack + sizeof(struct pt_regs)) > irq_stack_ptr)
+				stack = IRQ_STACK_TO_TASK_STACK(irq_stack_ptr);
+			else
+				stack = frame.fp - sizeof(struct pt_regs)
+						 - PRESERVE_STACK_SIZE;
+
+			if (on_valid_stack(tsk, stack, irq_stack_ptr))
+				dump_mem("", "Exception stack", stack,
+					 stack + sizeof(struct pt_regs));
+		}
+	}
+}
+#endif
+
 void show_stack(struct task_struct *tsk, unsigned long *sp)
 {
 	dump_backtrace(NULL, tsk);
@@ -228,6 +364,7 @@ static int __die(const char *str, int err, struct pt_regs *regs)
 	static int die_counter;
 	int ret;
 
+	ecd_printf("%s\n", str);
 	pr_emerg("Internal error: %s: %x [#%d]" S_PREEMPT S_SMP "\n",
 		 str, err, ++die_counter);
 
@@ -242,8 +379,14 @@ static int __die(const char *str, int err, struct pt_regs *regs)
 		 end_of_stack(tsk));
 	show_regs(regs);
 
-	if (!user_mode(regs))
+	if (!user_mode(regs)) {
+		dump_mem(KERN_EMERG, "Stack: ", regs->sp,
+			 THREAD_SIZE + (unsigned long)task_stack_page(tsk));
+
+		dump_backtrace(regs, tsk);
+
 		dump_instr(KERN_EMERG, regs);
+	}
 
 	return ret;
 }
@@ -264,6 +407,9 @@ void die(const char *str, struct pt_regs *regs, int err)
 
 	console_verbose();
 	bust_spinlocks(1);
+#ifdef CONFIG_SEC_DUMP_SUMMARY
+	sec_debug_save_die_info(str, regs);
+#endif
 	ret = __die(str, err, regs);
 
 	if (regs && kexec_should_crash(current))
@@ -273,10 +419,29 @@ void die(const char *str, struct pt_regs *regs, int err)
 	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
 	oops_exit();
 
+#if defined(CONFIG_SEC_DEBUG)
+	if (in_interrupt()) {
+		if (regs)
+			panic("%s\nPC is at %pS\nLR is at %pS",
+				"Fatal exception in interrupt", (void *)(regs)->pc,
+				(compat_user_mode(regs)) ? (void *)regs->compat_lr : (void *)regs->regs[30]);
+		else
+			panic("Fatal exception in interrupt");
+	}
+	if (panic_on_oops) {
+		if (regs)
+			panic("%s\nPC is at %pS\nLR is at %pS",
+				"Fatal exception", (void *)(regs)->pc,
+				(compat_user_mode(regs)) ? (void *)regs->compat_lr : (void *)regs->regs[30]);
+		else
+			panic("Fatal exception");
+	}
+#else
 	if (in_interrupt())
 		panic("Fatal exception in interrupt");
 	if (panic_on_oops)
 		panic("Fatal exception");
+#endif
 
 	raw_spin_unlock_irqrestore(&die_lock, flags);
 
@@ -362,7 +527,7 @@ exit:
 }
 
 static void force_signal_inject(int signal, int code, struct pt_regs *regs,
-				unsigned long address)
+				unsigned long address, unsigned int esr)
 {
 	siginfo_t info;
 	void __user *pc = (void __user *)instruction_pointer(regs);
@@ -392,7 +557,7 @@ static void force_signal_inject(int signal, int code, struct pt_regs *regs,
 	info.si_code  = code;
 	info.si_addr  = pc;
 
-	arm64_notify_die(desc, regs, &info, 0);
+	arm64_notify_die(desc, regs, &info, esr);
 }
 
 /*
@@ -409,10 +574,10 @@ void arm64_notify_segfault(struct pt_regs *regs, unsigned long addr)
 		code = SEGV_ACCERR;
 	up_read(&current->mm->mmap_sem);
 
-	force_signal_inject(SIGSEGV, code, regs, addr);
+	force_signal_inject(SIGSEGV, code, regs, addr, 0);
 }
 
-asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
+asmlinkage void __exception do_undefinstr(struct pt_regs *regs, unsigned int esr)
 {
 	/* check for AArch32 breakpoint instructions */
 	if (!aarch32_break_handler(regs))
@@ -421,7 +586,9 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 	if (call_undef_hook(regs) == 0)
 		return;
 
-	force_signal_inject(SIGILL, ILL_ILLOPC, regs, 0);
+	dump_instr(KERN_EMERG, regs);
+
+	force_signal_inject(SIGILL, ILL_ILLOPC, regs, 0, esr);
 }
 
 int cpu_enable_cache_maint_trap(void *__unused)
@@ -437,6 +604,28 @@ int cpu_enable_cache_maint_trap(void *__unused)
 		uaccess_ttbr0_enable();				\
 		asm volatile (					\
 			"1:	" insn ", %1\n"			\
+			"	mov	%w0, #0\n"		\
+			"2:\n"					\
+			"	.pushsection .fixup,\"ax\"\n"	\
+			"	.align	2\n"			\
+			"3:	mov	%w0, %w2\n"		\
+			"	b	2b\n"			\
+			"	.popsection\n"			\
+			_ASM_EXTABLE(1b, 3b)			\
+			: "=r" (res)				\
+			: "r" (address), "i" (-EFAULT));	\
+		uaccess_ttbr0_disable();			\
+	}
+
+#define __user_ivau_cache_maint(insn, address, res)			\
+	if (address >= user_addr_max()) {			\
+		res = -EFAULT;					\
+	} else {						\
+		uaccess_ttbr0_enable();				\
+		asm volatile (					\
+			"1:	" insn ", %1\n"			\
+			"	dsb	ish\n"			\
+			"	isb\n"				\
 			"	mov	%w0, #0\n"		\
 			"2:\n"					\
 			"	.pushsection .fixup,\"ax\"\n"	\
@@ -473,10 +662,10 @@ static void user_cache_maint_handler(unsigned int esr, struct pt_regs *regs)
 		__user_cache_maint("dc civac", address, ret);
 		break;
 	case ESR_ELx_SYS64_ISS_CRM_IC_IVAU:	/* IC IVAU */
-		__user_cache_maint("ic ivau", address, ret);
+		__user_ivau_cache_maint("ic ivau", address, ret);
 		break;
 	default:
-		force_signal_inject(SIGILL, ILL_ILLOPC, regs, 0);
+		force_signal_inject(SIGILL, ILL_ILLOPC, regs, 0, esr);
 		return;
 	}
 
@@ -560,7 +749,7 @@ asmlinkage void __exception do_sysinstr(unsigned int esr, struct pt_regs *regs)
 	 * back to our usual undefined instruction handler so that we handle
 	 * these consistently.
 	 */
-	do_undefinstr(regs);
+	do_undefinstr(regs, esr);
 }
 
 long compat_arm_syscall(struct pt_regs *regs);

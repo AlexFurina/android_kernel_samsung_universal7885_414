@@ -87,6 +87,7 @@ alternative_if ARM64_UNMAP_KERNEL_AT_EL0
 alternative_else_nop_endif
 #endif
 
+	.if	\el == 0
 	sub	sp, sp, #S_FRAME_SIZE
 #ifdef CONFIG_VMAP_STACK
 	/*
@@ -130,7 +131,11 @@ alternative_else_nop_endif
 	sub	sp, sp, x0
 	mrs	x0, tpidrro_el0
 #endif
+	.else
+	sub	sp, sp, #(S_FRAME_SIZE+PRESERVE_STACK_SIZE)
+	.endif /* \el == 0 */
 	b	el\()\el\()_\label
+
 	.endm
 
 	.macro tramp_alias, dst, sym
@@ -193,7 +198,7 @@ alternative_cb_end
 
 	mov	x29, xzr			// fp pointed to user-space
 	.else
-	add	x21, sp, #S_FRAME_SIZE
+	add	x21, sp, #(S_FRAME_SIZE+PRESERVE_STACK_SIZE)
 	get_thread_info tsk
 	/* Save the task's original addr_limit and set USER_DS */
 	ldr	x20, [tsk, #TSK_TI_ADDR_LIMIT]
@@ -351,7 +356,11 @@ alternative_else_nop_endif
 	ldp	x26, x27, [sp, #16 * 13]
 	ldp	x28, x29, [sp, #16 * 14]
 	ldr	lr, [sp, #S_LR]
+	.if	\el == 0
 	add	sp, sp, #S_FRAME_SIZE		// restore sp
+	.else
+	add	sp, sp, #(S_FRAME_SIZE+PRESERVE_STACK_SIZE)
+	.endif /* \el == 0 */
 
 	.if	\el == 0
 alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
@@ -500,6 +509,104 @@ __bad_stack:
 	ASM_BUG()
 	.endm
 
+/*
+ * wdt reset for i-cache preservation
+ * local irq disable is assumed for wdt reset
+ */
+	.macro	wdt_reset_for_icache, el
+1:	/* register save */
+	stp	x0, x1, [sp, #-0x20]!
+	stp	x2, x3, [sp,#0x10]
+
+	/* check sj locked */
+#if 0 // enable later
+	ldr_l	x0, __debug_sj_lock
+	cmp	x0, #0
+	b.ne	3f
+#endif
+
+	/* check if core is big */
+	mrs	x0, MIDR_EL1
+	lsr	x0, x0, #24
+	cmp	x0, #0x53
+	b.ne	3f
+
+	/* check if it is the case */
+	/* pc alignment            */
+	/* undef from init task    */
+	mrs	x2, esr_el1			// read the syndrome register
+	lsr	x1, x2, #ESR_ELx_EC_SHIFT	// exception class
+
+	/*
+	 * check if exception class is data/instruction abort with tlb conflict
+	 * at any exception level
+	 *
+	 * EC: IABT(10000x) && IFSC: 110000
+	 * EC: DABT(10010x) && DFSC: 110000
+	 */
+	mov	x0, #0x3a
+	and	x3, x1, x0			// bit mask 111010 
+	cmp	x3, #0x20			// check d/i abort 
+	b.ne	4f
+
+	mov	x0, #0x3f
+	and	x3, x2, x0			// bit mask 111111
+	cmp	x3, #0x30			// check IFSC/DFSC
+	b.eq	2f
+
+4:
+	/* check pc alignment exception */
+	cmp	x1, #ESR_ELx_EC_PC_ALIGN	// pc alignment exception
+	.if	\el == 0
+	b	3f
+	.else	/* el == 1 */
+	/* go to wdt reset right away */
+	b.eq	2f
+	.endif
+
+	/* check if exception class is undef & task is init*/
+	cmp	x1, #ESR_ELx_EC_UNKNOWN	// unknown exception in EL1
+	b.ne	3f
+
+2:	/* wdt reset */
+	/* wdt_reset, x0:reg_base, x1:con, x2:dat, x3:cnt(=5 tick)*/
+
+	/* save important information */
+	ldr	x1, =entry_dbg_saved_data
+	mov	x0, \el			// 
+	str	x0, [x1, #0x8]		// save el
+	mrs	x0, esr_el1		// read the syndrome register	
+	str	x0, [x1, #0x10]		// save esr
+	mrs	x0, elr_el1
+	str	x0, [x1, #0x18]		// save elr
+	mrs	x0, far_el1
+	str	x0, [x1, #0x20]		// save elr
+	ldr	x0, =0x57445200
+	str	x0, [x1]		// save magic
+
+#if 0 // enable after adding watchdog driver
+	/* do wdt reset */
+	ldr	x1, =s3c_wdt
+	ldr	x1, [x1]
+	ldr	x0, [x1, #0x18]
+
+	ldr	w1, [x0]
+	mov	w2, #0
+	str	w2, [x0, #4]
+	mov	w3, #2 // 2 tick
+	str	w3, [x0,#0x8]
+	mov	w3, #0x21
+	orr	w1, w1,w3
+	str	w1, [x0]
+	b	.
+#endif
+
+3:	/* register restore */
+	ldp x0, x1, [sp]
+	ldp x2, x3, [sp,#0x10]
+	add sp, sp, #0x20
+	.endm
+
 el0_sync_invalid:
 	inv_entry 0, BAD_SYNC
 ENDPROC(el0_sync_invalid)
@@ -547,7 +654,75 @@ ENDPROC(el1_error_invalid)
  */
 	.align	6
 el1_sync:
+	stp	x0, x1, [sp, #-0x10]!
+	mrs	x0, esr_el1
+/* get Exeption Class */
+	lsr	x0, x0, #0x1A
+/* check data abort fault */
+	cmp	x0, #0x25
+	b.ne	1f
+/* check branch instruction */
+	mrs	x0, elr_el1
+
+	ldr	x0, [x0]
+	lsr	x0, x0, #0x19
+	and	x0, x0, #0x7f
+	cmp	x0, #0x2a
+	b.ne	1f
+/* halt for watchdog */
+	hlt	#0xff
+1:
+	ldp	x0, x1, [sp]
+	add	sp, sp, #0x10
+
+/* store used gprs(x0, x1) through stack */
+	stp     x0, x1, [sp, #-0x10]!
+	mrs     x0, esr_el1
+	mov     x1, #0x30
+	movk    x1, #0x9600, lsl #0x10
+	cmp     x0, x1
+	b.eq    96f
+	movk    x1, #0x9400, lsl #0x10
+	cmp     x0, x1
+	b.eq    96f
+	movk    x1, #0x8600, lsl #0x10
+	cmp     x0, x1
+	b.eq    86f
+	movk    x1, #0x8400, lsl #0x10
+	cmp     x0, x1
+	b.eq    86f
+	mov     x1, #0x70
+	movk    x1, #0x9600, lsl #0x10
+	cmp     x0, x1
+	b.eq    96f
+	movk    x1, #0x9400, lsl #0x10
+	cmp     x0, x1
+	b.eq    96f
+	b       skip
+96:
+86:
+/* recovery tlb confilict */
+	dsb     sy
+	tlbi    vmalle1is
+	dsb     sy
+
+/* Add count for recovery count */
+        ldr_l   x0, __tlb_conflict_cnt
+        add     x0, x0, #1
+	cmp     x0, #0x100
+        b.ge    skip
+        str_l   x0, __tlb_conflict_cnt, x1
+	ldp	x0, x1, [sp]
+	add	sp, sp, #0x10
+        kernel_entry 1
+        kernel_exit 1
+skip:
+	ldp	x0, x1, [sp]
+	add	sp, sp, #0x10
+	wdt_reset_for_icache 1
 	kernel_entry 1
+	mov	x9, #0
+	str_l	x9, __tlb_conflict_cnt, x8
 	mrs	x1, esr_el1			// read the syndrome register
 	lsr	x24, x1, #ESR_ELx_EC_SHIFT	// exception class
 	cmp	x24, #ESR_ELx_EC_DABT_CUR	// data abort in EL1
@@ -604,6 +779,7 @@ el1_undef:
 	mov	x0, sp
 	bl	do_undefinstr
 	ASM_BUG()
+
 el1_dbg:
 	/*
 	 * Debug exception handling
@@ -663,6 +839,7 @@ el1_preempt:
  */
 	.align	6
 el0_sync:
+	wdt_reset_for_icache 0
 	kernel_entry 0
 	mrs	x25, esr_el1			// read the syndrome register
 	lsr	x24, x25, #ESR_ELx_EC_SHIFT	// exception class
@@ -807,6 +984,7 @@ el0_undef:
 	enable_dbg_and_irq
 	ct_user_exit
 	mov	x0, sp
+	mrs	x1, esr_el1			// read the syndrome register
 	bl	do_undefinstr
 	b	ret_to_user
 el0_sys:
@@ -926,6 +1104,7 @@ el0_svc_naked:					// compat entry point
 	b.hs	ni_sys
 	mask_nospec64 xscno, xsc_nr, x19	// enforce bounds for syscall number
 	ldr	x16, [stbl, xscno, lsl #3]	// address in the syscall table
+
 	blr	x16				// call sys_* routine
 	b	ret_fast_syscall
 ni_sys:
@@ -1136,3 +1315,14 @@ ENTRY(ret_from_fork)
 	b	ret_to_user
 ENDPROC(ret_from_fork)
 NOKPROBE(ret_from_fork)
+
+	.section .bss
+	.align 3
+	.globl	entry_dbg_saved_data
+entry_dbg_saved_data:
+	.dword	0	//magic
+	.dword	0	//el
+	.dword	0	//esr_el1
+	.dword	0	//elr_el1
+	.dword	0	//far_el1
+

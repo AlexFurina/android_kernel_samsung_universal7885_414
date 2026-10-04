@@ -53,6 +53,10 @@
 #include <asm/tlb.h>
 #include <asm/alternative.h>
 
+#ifdef CONFIG_RELOCATABLE_KERNEL
+#include <linux/memblock.h>
+#endif
+
 /*
  * We need to be able to catch inadvertent references to memstart_addr
  * that occur (potentially in generic code) before arm64_memblock_init()
@@ -279,6 +283,22 @@ static void __init zone_sizes_init(unsigned long min, unsigned long max)
 		}
 	}
 
+	if (ZONE_MOVABLE_SIZE_BYTES > 0) {
+		int zidx;
+
+		for (zidx = ZONE_MOVABLE - 1; zidx >= 0; zidx--) {
+			if (zone_size[zidx] > 0)
+				break;
+		}
+
+		BUG_ON(zidx == -1);
+
+		zone_size[ZONE_MOVABLE] = ZONE_MOVABLE_SIZE_BYTES >> PAGE_SHIFT;
+		BUG_ON(zone_size[ZONE_MOVABLE] >= zone_size[zidx]);
+		zone_size[zidx] -= zone_size[ZONE_MOVABLE];
+		zhole_size[ZONE_MOVABLE] = 0;
+	}
+
 	free_area_init_node(0, zone_size, min, zhole_size);
 }
 
@@ -370,6 +390,7 @@ void __init arm64_memblock_init(void)
 	/* Handle linux,usable-memory-range property */
 	fdt_enforce_memory_region();
 
+	set_memsize_kernel_type(MEMSIZE_KERNEL_STOP);
 	/*
 	 * Ensure that the linear region takes up exactly half of the kernel
 	 * virtual address space. This way, we can distinguish a linear address
@@ -457,10 +478,17 @@ void __init arm64_memblock_init(void)
 	 * Register the kernel text, kernel data, initrd, and initial
 	 * pagetables with memblock.
 	 */
+	set_memsize_kernel_type(MEMSIZE_KERNEL_KERNEL);
 	memblock_reserve(__pa_symbol(_text), _end - _text);
+	set_memsize_kernel_type(MEMSIZE_KERNEL_STOP);
+	record_memsize_reserved("initmem", __pa(__init_begin),
+				__init_end - __init_begin, false, false);
 #ifdef CONFIG_BLK_DEV_INITRD
 	if (initrd_start) {
 		memblock_reserve(initrd_start, initrd_end - initrd_start);
+		record_memsize_reserved("initrd", initrd_start,
+					initrd_end - initrd_start, false,
+					false);
 
 		/* the generic initrd code expects virtual addresses */
 		initrd_start = __phys_to_virt(initrd_start);
@@ -473,6 +501,9 @@ void __init arm64_memblock_init(void)
 	/* 4GB maximum for 32-bit only capable devices */
 	if (IS_ENABLED(CONFIG_ZONE_DMA))
 		arm64_dma_phys_limit = max_zone_dma_phys();
+	else if (ZONE_MOVABLE_SIZE_BYTES > 0)
+		arm64_dma_phys_limit =
+			memblock_end_of_DRAM() - ZONE_MOVABLE_SIZE_BYTES;
 	else
 		arm64_dma_phys_limit = PHYS_MASK + 1;
 
@@ -483,6 +514,7 @@ void __init arm64_memblock_init(void)
 	high_memory = __va(memblock_end_of_DRAM() - 1) + 1;
 
 	dma_contiguous_reserve(arm64_dma_phys_limit);
+	set_memsize_kernel_type(MEMSIZE_KERNEL_OTHERS);
 
 	memblock_allow_resize();
 }
@@ -491,6 +523,7 @@ void __init bootmem_init(void)
 {
 	unsigned long min, max;
 
+	set_memsize_kernel_type(MEMSIZE_KERNEL_PAGING);
 	min = PFN_UP(memblock_start_of_DRAM());
 	max = PFN_DOWN(memblock_end_of_DRAM());
 
@@ -509,6 +542,7 @@ void __init bootmem_init(void)
 	zone_sizes_init(min, max);
 
 	memblock_dump_all();
+	set_memsize_kernel_type(MEMSIZE_KERNEL_OTHERS);
 }
 
 #ifndef CONFIG_SPARSEMEM_VMEMMAP
@@ -684,6 +718,7 @@ void free_initmem(void)
 	 * is not supported by kallsyms.
 	 */
 	unmap_kernel_range((u64)__init_begin, (u64)(__init_end - __init_begin));
+
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD
@@ -703,6 +738,30 @@ static int __init keepinitrd_setup(char *__unused)
 }
 
 __setup("keepinitrd", keepinitrd_setup);
+#endif
+
+#if defined(CONFIG_RELOCATABLE_KERNEL) || defined(CONFIG_RELOCATABLE)
+static unsigned long kaslr_mem  __initdata;
+static unsigned long kaslr_size  __initdata;
+
+static int __init set_kaslr_region(char *str)
+{
+	char *endp;
+
+	kaslr_size = memparse(str, &endp);
+	if (*endp == '@')
+		kaslr_mem = memparse(endp+1, NULL);
+
+	if (memblock_reserve(kaslr_mem, kaslr_size)) {
+		pr_err("%s: failed reserving size %lx at base 0x%lx\n", __func__,
+			kaslr_size, kaslr_mem);
+		return -1;
+	}
+	pr_info("kaslr :%s, base:%lx, size:%lx \n", __func__, kaslr_mem,
+		kaslr_size);
+	return 0;
+}
+__setup("kaslr_region=", set_kaslr_region);
 #endif
 
 /*

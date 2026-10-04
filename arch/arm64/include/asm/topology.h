@@ -20,6 +20,7 @@ extern struct cpu_topology cpu_topology[NR_CPUS];
 #define topology_sibling_cpumask(cpu)	(&cpu_topology[cpu].thread_sibling)
 
 void init_cpu_topology(void);
+int get_current_cpunum(void);
 void store_cpu_topology(unsigned int cpuid);
 const struct cpumask *cpu_coregroup_mask(int cpu);
 
@@ -32,7 +33,6 @@ int pcibus_to_node(struct pci_bus *bus);
 				 cpumask_of_node(pcibus_to_node(bus)))
 
 #endif /* CONFIG_NUMA */
-
 #include <linux/arch_topology.h>
 
 /* Replace task scheduler's default frequency-invariant accounting */
@@ -46,6 +46,7 @@ int pcibus_to_node(struct pci_bus *bus);
 
 /* Enable topology flag updates */
 #define arch_update_cpu_topology topology_update_cpu_topology
+
 
 #include <asm-generic/topology.h>
 
