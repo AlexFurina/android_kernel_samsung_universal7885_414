@@ -39,6 +39,12 @@ int exynos_pmu_update(unsigned int offset, unsigned int mask, unsigned int val)
 	return regmap_update_bits(pmureg, offset, mask, val);
 }
 
+struct regmap *exynos_get_pmu_regmap(void)
+{
+	return pmureg;
+}
+
+EXPORT_SYMBOL_GPL(exynos_get_pmu_regmap);
 EXPORT_SYMBOL(exynos_pmu_read);
 EXPORT_SYMBOL(exynos_pmu_write);
 EXPORT_SYMBOL(exynos_pmu_update);
