@@ -319,6 +319,25 @@ extern asmlinkage void dump_stack(void) __cold;
 #define pr_cont(fmt, ...) \
 	printk(KERN_CONT fmt, ##__VA_ARGS__)
 
+// guard this later
+#define pr_auto(index, fmt, ...) \
+	printk(KERN_AUTO index pr_fmt(fmt), ##__VA_ARGS__)
+#define pr_auto_disable(index) \
+	sec_debug_auto_comment_log_disable(index)
+#define pr_auto_once(index) \
+	sec_debug_auto_comment_log_once(index)
+
+#define ASL1	KERN_AUTO1
+#define ASL2	KERN_AUTO2
+#define ASL3	KERN_AUTO3
+#define ASL4	KERN_AUTO4
+#define ASL5	KERN_AUTO5
+#define ASL6	KERN_AUTO6
+#define ASL7	KERN_AUTO7
+#define ASL8	KERN_AUTO8
+#define ASL9	KERN_AUTO9
+//
+
 /* pr_devel() should produce zero code unless DEBUG is defined */
 #ifdef DEBUG
 #define pr_devel(fmt, ...) \
