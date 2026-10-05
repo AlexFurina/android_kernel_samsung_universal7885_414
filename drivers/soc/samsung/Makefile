@@ -62,4 +62,4 @@ obj-$(CONFIG_EXYNOS_SDM) += exynos-sdm.o
 # obj-$(CONFIG_EXYNOS_HDCP2)  += exynos-hdcp/ enable later
 
 # secmem
-#obj-$(CONFIG_ARCH_EXYNOS)	+= secmem.o enable later
+obj-$(CONFIG_ARCH_EXYNOS)	+= secmem.o
