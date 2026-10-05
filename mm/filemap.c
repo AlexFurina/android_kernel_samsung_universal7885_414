@@ -1226,6 +1226,34 @@ int __lock_page_or_retry(struct page *page, struct mm_struct *mm,
 	}
 }
 
+#ifdef CONFIG_TRACING
+static void filemap_tracing_mark_begin(struct file *file,
+		pgoff_t offset, unsigned int size, bool sync)
+{
+	char buf[TRACING_MARK_BUF_SIZE], *path;
+
+	if (!tracing_is_on())
+		return;
+
+	path = file_path(file, buf, TRACING_MARK_BUF_SIZE);
+	if (IS_ERR(path)) {
+		sprintf(buf, "file_path failed(%ld)", PTR_ERR(path));
+		path = buf;
+	}
+
+	tracing_mark_begin("%d , %s , %lu , %d", sync, path, offset, size);
+}
+
+static void filemap_tracing_mark_end(void)
+{
+    tracing_mark_end();
+}
+#else
+static void filemap_tracing_mark_begin(struct file *file,
+		pgoff_t offset, unsigned int size, bool sync) { }
+static void filemap_tracing_mark_end(void) { }
+#endif
+
 /**
  * page_cache_next_hole - find the next hole (not-present entry)
  * @mapping: mapping
