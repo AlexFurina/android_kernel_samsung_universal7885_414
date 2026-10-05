@@ -23,7 +23,7 @@
 #include <linux/export.h>
 #include <linux/pm_qos.h>
 #include <linux/dma-contiguous.h>
-#include <linux/exynos_ion.h>
+#include <linux/ion_exynos.h>
 #include <linux/smc.h>
 #include <linux/dma-buf.h>
 
