@@ -14,3 +14,4 @@ obj-$(CONFIG_ARM_TEGRA_DEVFREQ)		+= tegra-devfreq.o
 
 # DEVFREQ Event Drivers
 obj-$(CONFIG_PM_DEVFREQ_EVENT)		+= event/
+obj-$(CONFIG_ARM_EXYNOS_DEVFREQ)	+= exynos/
