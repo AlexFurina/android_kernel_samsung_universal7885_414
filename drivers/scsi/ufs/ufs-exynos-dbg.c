@@ -16,7 +16,11 @@
 #include "mphy.h"
 #include "ufs-exynos.h"
 
+#ifdef CONFIG_SOC_EXYNOS9810
+#include "ufs-dbg-9810.h"
+#else
 #include "ufs-dbg-9610.h"
+#endif
 
 static void exynos_ufs_get_misc(struct ufs_hba *hba)
 {
