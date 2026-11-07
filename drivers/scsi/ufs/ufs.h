@@ -130,6 +130,9 @@ enum {
 	UPIU_TASK_ATTR_ORDERED	= 0x01,
 	UPIU_TASK_ATTR_HEADQ	= 0x02,
 	UPIU_TASK_ATTR_ACA	= 0x03,
+#ifdef CUSTOMIZE_UPIU_FLAGS
+	UPIU_COMMAND_PRIORITY_HIGH      = 0x4,
+#endif
 };
 
 /* UPIU Query request function */
@@ -550,8 +553,6 @@ struct ufs_vreg_info {
 	struct ufs_vreg *vccq;
 	struct ufs_vreg *vccq2;
 	struct ufs_vreg *vdd_hba;
-	int ufs_power_gpio;
-	int ufs_reset_n_gpio;
 };
 
 struct ufs_dev_info {
