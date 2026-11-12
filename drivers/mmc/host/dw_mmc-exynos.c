@@ -50,6 +50,7 @@ static void dw_mci_hwacg_work(struct work_struct *work)
 
 static void dw_mci_exynos_register_dump(struct dw_mci *host)
 {
+#ifdef CONFIG_MMC_DW_EXYNOS_FMP
 	dev_err(host->dev, ": EMMCP_BASE:	0x%08x\n",
 		host->sfr_dump->fmp_emmcp_base = mci_readl(host, EMMCP_BASE));
 	dev_err(host->dev, ": MPSECURITY:	0x%08x\n",
@@ -62,6 +63,7 @@ static void dw_mci_exynos_register_dump(struct dw_mci *host)
 		host->sfr_dump->mpsend = mci_readl(host, MPSEND0));
 	dev_err(host->dev, ": MPSCTRL:		0x%08x\n",
 		host->sfr_dump->mpsctrl = mci_readl(host, MPSCTRL0));
+#endif
 	dev_err(host->dev, ": HS400_DQS_EN:  	0x%08x\n",
 		host->sfr_dump->hs400_rdqs_en = mci_readl(host, HS400_DQS_EN));
 	dev_err(host->dev, ": HS400_ASYNC_FIFO_CTRL:   0x%08x\n",
@@ -1946,10 +1948,6 @@ static int dw_mci_exynos_access_control_abort(struct dw_mci *host)
 #else
 static int dw_mci_exynos_crypto_sec_cfg(struct dw_mci *host, bool init)
 {
-	mci_writel(host, MPSBEGIN0, 0);
-	mci_writel(host, MPSEND0, 0xffffffff);
-	mci_writel(host, MPSLUN0, 0xff);
-	mci_writel(host, MPSCTRL0, DWMCI_MPSCTRL_BYPASS);
 	return 0;
 }
 #endif
@@ -1967,8 +1965,8 @@ static const struct dw_mci_drv_data exynos_drv_data = {
 	.crypto_engine_cfg = dw_mci_exynos_crypto_engine_cfg,
 	.crypto_engine_clear = dw_mci_exynos_crypto_engine_clear,
 	.access_control_abort = dw_mci_exynos_access_control_abort,
-#endif
 	.crypto_sec_cfg = dw_mci_exynos_crypto_sec_cfg,
+#endif
 #if 0
 	.ssclk_control = dw_mci_exynos_ssclk_control,
 #endif
