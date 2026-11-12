@@ -1181,9 +1181,9 @@
 		num-eint = <24>;
 		num-gic = <16>;
 		suspend_mode_idx = <8>;		/* SYS_SLEEP */
-		suspend_psci_idx = <133>;	/* PSCI_SYSTEM_SLEEP */
+		suspend_psci_idx = <1024>;  /* PSCI_SYSTEM_SLEEP */
 		cp_call_mode_idx = <10>;	/* SYS_SLEEP_AUD_ON */
-		cp_call_psci_idx = <133>;	/* PSCI_SYSTEM_SLEEP */
+		cp_call_psci_idx = <1024>;  /* PSCI_SYSTEM_SLEEP */
 		wkup_stats = <0x600 0x604 0x608 0x640>;
 		eint_pends = <0xa00 0xa04 0xa08>;
 		conn_req_offset = <0x00d4>;	/* PMU_ALIVE__CONNECT_REQ_STATUS */
