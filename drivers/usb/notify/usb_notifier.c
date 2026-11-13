@@ -21,8 +21,6 @@
 #endif
 #if defined(CONFIG_MUIC_NOTIFIER)
 #include <linux/muic/muic.h>
-#endif
-#if defined(CONFIG_MUIC_NOTIFIER)
 #include <linux/muic/muic_notifier.h>
 #endif
 #if defined(CONFIG_VBUS_NOTIFIER)
@@ -33,12 +31,9 @@
 #endif
 #if defined(CONFIG_BATTERY_SAMSUNG_V2)
 #include "../../battery_v2/include/sec_charging_common.h"
-#elif defined(CONFIG_BATTERY_SAMSUNG_LEGO_STYLE)
-#include "../../battery/common/include/sec_charging_common.h"
 #else
 #include <linux/battery/sec_charging_common.h>
 #endif
-
 #include "usb_notifier.h"
 
 #include <linux/regulator/consumer.h>
@@ -60,6 +55,10 @@ struct usb_notifier_platform_data {
 
 #if defined(CONFIG_CCIC_NOTIFIER)
 	struct delayed_work usb_ldo_work;
+#define USB_LDOCONTROL_EXYNOS8895	1 /* legacy */
+#define USB_LDOCONTROL_EXYNOS9810	2
+#define USB_LDOCONTROL_EXYNOS9820	3
+#define USB_LDOCONTROL_EXYNOS9830	4
 	unsigned int usb_ldocontrol;
 	unsigned int usb_ldo_onoff;
 	bool usb_ldo_off_working;
@@ -114,10 +113,9 @@ static void of_get_usb_redriver_dt(struct device_node *np,
 
 	pdata->device_wake_lock_enable =
 		!(of_property_read_bool(np, "disable_device_wakelock"));
-		
-	pr_info("%s, host_wake_lock_enable %d ,device_wake_lock_enable %d\n",
-		__func__, pdata->host_wake_lock_enable, pdata->device_wake_lock_enable);
-		
+
+	pr_info("%s, host_wake_lock_enable %d ,device_wake_lock_enable %d\n", __func__, pdata->host_wake_lock_enable, pdata->device_wake_lock_enable);
+
 }
 
 static int of_usb_notifier_dt(struct device *dev,
@@ -162,7 +160,7 @@ static struct device_node *exynos_udc_parse_dt(void)
 	dev = &pdev->dev;
 	np = of_parse_phandle(dev->of_node, "udc", 0);
 	if (!np) {
-		dev_info(dev, "udc device is not available\n");
+		pr_err("%s: device is not available\n", __func__);
 		goto err;
 	}
 find:
@@ -270,6 +268,7 @@ static void usb_dp_regulator_onoff(struct usb_notifier_platform_data *pdata,
 				__func__, ret);
 		}
 	}
+
 	regulator_put(vdd3p3_dp);
 }
 
@@ -280,7 +279,7 @@ static void usb_regulator_onoff(void *data, unsigned int onoff)
 	pr_info("usb: %s - Turn %s (ldocontrol=%d, usb_ldo_off_working=%d)\n", __func__,
 		onoff ? "on":"off", pdata->usb_ldocontrol, pdata->usb_ldo_off_working);
 
-	if (pdata->usb_ldocontrol) {
+	if (pdata->usb_ldocontrol == USB_LDOCONTROL_EXYNOS8895) {
 		if (onoff) {
 			if (!pdata->usb_ldo_onoff) {
 				if (pdata->usb_ldo_off_working) {
@@ -438,6 +437,7 @@ static int muic_usb_handle_notification(struct notifier_block *nb,
 			pr_err("%s - ACTION Error!\n", __func__);
 		break;
 	default:
+		send_otg_notify(o_notify, NOTIFY_EVENT_USB_CABLE, 0);
 		break;
 	}
 #else
@@ -576,29 +576,23 @@ static int vbus_handle_notification(struct notifier_block *nb,
 
 static int otg_accessory_power(bool enable)
 {
-	struct power_supply *psy_otg;
+	u8 on = (u8)!!enable;
 	union power_supply_propval val;
-	int ret = 0;
 
-	pr_info("%s : enable=%d\n", __func__, enable);
-	psy_otg = get_power_supply_by_name("otg");
+	pr_info("otg accessory power = %d\n", on);
 
-	if (psy_otg) {
-		val.intval = enable;
-		ret = psy_otg->desc->set_property(psy_otg,
-				POWER_SUPPLY_PROP_ONLINE, &val);
-	} else {
-		pr_err("%s: Fail to get psy battery\n", __func__);
-	}
+	val.intval = enable;
+	psy_do_property("otg", set,
+			POWER_SUPPLY_PROP_ONLINE, val);
 
-	return ret;
+	return 0;
 }
 
 static int set_online(int event, int state)
 {
 	union power_supply_propval val;
 	struct device_node *np_charger = NULL;
-	char *charger_name = NULL;
+	char *charger_name;
 
 	if (event == NOTIFY_EVENT_SMTD_EXT_CURRENT)
 		pr_info("request smartdock charging current = %s\n",
@@ -611,18 +605,17 @@ static int set_online(int event, int state)
 	if (!np_charger) {
 		pr_err("%s: failed to get the battery device node\n", __func__);
 		return 0;
-	} else {
-		if (!of_property_read_string(np_charger, "battery,charger_name",
-					(char const **)&charger_name)) {
-			pr_info("%s: charger_name = %s\n", __func__,
-					charger_name);
-		} else {
-			pr_err("%s: failed to get the charger name\n",
-								 __func__);
-			return 0;
-		}
 	}
 
+	if (!of_property_read_string(np_charger, "battery,charger_name",
+				(char const **)&charger_name)) {
+		pr_info("%s: charger_name = %s\n", __func__, charger_name);
+	} else {
+		pr_err("%s: failed to get the charger name\n", __func__);
+		return 0;
+	}
+	/* for KNOX DT charging */
+	pr_info("Knox Desktop connection state = %s\n", state ? "Connected" : "Disconnected");
 	if (state)
 		val.intval = SEC_BATTERY_CABLE_SMART_NOTG;
 	else
@@ -651,9 +644,6 @@ static int exynos_set_host(bool enable)
 	return 0;
 }
 
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
-extern void set_ncm_ready(bool ready);
-#endif
 static int exynos_set_peripheral(bool enable)
 {
 	if (enable) {
@@ -662,19 +652,16 @@ static int exynos_set_peripheral(bool enable)
 	} else {
 		pr_info("%s usb detached\n", __func__);
 		check_usb_vbus_state(0);
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
-		set_ncm_ready(false);
-#endif
 	}
 	return 0;
 }
 
-#if defined(CONFIG_BATTERY_SAMSUNG_V2) || defined(CONFIG_BATTERY_SAMSUNG_LEGO_STYLE)
+#if defined(CONFIG_BATTERY_SAMSUNG_V2)
 static int usb_set_chg_current(int state)
 {
 	union power_supply_propval val;
 	struct device_node *np_charger = NULL;
-	char *charger_name = NULL;
+	char *charger_name;
 
 	np_charger = of_find_node_by_name(NULL, "battery");
 	if (!np_charger) {
@@ -695,13 +682,15 @@ static int usb_set_chg_current(int state)
 	pr_info("usb : charing current set = %d\n", state);
 
 	switch (state) {
-	case NOTIFY_SUSPEND:
+#ifdef CONFIG_ENABLE_USB_SUSPEND_STATE
+	case NOTIFY_USB_SUSPENDED:
 		val.intval = USB_CURRENT_SUSPENDED;
 		break;
-	case NOTIFY_UNCONFIGURE:
+#endif
+	case NOTIFY_USB_UNCONFIGURED:
 		val.intval = USB_CURRENT_UNCONFIGURED;
 		break;
-	case NOTIFY_CONFIGURE:
+	case NOTIFY_USB_CONFIGURED:
 		val.intval = USB_CURRENT_HIGH_SPEED;
 		break;
 	default:
@@ -710,7 +699,7 @@ static int usb_set_chg_current(int state)
 	}
 
 	psy_do_property("battery", set,
-			(enum power_supply_property)POWER_SUPPLY_EXT_PROP_USB_CONFIGURE, val);
+			POWER_SUPPLY_EXT_PROP_USB_CONFIGURE, val);
 
 	return 0;
 }
@@ -723,7 +712,7 @@ static struct otg_notify dwc_lsi_notify = {
 	.vbus_detect_gpio = -1,
 	.is_host_wakelock = 1,
 	.is_wakelock = 1,
-	.booting_delay_sec = 10,
+	.booting_delay_sec = 12,
 #if !defined(CONFIG_CCIC_NOTIFIER)
 	.auto_drive_vbus = NOTIFY_OP_POST,
 #endif
@@ -731,7 +720,7 @@ static struct otg_notify dwc_lsi_notify = {
 	.device_check_sec = 3,
 	.set_battcall = set_online,
 	.set_ldo_onoff = usb_regulator_onoff,
-#if defined(CONFIG_BATTERY_SAMSUNG_V2) || defined(CONFIG_BATTERY_SAMSUNG_LEGO_STYLE)
+#if defined(CONFIG_BATTERY_SAMSUNG_V2)
 	.set_chg_current = usb_set_chg_current,
 #endif
 	.pre_peri_delay_us = 6,
@@ -766,6 +755,7 @@ static int usb_notifier_probe(struct platform_device *pdev)
 	dwc_lsi_notify.is_wakelock = pdata->device_wake_lock_enable;
 	set_otg_notify(&dwc_lsi_notify);
 	set_notify_data(&dwc_lsi_notify, pdata);
+
 #if defined(CONFIG_CCIC_NOTIFIER)
 	pdata->usb_ldo_onoff = 0;
 	INIT_DELAYED_WORK(&pdata->usb_ldo_work,
@@ -773,6 +763,7 @@ static int usb_notifier_probe(struct platform_device *pdev)
 #endif
 
 #if defined(CONFIG_CCIC_NOTIFIER)
+	pdata->is_host = 0;
 #ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
 	manager_notifier_register(&pdata->ccic_usb_nb, ccic_usb_handle_notification,
 					MANAGER_NOTIFY_CCIC_USB);
@@ -795,7 +786,9 @@ static int usb_notifier_probe(struct platform_device *pdev)
 
 static int usb_notifier_remove(struct platform_device *pdev)
 {
+#if defined(CONFIG_CCIC_NOTIFIER) || defined(CONFIG_MUIC_NOTIFIER) || defined(CONFIG_VBUS_NOTIFIER)
 	struct usb_notifier_platform_data *pdata = dev_get_platdata(&pdev->dev);
+#endif
 #if defined(CONFIG_CCIC_NOTIFIER)
 #ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
 	manager_notifier_unregister(&pdata->ccic_usb_nb);
@@ -845,5 +838,6 @@ static void __init usb_notifier_exit(void)
 late_initcall(usb_notifier_init);
 module_exit(usb_notifier_exit);
 
+MODULE_AUTHOR("inchul.im <inchul.im@samsung.com>");
 MODULE_DESCRIPTION("USB notifier");
 MODULE_LICENSE("GPL");
