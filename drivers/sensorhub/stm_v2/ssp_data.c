@@ -304,8 +304,14 @@ void refresh_task(struct work_struct *work)
 			ssp_send_status(data, data->uLastAPState);
 		}
 		data->cnt_timeout = 0;
+		if (data->fw_dl_state == FW_DL_STATE_FAIL)
+			data->fw_dl_state = FW_DL_STATE_DONE;
 	} else {
 		data->uSensorState = 0;
+		if (data->fw_dl_state == FW_DL_STATE_FAIL &&
+		    data->cnt_reset < 3)
+			queue_delayed_work(data->debug_wq, &data->work_refresh,
+					   msecs_to_jiffies(10000));
 	}
 
 	data->is_reset_started = false;

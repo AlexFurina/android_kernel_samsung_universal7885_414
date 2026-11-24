@@ -488,9 +488,9 @@ static int fw_erase_stm(struct spi_device *spi)
 	}
 }
 
-static int load_kernel_fw_bootmode(struct spi_device *spi, const char *pFn)
+static int load_kernel_fw_bootmode(struct spi_device *spi,
+				   const struct firmware *fw)
 {
-	const struct firmware *fw = NULL;
 	int remaining;
 	unsigned int uPos = 0;
 	unsigned int fw_addr = STM_APP_ADDR;
@@ -501,12 +501,6 @@ static int load_kernel_fw_bootmode(struct spi_device *spi, const char *pFn)
 	int retry_count = 0;
 
 	ssp_info("ssp_load_fw start!!");
-
-	ret = request_firmware(&fw, pFn, &spi->dev);
-	if (ret) {
-		ssp_err("Unable to open firmware %s", pFn);
-		return ret;
-	}
 
 	remaining = fw->size;
 	while (remaining > 0) {
@@ -552,7 +546,6 @@ static int load_kernel_fw_bootmode(struct spi_device *spi, const char *pFn)
 	         uPos, err_count);
 
 out_load_kernel:
-	release_firmware(fw);
 	return ret;
 }
 
@@ -610,7 +603,8 @@ void toggle_mcu_reset(struct ssp_data *data)
 	gpio_set_value_cansleep(data->rst, 1);
 }
 
-static int update_mcu_bin(struct ssp_data *data, int iBinType)
+static int update_mcu_bin(struct ssp_data *data, int iBinType,
+			  const struct firmware *fw)
 {
 	int retry;
 	int ret = SUCCESS;
@@ -675,10 +669,10 @@ update_start:
 	switch (iBinType) {
 	case KERNEL_BINARY:
 		/* HW request: I2C line is reversed */
-		ret = load_kernel_fw_bootmode(data->spi, BL_FW_NAME);
+		ret = load_kernel_fw_bootmode(data->spi, fw);
 		break;
 	case KERNEL_CRASHED_BINARY:
-		ret = load_kernel_fw_bootmode(data->spi, BL_CRASHED_FW_NAME);
+		ret = load_kernel_fw_bootmode(data->spi, fw);
 		break;
 	case UMS_BINARY:
 		ret = load_ums_fw_bootmode(data->spi, BL_UMS_FW_NAME);
@@ -702,10 +696,35 @@ update_start:
 
 int forced_to_download_binary(struct ssp_data *data, int iBinType)
 {
+	const struct firmware *fw = NULL;
+	const char *fw_name = NULL;
 	int ret = 0;
 	int retry = 3;
 
 	ssp_infof("mcu binany update!");
+
+	switch (iBinType) {
+	case KERNEL_BINARY:
+		fw_name = BL_FW_NAME;
+		break;
+	case KERNEL_CRASHED_BINARY:
+		fw_name = BL_CRASHED_FW_NAME;
+		break;
+	}
+	if (fw_name) {
+		ret = request_firmware(&fw, fw_name, &data->spi->dev);
+		if (ret) {
+			ssp_err("Unable to open firmware %s", fw_name);
+			data->fw_dl_state = FW_DL_STATE_FAIL;
+			return ret;
+		}
+		if (!fw->size) {
+			ssp_err("Empty firmware %s", fw_name);
+			release_firmware(fw);
+			data->fw_dl_state = FW_DL_STATE_FAIL;
+			return -EINVAL;
+		}
+	}
 
 	ssp_enable(data, false);
 
@@ -717,7 +736,7 @@ int forced_to_download_binary(struct ssp_data *data, int iBinType)
 	}
 	do {
 		ssp_info("%d try", 3 - retry);
-		ret = update_mcu_bin(data, iBinType);
+		ret = update_mcu_bin(data, iBinType, fw);
 	} while (retry-- > 0 && ret < 0);
 
 	data->spi->max_speed_hz = NORM_SPI_HZ;
@@ -727,6 +746,7 @@ int forced_to_download_binary(struct ssp_data *data, int iBinType)
 	}
 	if (ret < 0) {
 		ssp_infof("update_mcu_bin failed!");
+		data->fw_dl_state = FW_DL_STATE_FAIL;
 		goto out;
 	}
 
@@ -745,6 +765,7 @@ int forced_to_download_binary(struct ssp_data *data, int iBinType)
 
 	ret = SUCCESS;
 out:
+	release_firmware(fw);
 	return ret;
 }
 

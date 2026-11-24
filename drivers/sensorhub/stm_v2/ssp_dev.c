@@ -180,6 +180,7 @@ static void work_function_firmware_update(struct work_struct *work)
 	if (ret < 0) {
 		ssp_infof("forced_to_download_binary failed!");
 		data->uSensorState = 0;
+		queue_refresh_task(data, 10000);
 		return;
 	}
 
