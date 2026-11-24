@@ -2954,9 +2954,112 @@ out:
 }
 EXPORT_SYMBOL(video_usercopy);
 
+#define V4L2_LEGACY_MAX_PLANES 17
+
+struct v4l2_legacy_pix_format_mplane {
+	__u32 width;
+	__u32 height;
+	__u32 pixelformat;
+	__u32 field;
+	__u32 colorspace;
+	struct v4l2_plane_pix_format plane_fmt[V4L2_LEGACY_MAX_PLANES];
+	__u8 num_planes;
+	__u8 flags;
+	__u8 ycbcr_enc;
+	__u8 quantization;
+	__u8 xfer_func;
+	__u8 reserved[7];
+} __packed;
+
+struct v4l2_legacy_format {
+	__u32 type;
+	union {
+		struct v4l2_legacy_pix_format_mplane pix_mp;
+		__u8 raw_data[200];
+	} fmt;
+};
+
+#define VIDIOC_G_FMT_LEGACY _IOWR('V', 4, struct v4l2_legacy_format)
+#define VIDIOC_S_FMT_LEGACY _IOWR('V', 5, struct v4l2_legacy_format)
+#define VIDIOC_TRY_FMT_LEGACY _IOWR('V', 64, struct v4l2_legacy_format)
+
+static long video_ioctl2_legacy_fmt(struct file *file, unsigned int cmd,
+				   unsigned long arg)
+{
+	struct v4l2_legacy_format *legacy;
+	struct v4l2_format fmt = { 0 };
+	unsigned int native_cmd;
+	long ret;
+
+	switch (cmd) {
+	case VIDIOC_G_FMT_LEGACY:
+		native_cmd = VIDIOC_G_FMT;
+		break;
+	case VIDIOC_S_FMT_LEGACY:
+		native_cmd = VIDIOC_S_FMT;
+		break;
+	case VIDIOC_TRY_FMT_LEGACY:
+		native_cmd = VIDIOC_TRY_FMT;
+		break;
+	default:
+		return -ENOTTY;
+	}
+
+	legacy = kvmalloc(sizeof(*legacy), GFP_KERNEL);
+	if (!legacy)
+		return -ENOMEM;
+	if (copy_from_user(legacy, (void __user *)arg, sizeof(*legacy))) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	fmt.type = legacy->type;
+	if (V4L2_TYPE_IS_MULTIPLANAR(fmt.type)) {
+		if (native_cmd != VIDIOC_G_FMT &&
+		    legacy->fmt.pix_mp.num_planes > VIDEO_MAX_PLANES) {
+			ret = -EINVAL;
+			goto out;
+		}
+		memcpy(&fmt.fmt.pix_mp, &legacy->fmt.pix_mp,
+		       offsetof(struct v4l2_pix_format_mplane, num_planes));
+		memcpy(&fmt.fmt.pix_mp.num_planes,
+		       &legacy->fmt.pix_mp.num_planes,
+		       sizeof(fmt.fmt.pix_mp) -
+		       offsetof(struct v4l2_pix_format_mplane, num_planes));
+	} else {
+		memcpy(&fmt.fmt, &legacy->fmt, sizeof(fmt.fmt));
+	}
+
+	ret = __video_do_ioctl(file, native_cmd, &fmt);
+	if (ret)
+		goto out;
+
+	legacy->type = fmt.type;
+	if (V4L2_TYPE_IS_MULTIPLANAR(fmt.type)) {
+		memcpy(&legacy->fmt.pix_mp, &fmt.fmt.pix_mp,
+		       offsetof(struct v4l2_pix_format_mplane, num_planes));
+		memcpy(&legacy->fmt.pix_mp.num_planes,
+		       &fmt.fmt.pix_mp.num_planes,
+		       sizeof(fmt.fmt.pix_mp) -
+		       offsetof(struct v4l2_pix_format_mplane, num_planes));
+	} else {
+		memcpy(&legacy->fmt, &fmt.fmt, sizeof(fmt.fmt));
+	}
+
+	if (copy_to_user((void __user *)arg, legacy, sizeof(*legacy)))
+		ret = -EFAULT;
+out:
+	kvfree(legacy);
+	return ret;
+}
+
 long video_ioctl2(struct file *file,
 	       unsigned int cmd, unsigned long arg)
 {
+	if (cmd == VIDIOC_G_FMT_LEGACY || cmd == VIDIOC_S_FMT_LEGACY ||
+	    cmd == VIDIOC_TRY_FMT_LEGACY)
+		return video_ioctl2_legacy_fmt(file, cmd, arg);
+
 	return video_usercopy(file, cmd, arg, __video_do_ioctl);
 }
 EXPORT_SYMBOL(video_ioctl2);

@@ -178,6 +178,7 @@ static inline void entity_info_print(struct media_entity *me, struct device *dev
 	u16 num_pads = me->num_pads;
 	u16 num_links = me->num_links;
 	int i;
+	struct media_link *link;
 
 	dev_dbg(dev, "entity name : %s\n", me->name);
 	dev_dbg(dev, "number of pads = %d\n", num_pads);
@@ -188,15 +189,16 @@ static inline void entity_info_print(struct media_entity *me, struct device *dev
 
 	dev_dbg(dev, "number of links = %d\n", num_links);
 
-	for (i = 0; i < num_links; ++i) {
-		dev_dbg(dev, "link[%d] info  =  ", i);
+	i = 0;
+	list_for_each_entry(link, &me->links, list) {
+		dev_dbg(dev, "link[%d] info  =  ", i++);
 		dev_dbg(dev, "%s : %s[%d]  --->  %s : %s[%d]\n",
-			me->links[i].source->entity->name,
-			me->links[i].source->flags == 1 ? "SINK" : "SOURCE",
-			me->links[i].source->index,
-			me->links[i].sink->entity->name,
-			me->links[i].sink->flags == 1 ? "SINK" : "SOURCE",
-			me->links[i].sink->index);
+			link->source->entity->name,
+			link->source->flags & MEDIA_PAD_FL_SINK ? "SINK" : "SOURCE",
+			link->source->index,
+			link->sink->entity->name,
+			link->sink->flags & MEDIA_PAD_FL_SINK ? "SINK" : "SOURCE",
+			link->sink->index);
 	}
 }
 #endif
