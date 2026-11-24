@@ -281,7 +281,11 @@ const struct sched_class fair_sched_class;
  * CFS operations on generic schedulable entities:
  */
 
+#ifdef CONFIG_FAIR_GROUP_SCHED
+#define entity_is_task(se)	(!(se)->my_q)
+#else
 #define entity_is_task(se)	1
+#endif
 
 static inline struct task_struct *task_of(struct sched_entity *se)
 {
