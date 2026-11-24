@@ -840,18 +840,40 @@ static int pwm_samsung_suspend(struct device *dev)
 static int pwm_samsung_resume(struct device *dev)
 {
 	struct samsung_pwm_chip *chip = dev_get_drvdata(dev);
+	unsigned long flags;
 	unsigned int chan;
+	int ret;
 
-	pwm_samsung_clk_enable(chip);
+	ret = pwm_samsung_clk_enable(chip);
+	if (ret)
+		return ret;
 
 	/* Restore pwm registers*/
 	__raw_writel(chip->reg_tcfg0, chip->base + REG_TCFG0);
 
 	for (chan = 0; chan < SAMSUNG_PWM_NUM; ++chan) {
-		if (chip->variant.output_mask & BIT(chan)) {
-			struct pwm_device *pwm = &chip->chip.pwms[chan];
+		struct pwm_device *pwm = &chip->chip.pwms[chan];
+		struct samsung_pwm_channel *channel = pwm_get_chip_data(pwm);
 
-			pwm_samsung_init(chip, pwm);
+		if (!(chip->variant.output_mask & BIT(chan)))
+			continue;
+
+		pwm_samsung_init(chip, pwm);
+		if (!channel || !pwm->state.period)
+			continue;
+
+		ret = __pwm_samsung_config(&chip->chip, pwm,
+					 pwm->state.duty_cycle,
+					 pwm->state.period, true);
+		if (ret) {
+			dev_err(dev, "failed to restore PWM %u: %d\n", chan, ret);
+			continue;
+		}
+
+		if (pwm->state.enabled) {
+			spin_lock_irqsave(&samsung_pwm_lock, flags);
+			pwm_samsung_manual_update(chip, pwm);
+			spin_unlock_irqrestore(&samsung_pwm_lock, flags);
 		}
 	}
 
