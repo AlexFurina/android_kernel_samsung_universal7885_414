@@ -1057,7 +1057,7 @@
 		};
 	};
 
-	fimc_is@14440000 {
+	fimc_is@14450000 {
 		pinctrl-names = "default","release";
 		pinctrl-0 = <&fimc_is_mclk0_out &fimc_is_mclk1_out &fimc_is_mclk2_out>;
 		pinctrl-1 = <>;
